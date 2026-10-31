@@ -5,6 +5,8 @@ import type {
   Evaluation,
   Headline,
   WorkbookLimits,
+  LookupQuery,
+  LookupResult,
   Run,
   RunLog,
   RunMode,
@@ -71,6 +73,21 @@ export const api = {
     if (params.limit) q.set("limit", String(params.limit));
     const qs = q.toString();
     return http<ScenarioSummary[]>(`/scenarios${qs ? `?${qs}` : ""}`);
+  },
+
+  /** How many eligible flights the lookup searches. */
+  eligibleCount(): Promise<{ eligible_total: number }> {
+    if (IS_MOCK) return mockBackend.eligibleCount();
+    return http<{ eligible_total: number }>("/scenarios/count");
+  },
+
+  lookupFlight(query: LookupQuery): Promise<LookupResult> {
+    if (IS_MOCK) return mockBackend.lookupFlight(query);
+    const q = new URLSearchParams({ date: query.date, flight_number: String(query.flight_number) });
+    if (query.airline) q.set("airline", query.airline);
+    if (query.origin) q.set("origin", query.origin);
+    if (query.destination) q.set("destination", query.destination);
+    return http<LookupResult>(`/scenarios/lookup?${q.toString()}`);
   },
 
   createRun(body: {

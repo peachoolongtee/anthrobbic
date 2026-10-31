@@ -12,6 +12,7 @@ import { AgentStrip } from "@/components/dashboard/agent-strip";
 import { AirportMap } from "@/components/dashboard/airport-map";
 import { BreakItDock } from "@/components/dashboard/break-it-dock";
 import { EvidenceView } from "@/components/dashboard/evidence-view";
+import { FindFlight } from "@/components/dashboard/find-flight";
 import { FlightList } from "@/components/dashboard/flight-list";
 import { FlightMap } from "@/components/dashboard/flight-map";
 import { LogView } from "@/components/dashboard/log-view";
@@ -54,7 +55,8 @@ export function Dashboard() {
   const run = d.runState.status === "ready" ? d.runState.run : null;
   const running = d.runState.status === "loading";
   const selected =
-    d.scenarios.status === "ready" ? d.scenarios.data.find((s) => s.scenario_id === d.selectedId) : undefined;
+    d.found.find((s) => s.scenario_id === d.selectedId) ??
+    (d.scenarios.status === "ready" ? d.scenarios.data.find((s) => s.scenario_id === d.selectedId) : undefined);
 
   // A refused sign-off leaves the plan on screen out of date until a new one is made.
   const refused = d.signoff.status === "done" && !isApproved(d.signoff.result.status) ? d.signoff.result : null;
@@ -106,7 +108,7 @@ export function Dashboard() {
         <aside
           className={cn(
             PANEL,
-            "relative flex max-h-[26rem] flex-col p-3 lg:absolute lg:top-3 lg:bottom-3 lg:left-3 lg:z-10 lg:max-h-none lg:w-[19rem]",
+            "relative flex flex-col p-3 lg:absolute lg:top-3 lg:bottom-3 lg:left-3 lg:z-10 lg:max-h-none lg:w-[19rem]",
           )}
         >
           <FlightList
@@ -118,6 +120,17 @@ export function Dashboard() {
             selectedId={d.selectedId}
             onSelect={pickFlight}
             onRetry={d.retryScenarios}
+            found={d.found}
+            finder={
+              <FindFlight
+                lookup={d.lookup}
+                onFind={d.findFlight}
+                onChoose={(flight) => {
+                  setTab(null);
+                  d.openFound(flight);
+                }}
+              />
+            }
           />
         </aside>
 
@@ -278,6 +291,13 @@ export function Dashboard() {
             "relative space-y-4 p-4 lg:absolute lg:top-3 lg:right-3 lg:bottom-3 lg:z-10 lg:w-[23rem] lg:overflow-y-auto",
           )}
         >
+          {d.rulesOnlyFlight && (
+            <p role="status" className="rounded-xl border border-info/40 bg-info-soft p-3 text-sm">
+              <strong>{d.rulesOnlyFlight} runs on rules only</strong>, because no model answers were saved for it. The mode
+              was moved to Model off for this.
+            </p>
+          )}
+
           {d.sameAsRejected && (
             <p role="status" className="rounded-xl border border-warning/50 bg-warning-soft p-3 text-sm">
               <strong>This is the same recovery plan you rejected.</strong> Nothing about the flight or the airport

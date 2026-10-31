@@ -8,6 +8,52 @@ export interface MockScenario {
   fallbackFault?: boolean;
 }
 
+/** Mock flights outside the list, which only the lookup can find. All invented. */
+export const MOCK_LOOKUP_ONLY: MockScenario[] = [
+  {
+    summary: {
+      scenario_id: "mock-find-1",
+      flight_id: "UA 77",
+      route: "SFO to DEN",
+      scheduled_arrival: "16:05",
+      cause: "weather",
+      delay_provenance: "synthetic",
+      delay_minutes: 15,
+      next_leg: null,
+      has_recording: false,
+    },
+  },
+  {
+    summary: {
+      scenario_id: "mock-find-2",
+      flight_id: "UA 88",
+      route: "ORD to BOS",
+      scheduled_arrival: "11:40",
+      cause: "late_aircraft",
+      delay_provenance: "synthetic",
+      delay_minutes: 20,
+      next_leg: null,
+      has_recording: false,
+    },
+  },
+  {
+    summary: {
+      scenario_id: "mock-find-3",
+      flight_id: "DL 88",
+      route: "ATL to MCO",
+      scheduled_arrival: "18:15",
+      cause: "weather",
+      delay_provenance: "synthetic",
+      delay_minutes: 15,
+      next_leg: null,
+      has_recording: false,
+    },
+  },
+];
+
+/** A flight number the mock treats as on the schedule but not a disruption case. */
+export const MOCK_BELOW_THRESHOLD_FLIGHT = 999;
+
 /**
  * Sample flights for mock mode. Which flight, its route, its scheduled arrival
  * and the cause come from real rows of data/flights.csv (US DOT 2015): DL 986
@@ -15,8 +61,9 @@ export interface MockScenario {
  * B6 518 2015-01-09, NK 612 2015-01-13. The next leg is the same aircraft's
  * next scheduled flight that day: flight, route and time are real. Every delay
  * figure is INVENTED, so the as-flown delays in flights.csv never serve as
- * inputs. Invented values are marked "synthetic", and so is the next leg
- * because its delay is shown with it. Mock mode says so on screen.
+ * inputs. Invented values are marked "synthetic". The next leg itself is
+ * "derived", and its invented delay carries its own "synthetic" label. Mock mode
+ * says so on screen.
  */
 export const MOCK_SCENARIOS: MockScenario[] = [
   {

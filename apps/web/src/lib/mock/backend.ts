@@ -17,6 +17,8 @@ import type {
   Fault,
   FinalDecision,
   LogEntry,
+  LookupQuery,
+  LookupResult,
   NoGo,
   RemovedPackage,
   Run,
@@ -31,7 +33,13 @@ import type {
   Turn,
   VerifyResult,
 } from "@/lib/api-types";
-import { MOCK_EVALUATION, MOCK_SCENARIOS, type MockScenario } from "@/lib/mock/fixtures";
+import {
+  MOCK_BELOW_THRESHOLD_FLIGHT,
+  MOCK_EVALUATION,
+  MOCK_LOOKUP_ONLY,
+  MOCK_SCENARIOS,
+  type MockScenario,
+} from "@/lib/mock/fixtures";
 
 const RUNWAYS = ["27L", "27R"];
 const GATES = ["B12", "B14", "C3"];
@@ -452,13 +460,49 @@ export const mockBackend = {
     return rows.slice(0, params.limit ?? 50);
   },
 
+  async eligibleCount(): Promise<{ eligible_total: number }> {
+    await wait(100);
+    return { eligible_total: MOCK_SCENARIOS.length + MOCK_LOOKUP_ONLY.length };
+  },
+
+  async lookupFlight(query: LookupQuery): Promise<LookupResult> {
+    await wait(250);
+    const none = (reason: string, message: string): LookupResult => ({ status: "none", matches: [], total: 0, reason, message });
+    if (!query.date.startsWith("2015-")) return none("outside_dataset", "The flight data covers 2015 only.");
+    if (query.date.startsWith("2015-10-")) {
+      return none(
+        "october_excluded",
+        "October 2015 is excluded from this data, because that month's airport codes are numeric, not the usual three letters.",
+      );
+    }
+    if (query.flight_number === MOCK_BELOW_THRESHOLD_FLIGHT) {
+      return none("below_thresholds", "That flight is in the data, but it is not a disruption case.");
+    }
+    const matches = [...MOCK_SCENARIOS, ...MOCK_LOOKUP_ONLY]
+      .map((s) => s.summary)
+      .filter((s) => {
+        const [airline, number] = s.flight_id.split(" ");
+        const [origin, , destination] = s.route.split(" ");
+        return (
+          number === String(query.flight_number) &&
+          (!query.airline || query.airline.toUpperCase() === airline) &&
+          (!query.origin || query.origin.toUpperCase() === origin) &&
+          (!query.destination || query.destination.toUpperCase() === destination)
+        );
+      });
+    if (matches.length === 0) {
+      return none("not_in_data", `No flight numbered ${query.flight_number} matches that search on ${query.date} in the mock data.`);
+    }
+    return { status: matches.length === 1 ? "one" : "several", matches, total: matches.length, reason: null, message: null };
+  },
+
   async createRun(body: {
     scenario_id: string;
     mode: RunMode;
     overrides?: RunOverrides;
   }): Promise<Run> {
     await wait(body.mode === "live" ? 900 : 450);
-    const sc = MOCK_SCENARIOS.find((s) => s.summary.scenario_id === body.scenario_id);
+    const sc = [...MOCK_SCENARIOS, ...MOCK_LOOKUP_ONLY].find((s) => s.summary.scenario_id === body.scenario_id);
     if (!sc) throw new Error(`Unknown scenario ${body.scenario_id}`);
     const closedRunways = body.overrides?.closed_runways ?? [];
     const closedGates = body.overrides?.closed_gates ?? [];

@@ -5,6 +5,7 @@ import { api, describeError, isUnreachable } from "@/lib/api";
 import type {
   Cause,
   DecisionResult,
+  LookupQuery,
   Run,
   RunMode,
   RunOverrides,
@@ -38,6 +39,14 @@ export type DecisionState =
   | { status: "error"; message: string }
   | { status: "done"; result: DecisionResult };
 
+export type LookupState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "none"; message: string }
+  | { status: "several"; matches: ScenarioSummary[]; total: number }
+  | { status: "found"; flightId: string };
+
 export type BreakKind = "runway" | "gate" | "unsafe" | "stale" | "tamper";
 
 export interface BreakOutcome {
@@ -60,6 +69,11 @@ export function useDashboard() {
   const [signoff, setSignoff] = useState<SignoffState>({ status: "idle" });
   const [decision, setDecision] = useState<DecisionState>({ status: "idle" });
   const [sameAsRejected, setSameAsRejected] = useState(false);
+  // Flights found by the lookup stay at the top of the list for this session.
+  const [found, setFound] = useState<ScenarioSummary[]>([]);
+  const [lookup, setLookup] = useState<LookupState>({ status: "idle" });
+  const [rulesOnlyFlight, setRulesOnlyFlight] = useState<string | null>(null);
+  const lookupSeq = useRef(0);
   // For this page only: to say so if a new plan is the one just rejected. It does
   // not change what the backend plans.
   const rejected = useRef<{ scenarioId: string; terms: string } | null>(null);
@@ -144,15 +158,54 @@ export function useDashboard() {
       setSelectedId(scenarioId);
       setOverrides({});
       setOutcome(null);
+      setRulesOnlyFlight(null);
       void startRun(scenarioId, mode, {});
     },
     [mode, startRun],
+  );
+
+  /** Select and run a looked-up flight. Replay only runs what was saved, and this
+   *  never moves to Live on its own. */
+  const openFound = useCallback(
+    (flight: ScenarioSummary) => {
+      const rulesOnly = mode === "recorded" && flight.has_recording === false;
+      const runMode: RunMode = rulesOnly ? "off" : mode;
+      setFound((rows) => [flight, ...rows.filter((r) => r.scenario_id !== flight.scenario_id)]);
+      selectedRef.current = flight.scenario_id;
+      setSelectedId(flight.scenario_id);
+      setOverrides({});
+      setOutcome(null);
+      setModeState(runMode);
+      setRulesOnlyFlight(rulesOnly ? flight.flight_id : null);
+      setLookup({ status: "found", flightId: flight.flight_id });
+      void startRun(flight.scenario_id, runMode, {});
+    },
+    [mode, startRun],
+  );
+
+  const findFlight = useCallback(
+    async (query: LookupQuery) => {
+      const seq = ++lookupSeq.current;
+      setLookup({ status: "loading" });
+      try {
+        const result = await api.lookupFlight(query);
+        if (seq !== lookupSeq.current) return;
+        if (result.status === "one") openFound(result.matches[0]);
+        else if (result.status === "several") setLookup({ status: "several", matches: result.matches, total: result.total });
+        else setLookup({ status: "none", message: result.message ?? "No eligible flight matches that search." });
+      } catch (err) {
+        if (seq !== lookupSeq.current) return;
+        setLookup({ status: "error", message: describeError(err) });
+      }
+    },
+    [openFound],
   );
 
   const setMode = useCallback(
     (m: RunMode) => {
       setModeState(m);
       setOutcome(null);
+      setRulesOnlyFlight(null);
       if (selectedRef.current) void startRun(selectedRef.current, m, overrides);
     },
     [overrides, startRun],
@@ -380,6 +433,11 @@ export function useDashboard() {
     retryScenarios,
     selectedId,
     select,
+    found,
+    lookup,
+    findFlight,
+    openFound,
+    rulesOnlyFlight,
     mode,
     setMode,
     overrides,

@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { CloudLightning, Layers, PlaneLanding, Search } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { Cause, ScenarioSummary } from "@/lib/api-types";
@@ -49,6 +50,8 @@ export function FlightList({
   selectedId,
   onSelect,
   onRetry,
+  found,
+  finder,
 }: {
   scenarios: ScenarioLoad;
   cause: Cause | "all";
@@ -58,13 +61,22 @@ export function FlightList({
   selectedId: string | null;
   onSelect: (id: string) => void;
   onRetry: () => void;
+  /** Flights the lookup found. They stay at the top, whatever the filters say. */
+  found: ScenarioSummary[];
+  finder: ReactNode;
 }) {
   const q = query.trim().toLowerCase();
+  const foundIds = new Set(found.map((s) => s.scenario_id));
   const rows =
     scenarios.status === "ready"
-      ? scenarios.data.filter(
-          (s) => !q || `${s.flight_id} ${s.route} ${s.next_leg?.flight_id ?? ""}`.toLowerCase().includes(q),
-        )
+      ? [
+          ...found,
+          ...scenarios.data.filter(
+            (s) =>
+              !foundIds.has(s.scenario_id) &&
+              (!q || `${s.flight_id} ${s.route} ${s.next_leg?.flight_id ?? ""}`.toLowerCase().includes(q)),
+          ),
+        ]
       : [];
 
   return (
@@ -104,7 +116,9 @@ export function FlightList({
         </ToggleGroup>
       </div>
 
-      <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-1">
+      {finder}
+
+      <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-1 max-lg:max-h-64">
         {scenarios.status === "loading" && <LoadingBlock label="Loading flights" lines={5} />}
         {scenarios.status === "error" && (
           <ErrorPanel
@@ -143,6 +157,9 @@ export function FlightList({
                     <div className="flex items-center gap-2 text-sm">
                       <Icon aria-hidden className="size-3.5 text-muted-foreground" />
                       <span className="font-medium">{s.flight_id}</span>
+                      {foundIds.has(s.scenario_id) && (
+                        <span className="rounded bg-secondary px-1 text-[10px] font-medium text-secondary-foreground">Looked up</span>
+                      )}
                       {s.has_recording && (
                         <span title="Saved model answers exist for this flight" className="rounded bg-info-soft px-1 text-[10px] font-medium text-info">
                           Recorded

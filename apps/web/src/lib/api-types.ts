@@ -50,6 +50,25 @@ export interface ScenarioSummary {
   has_recording?: boolean;
 }
 
+/** A flight as a person names it. The API searches every eligible row. */
+export interface LookupQuery {
+  date: string;
+  flight_number: number;
+  airline?: string;
+  origin?: string;
+  destination?: string;
+}
+
+export interface LookupResult {
+  status: "one" | "several" | "none";
+  matches: ScenarioSummary[];
+  /** Matches in all, which may be more than `matches` holds. */
+  total: number;
+  reason: string | null;
+  /** Why there is no match, in plain words. */
+  message: string | null;
+}
+
 export interface RunOverrides {
   closed_runways?: string[];
   closed_gates?: string[];
