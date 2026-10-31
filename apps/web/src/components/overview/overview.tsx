@@ -250,9 +250,8 @@ export function Overview() {
             <OrbitingGlobe
               routes={routes}
               activeId={activeId}
-              wide
-              framed
-              className="h-[24rem] sm:h-[32rem] lg:h-[min(66vh,44rem)]"
+              layout="horizon"
+              className="h-[22rem] sm:h-[28rem] lg:h-[min(62vh,40rem)]"
             />
           </div>
           <div className="absolute inset-x-0 bottom-2 z-10 flex justify-center">
