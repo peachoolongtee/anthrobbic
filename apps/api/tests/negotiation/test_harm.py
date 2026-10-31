@@ -18,9 +18,8 @@ from app.negotiation.contracts import (
     GateOccupancy,
     OtherArrival,
     Package,
-    Provenance,
     Runway,
-    Sourced,
+    Scenario,
     Taxiway,
     WakeCategory,
     WeatherPeriod,
@@ -36,10 +35,6 @@ from app.negotiation.harm import (
 from app.negotiation.options import PackageBoundError, enumerate_packages
 from app.negotiation.rules import check_package, rule_ids
 from tests.negotiation.factories import make_package, make_scenario, random_scenario
-
-# True once the safety-core fixes are on this branch. Until then the rules are
-# expected to disagree with this check, and the strict xfail below proves they do.
-CORE_FIXES_LANDED = "parallel_group" in Runway.model_fields
 
 
 def _arrival(minute: int, wake: WakeCategory = WakeCategory.LARGE) -> OtherArrival:
@@ -260,21 +255,12 @@ def test_gate_after_departure_at_and_past_the_buffer(
     assert verdict is expected
 
 
-class _Grouped:
-    """A runway with a group, for any core whose contract lacks the field."""
-
-    def __init__(self, runway_id: str, group: str | None) -> None:
-        self.runway_id = runway_id
-        self.closed = False
-        self.parallel_group = group
-
-
-def _grouped_scenario(traffic: tuple[OtherArrival, ...], group: str | None) -> Any:
-    base = make_scenario(other_arrivals=traffic)
-    runways = (_Grouped("28L", group), _Grouped("28R", group))
-    return base.model_copy(
-        update={"runways": Sourced(value=runways, provenance=Provenance.SYNTHETIC)}
+def _grouped_scenario(traffic: tuple[OtherArrival, ...], group: str | None) -> Scenario:
+    runways = (
+        Runway(runway_id="28L", closed=False, parallel_group=group),
+        Runway(runway_id="28R", closed=False, parallel_group=group),
     )
+    return make_scenario(other_arrivals=traffic, runways=runways)
 
 
 def test_parallel_runways_in_a_group_share_wake_spacing() -> None:
@@ -342,17 +328,10 @@ def test_throughput_counts_only_the_hour_around_the_arrival() -> None:
     assert verdict is HarmVerdict.CLEAR
 
 
-def test_small_follower_uses_its_own_approach_speed(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    general = rv.RULE_VALUES[rv.APPROACH_GROUND_SPEED_KT]
-    table = {
-        **rv.RULE_VALUES,
-        "approach_ground_speed_kt.small": general.model_copy(update={"value": 100}),
-    }
-    monkeypatch.setattr(rv, "RULE_VALUES", table)
-    # Small behind large is 4 nm. At 100 kt 2 minutes is 3.3 nm, 3 minutes is 5 nm.
-    # At 130 kt 2 minutes would have been 4.3 nm, and clear.
+def test_small_follower_uses_its_own_approach_speed() -> None:
+    # Small behind large is 4 nm. At 100 kt 2 minutes is 3.3 nm and 3 minutes is 5 nm.
+    # At the other classes' 130 kt, 2 minutes would have been 4.3 nm, and clear.
+    assert rv.approach_speed(WakeCategory.SMALL).value == 100
     short = _verdict(
         HarmCheck.WAKE_SPACING,
         wake_category=WakeCategory.SMALL,
@@ -442,12 +421,6 @@ def test_fuel_coherence_violations_are_not_fuel_disagreements() -> None:
     assert not compare_with_rules(report, violations)
 
 
-@pytest.mark.xfail(
-    not CORE_FIXES_LANDED,
-    reason="harm.py already applies the safety-core fixes that have not reached this "
-    "branch: gate held to next departure, cap from the forecast at ETA",
-    strict=True,
-)
 def test_rules_and_harm_agree_on_every_package_of_random_scenarios() -> None:
     """Over all enumerated packages, the four shared checks never disagree on a
     real limit. Missing-data differences are allowed and labelled above."""

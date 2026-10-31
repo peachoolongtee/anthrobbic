@@ -33,9 +33,6 @@ from app.negotiation.contracts import (
     WeatherPeriod,
 )
 
-# Read by key so that this module loads on a core without the per-class speed.
-_SMALL_APPROACH_SPEED_KEY = "approach_ground_speed_kt.small"
-
 
 class HarmCheck(StrEnum):
     WAKE_SPACING = "wake_spacing"
@@ -97,18 +94,11 @@ def _finding(check: HarmCheck, verdict: HarmVerdict, detail: str) -> HarmFinding
 
 def _same_runway_ids(runways: Sequence[Runway], runway_id: str) -> set[str]:
     """This runway and any that share a parallel group with it. They count as one."""
-    group_of = {r.runway_id: getattr(r, "parallel_group", None) for r in runways}
+    group_of = {r.runway_id: r.parallel_group for r in runways}
     mine = group_of.get(runway_id)
     if mine is None:
         return {runway_id}
     return {rid for rid, group in group_of.items() if group == mine} | {runway_id}
-
-
-def _approach_knots(follower: WakeCategory) -> int:
-    general = rv.RULE_VALUES[rv.APPROACH_GROUND_SPEED_KT]
-    if follower is WakeCategory.SMALL:
-        return rv.RULE_VALUES.get(_SMALL_APPROACH_SPEED_KEY, general).value
-    return general.value
 
 
 def _wake_spacing(scenario: Scenario, package: Package) -> HarmFinding:
@@ -135,7 +125,7 @@ def _wake_spacing(scenario: Scenario, package: Package) -> HarmFinding:
         for leader, follower in pairs:
             needed_nm = rv.wake_separation(leader, follower).value
             flown_nm = Fraction(
-                abs(minutes_after) * _approach_knots(follower), per_hour
+                abs(minutes_after) * rv.approach_speed(follower).value, per_hour
             )
             if flown_nm < needed_nm and (worst is None or flown_nm < worst[0]):
                 worst = (flown_nm, needed_nm, flight.flight_id)
