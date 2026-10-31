@@ -226,6 +226,10 @@ function SignoffForm({
   // Rejecting takes two steps, and the reason is on screen at the second.
   const [confirmingReject, setConfirmingReject] = useState(false);
   const decided = decision.status === "done";
+  // Approved or decided earlier: nothing more can happen to this plan.
+  const finished =
+    signoff.status === "done" &&
+    (signoff.result.status === "REFUSED_ALREADY_USED" || signoff.result.status === "REFUSED_ALREADY_DECIDED");
   const rejecting = decision.status === "loading";
   const locked =
     signoff.status === "loading" || (signoff.status === "done" && isApproved(signoff.result.status)) || decided || rejecting;
@@ -262,7 +266,7 @@ function SignoffForm({
       )}
       <FallbackNotice run={run} />
 
-      {!(approved || decided) && (
+      {!(approved || decided || finished) && (
         <>
       <fieldset className="space-y-1.5" disabled={locked}>
         <legend className="flex items-center gap-1.5 text-sm font-semibold" title="The airline's own calls">
@@ -412,6 +416,17 @@ function Refusal({
   const label = signoffStatusLabel(result.status);
   const state = result.changed_fields ?? [];
   const cardFields = result.changed_card_fields ?? [];
+  if (result.status === "REFUSED_ALREADY_USED") {
+    return (
+      <div className="space-y-1 rounded-lg border border-border bg-muted/50 p-3 text-sm">
+        <p className="flex items-center gap-1.5 font-semibold">
+          <CircleCheck aria-hidden className="size-4 text-success" />
+          {label.title}
+        </p>
+        <p className="text-xs text-muted-foreground">{label.detail}</p>
+      </div>
+    );
+  }
   return (
     <div className="space-y-2 rounded-lg border border-destructive/40 bg-destructive-soft p-3 text-sm">
       <p className="flex items-start gap-1.5 font-semibold text-destructive">

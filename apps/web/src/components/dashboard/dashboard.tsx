@@ -473,7 +473,7 @@ export function Dashboard() {
             </p>
           )}
 
-          {refused && banner && (
+          {refused && banner?.outOfDate && (
             <div role="alert" className="space-y-2 rounded-xl border border-destructive/60 bg-destructive-soft p-3 text-sm">
               <p className="flex items-start gap-2">
                 <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />

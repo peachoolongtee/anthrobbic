@@ -123,8 +123,8 @@ export const SIGNOFF_STATUS: Record<SignoffStatus, { title: string; detail: stri
     detail: "Nothing was issued. The plan broke a hard rule when checked again against the current state.",
   },
   REFUSED_ALREADY_USED: {
-    title: "Refused: this exact approval was already used",
-    detail: "Each approval can be used once, and this one has been. Nothing more was issued.",
+    title: "Already approved",
+    detail: "This plan was approved earlier. Nothing new was sent.",
   },
   REFUSED_NOT_ELIGIBLE: {
     title: "Refused: this plan was not offered for sign-off",
