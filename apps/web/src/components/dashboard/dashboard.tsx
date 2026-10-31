@@ -129,6 +129,7 @@ export function Dashboard() {
           )}
         >
           <FlightList
+            hideRecordedTag={d.mode === "live"}
             scenarios={d.scenarios}
             cause={d.cause}
             onCauseChange={d.changeCause}

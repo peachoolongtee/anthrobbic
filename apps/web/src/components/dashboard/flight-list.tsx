@@ -52,6 +52,7 @@ export function FlightList({
   onRetry,
   found,
   finder,
+  hideRecordedTag,
 }: {
   scenarios: ScenarioLoad;
   cause: Cause | "all";
@@ -64,6 +65,8 @@ export function FlightList({
   /** Flights the lookup found. They stay at the top, whatever the filters say. */
   found: ScenarioSummary[];
   finder: ReactNode;
+  /** In Live nothing is replayed, so the tag would read as if this run were. */
+  hideRecordedTag: boolean;
 }) {
   const q = query.trim().toLowerCase();
   const foundIds = new Set(found.map((s) => s.scenario_id));
@@ -160,7 +163,7 @@ export function FlightList({
                       {foundIds.has(s.scenario_id) && (
                         <span className="rounded bg-secondary px-1 text-[10px] font-medium text-secondary-foreground">Looked up</span>
                       )}
-                      {s.has_recording && (
+                      {s.has_recording && !hideRecordedTag && (
                         <span title="Saved model answers exist for this flight" className="rounded bg-info-soft px-1 text-[10px] font-medium text-info">
                           Recorded
                         </span>
