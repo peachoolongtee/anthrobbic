@@ -37,9 +37,9 @@ export const MODE_LABEL: Record<RunMode, { name: string; detail: string }> = {
 };
 
 export const PROVENANCE_LABEL: Record<Provenance, { name: string; detail: string }> = {
-  real: { name: "Real", detail: "Taken from the US DOT flight record" },
-  derived: { name: "Derived", detail: "Worked out from real records, such as the same aircraft's next flight" },
-  synthetic: { name: "Synthetic", detail: "Invented for this demo, seeded per flight" },
+  real: { name: "Data", detail: "Straight from the 2015 US flight record" },
+  derived: { name: "Calculated", detail: "Worked out from the flight record, such as the same aircraft's next flight" },
+  synthetic: { name: "Simulated", detail: "Made up for this demo, the same each time for a flight" },
 };
 
 export const RULE_STATUS_LABEL: Record<RuleStatus, { name: string; detail: string }> = {
@@ -290,9 +290,9 @@ export const TERM_LABEL: Record<string, string> = {
 /** How the plan absorbs the delay, in plain words. */
 export const ACTION_LABEL: Record<string, string> = {
   direct: "Straight in",
-  hold: "Hold, then land",
+  hold: "Hold",
   vector: "Longer route",
-  ground_delay: "Wait on the ground",
+  ground_delay: "Ground wait",
 };
 
 /** Who a request goes to, in short form. */

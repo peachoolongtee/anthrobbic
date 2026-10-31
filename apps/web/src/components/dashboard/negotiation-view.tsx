@@ -4,7 +4,6 @@ import type { Domain, Run, Turn, TurnResponse } from "@/lib/api-types";
 import { DOMAIN_LABEL, DOMAIN_ROLE, FAULT_LABEL, agentReasonLabel, planLabel, publicReasonLabel } from "@/lib/labels";
 import { EmptyPanel } from "@/components/dashboard/states";
 import { OutcomeStrip } from "@/components/dashboard/outcome-strip";
-import { ProvenanceMark } from "@/components/dashboard/provenance-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { RuleList } from "@/components/dashboard/rule-line";
 
@@ -185,9 +184,7 @@ function PlansConsidered({ run }: { run: Run }) {
     <section aria-label="Plans considered" className="space-y-2">
       {run.original && (
         <p className="flex flex-wrap items-center gap-1.5 text-sm">
-          <span className="text-muted-foreground">Originally:</span> gate {run.original.gate_id}
-          <ProvenanceMark provenance={run.original.gate_provenance} />, due {run.original.due}
-          <ProvenanceMark provenance={run.original.due_provenance} />
+          <span className="text-muted-foreground">Originally:</span> gate {run.original.gate_id}, due {run.original.due}
         </p>
       )}
       {offered.length > 0 && last && (

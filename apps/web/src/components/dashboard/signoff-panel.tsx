@@ -21,7 +21,6 @@ import {
   signoffStatusLabel,
 } from "@/lib/labels";
 import { FallbackNotice } from "@/components/dashboard/fallback-notice";
-import { ProvenanceMark } from "@/components/dashboard/provenance-badge";
 import { RuleList } from "@/components/dashboard/rule-line";
 
 export function SignoffPanel({
@@ -262,7 +261,6 @@ function SignoffForm({
               <li key={d.key} className="flex items-center gap-1.5">
                 <span className="text-muted-foreground">{t.label}</span>
                 <span className="font-medium">{t.value}</span>
-                <ProvenanceMark provenance={d.provenance} />
               </li>
             );
           })}
@@ -284,7 +282,6 @@ function SignoffForm({
               <li key={r.key} className="flex flex-wrap items-center gap-x-1.5">
                 <span className="text-muted-foreground">{t.label}</span>
                 <span className="font-medium">{t.value}</span>
-                <ProvenanceMark provenance={r.provenance} />
                 <span className="text-xs text-muted-foreground" title={`To ${r.to}`}>
                   to {shortRecipient(r.to)}
                 </span>

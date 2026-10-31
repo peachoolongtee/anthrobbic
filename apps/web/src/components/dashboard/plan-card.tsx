@@ -4,7 +4,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import type { Card as PlanCardData, Deal, ModelNote, Run } from "@/lib/api-types";
 import { DOMAIN_LABEL } from "@/lib/labels";
 import { FallbackNotice } from "@/components/dashboard/fallback-notice";
-import { ProvenanceBadge } from "@/components/dashboard/provenance-badge";
 import { RuleList } from "@/components/dashboard/rule-line";
 
 export function PlanCard({
@@ -35,18 +34,10 @@ export function PlanCard({
                 <dt className="text-xs text-muted-foreground">{f.label}</dt>
                 <dd className="flex flex-wrap items-center gap-1 font-medium">
                   {f.value}
-                  <ProvenanceBadge provenance={f.provenance} />
                 </dd>
               </div>
             ))}
           </dl>
-          <p className="text-xs text-muted-foreground">
-            <strong className="font-semibold text-foreground">Real</strong> = US DOT record
-            {" · "}
-            <strong className="font-semibold text-foreground">Derived</strong> = computed from it
-            {" · "}
-            <strong className="font-semibold text-foreground">Synthetic</strong> = invented for this demo
-          </p>
 
           <div className="grid gap-x-6 gap-y-3 md:grid-cols-2">
             <section aria-labelledby="why-heading">

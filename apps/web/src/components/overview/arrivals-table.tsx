@@ -10,7 +10,6 @@ import { airlineName, airportCity, airportName, routeCodes } from "@/lib/airport
 import { CAUSE_LABEL } from "@/lib/labels";
 import { OUTCOME, type Outcome } from "@/lib/outcome";
 import { cn } from "@/lib/utils";
-import { ProvenanceMark } from "@/components/dashboard/provenance-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useEligibleCount } from "@/hooks/use-eligible-count";
@@ -224,7 +223,6 @@ export function ArrivalsTable({
                 <TableCell className="px-3 py-2.5">
                   <span className="flex items-center gap-1.5 tabular-nums">
                     {flight.scheduled_arrival}
-                    <ProvenanceMark provenance="real" />
                     <span className="sr-only">scheduled</span>
                   </span>
                 </TableCell>
@@ -236,7 +234,6 @@ export function ArrivalsTable({
                       <span className="ml-0.5 text-xs font-medium text-muted-foreground">min</span>
                     </span>
                     <span className="sr-only"> of delay</span>
-                    {flight.delay_provenance && <ProvenanceMark provenance={flight.delay_provenance} />}
                   </span>
                 </TableCell>
                 <TableCell className="px-3 py-2.5">
@@ -262,7 +259,6 @@ export function ArrivalsTable({
                           {flight.next_leg.delay_minutes === null ? "unknown" : `+${flight.next_leg.delay_minutes}`}
                         </span>
                       </Badge>
-                      {flight.next_leg.provenance && <ProvenanceMark provenance={flight.next_leg.provenance} />}
                     </span>
                   ) : (
                     <span className="text-xs text-muted-foreground">None that day</span>
