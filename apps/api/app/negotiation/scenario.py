@@ -43,6 +43,7 @@ treated as weather, as in `dot.cause_of`.
 import math
 import os
 import random
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final, Literal
@@ -65,7 +66,7 @@ from app.negotiation.contracts import (
     WakeCategory,
     WeatherPeriod,
 )
-from app.negotiation.dot import Cause, DotRow, NextLeg
+from app.negotiation.dot import MINUTES_PER_DAY, Cause, DotRow, NextLeg
 
 INBOUND_KNOWN_MARGIN_MIN: Final = 30  # assumption: inbound ETA is tracked
 
@@ -104,7 +105,10 @@ FIELD_NOTES: Final[dict[str, str]] = {
         "DOT rows, but each one's wake category and runway are synthetic"
     ),
     "gate_occupancies": "synthetic",
-    "planned_gate": "synthetic",
+    "planned_gate": (
+        "synthetic: deliberately legal at schedule, free through the gate stay the "
+        "rule imposes (next departure if later than the minimum turnaround)"
+    ),
     "next_departure_min": "derived: the same tail's next scheduled departure",
     "next_leg_turnaround_hard": (
         "synthetic: a seeded draw when a next leg exists, false when none does"
@@ -554,11 +558,13 @@ def build_scenario(
 
     # Real scheduled traffic into the destination, with synthetic wake and runway.
     open_runways = [r for r in runway_ids if r not in closed_runways]
-    others = tuple(
-        _other_arrival(arrival, open_runways, key, p)
-        for arrival in dot.traffic_near(
+    others = _other_arrivals(
+        dot.traffic_near(
             row, earliest - p.window_margin_min, latest + p.window_margin_min, path
-        )
+        ),
+        open_runways,
+        key,
+        p,
     )
 
     # Gates: a planned gate that fit at the scheduled time, others in use around it.
@@ -575,7 +581,15 @@ def build_scenario(
     )
     fitting = [g for g in gates if g.max_size >= size]
     planned = rng_gate.choice(fitting)
-    plan_lo, plan_hi = scheduled_gate_in - buffer, scheduled_gate_in + stay + buffer
+    # The planned gate is deliberately legal at schedule: free through the whole
+    # stay the gate rule imposes (the next departure, when later than the
+    # minimum turnaround), plus the buffer. That is a modelling choice; without
+    # it, gate conflicts would be inflated by a plan that was never feasible.
+    leg = dot.next_leg(row, path)
+    hold_end = scheduled_gate_in + stay
+    if leg is not None:
+        hold_end = max(hold_end, leg.scheduled_departure_min)
+    plan_lo, plan_hi = scheduled_gate_in - buffer, hold_end + buffer
     occupancies = [
         o
         for o in occupancies
@@ -621,7 +635,6 @@ def build_scenario(
         on_board += alternate
 
     # The next leg is real; whether it can be held is synthetic.
-    leg = dot.next_leg(row, path)
     next_departure: Sourced[int]
     hard: Sourced[bool]
     if leg is None:
@@ -689,20 +702,35 @@ def build_scenario(
     )
 
 
-def _other_arrival(
-    arrival: dot.ScheduledArrival,
+def _other_arrivals(
+    arrivals: Sequence[dot.ScheduledArrival],
     open_runways: Sequence[str],
     key: str,
     p: GeneratorParams,
-) -> OtherArrival:
-    """A real scheduled flight with a synthetic wake class and open runway.
+) -> tuple[OtherArrival, ...]:
+    """Real scheduled flights with a synthetic wake class and open runway.
 
-    Seeded by the flight and its time, so it is stable however the window moves.
+    Each ID is the flight, its origin and its scheduled departure time, with a
+    counter if the file still repeats one, so IDs are unique within the
+    scenario and never equal the scenario's own flight ID (which has no
+    suffix). Wake and runway are seeded by ID and time, so they are stable
+    however the window moves.
     """
-    rng = _rng(key, f"other|{arrival.flight_id}|{arrival.arrival_min}")
-    return OtherArrival(
-        flight_id=arrival.flight_id,
-        wake_category=_other_wake(rng, p),
-        runway_id=rng.choice(open_runways),
-        time_min=arrival.arrival_min,
-    )
+    seen: Counter[str] = Counter()
+    found: list[OtherArrival] = []
+    for arrival in arrivals:
+        hour, minute = divmod(arrival.departure_min % MINUTES_PER_DAY, 60)
+        flight_id = f"{arrival.flight_id}-{arrival.origin}-{hour:02d}{minute:02d}"
+        seen[flight_id] += 1
+        if seen[flight_id] > 1:
+            flight_id = f"{flight_id}#{seen[flight_id]}"
+        rng = _rng(key, f"other|{flight_id}|{arrival.arrival_min}")
+        found.append(
+            OtherArrival(
+                flight_id=flight_id,
+                wake_category=_other_wake(rng, p),
+                runway_id=rng.choice(open_runways),
+                time_min=arrival.arrival_min,
+            )
+        )
+    return tuple(found)

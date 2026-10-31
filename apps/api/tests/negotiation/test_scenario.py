@@ -8,16 +8,21 @@ from pathlib import Path
 import pytest
 
 from app.negotiation import dot
+from app.negotiation import rule_values as rv
 from app.negotiation.contracts import (
+    ArrivalSlot,
     Deal,
     DecisionPoint,
+    FlightPlanAction,
     NoDeal,
+    Package,
     Provenance,
     Scenario,
     WakeCategory,
 )
 from app.negotiation.dot import DotRow
 from app.negotiation.fallback import decide
+from app.negotiation.rules import ground
 from app.negotiation.scenario import (
     FIELD_NOTES,
     AsFlownOutcome,
@@ -330,8 +335,14 @@ def test_other_arrivals_are_real_scheduled_flights_with_labelled_synthetic_parts
     scenario = build(rows["NK301"], csv_file)
     arrivals = scenario.other_arrivals.value
     assert arrivals is not None
-    by_id = {a.flight_id: a for a in arrivals}
-    assert "NK301" not in by_id
+    ids = [a.flight_id for a in arrivals]
+    assert len(ids) == len(set(ids))  # unique within the scenario
+    assert "NK301" not in ids  # the subject never appears, nor under its own ID
+    by_id = {a.flight_id.split("-")[0]: a for a in arrivals}
+    # A same-numbered flight from another origin is a different flight.
+    assert any(i.startswith("NK301-CLE-") for i in ids)
+    # One flight number twice from different origins stays two arrivals.
+    assert {"UA1013-DEN-0640", "UA1013-SLC-0650"} <= set(ids)
     assert by_id["DL1003"].time_min == 510  # scheduled, not the 10:10 flown
     assert by_id["WN1005"].time_min == 540
     assert "DL1010" not in by_id and "AA1011" not in by_id
@@ -529,3 +540,41 @@ def test_parallel_groups_are_seeded_and_mixed_by_default(
     assert len(seen) > 1  # some seeds group, some do not
     again = build_scenario(rows["NK301"], 3, csv_file, big).model_dump_json()
     assert build_scenario(rows["NK301"], 3, csv_file, big).model_dump_json() == again
+
+
+def test_the_planned_gate_is_free_for_the_imposed_stay_at_the_scheduled_time(
+    rows: dict[str, DotRow], csv_file: Path
+) -> None:
+    """A deliberate modelling choice: the plan was legal before the disruption."""
+    busy_somewhere = False
+    for row in rows.values():
+        for seed in range(40):
+            s = build(row, csv_file, seed)
+            if s.taxi_in_min.value is None:
+                continue  # the rule fails closed; nothing to check
+            planned = s.planned_gate.value
+            assert planned is not None
+            package = Package(
+                slot=ArrivalSlot(
+                    runway_id="R1", time_min=dot.scheduled_arrival_min(row)
+                ),
+                gate_id=planned,
+                action=FlightPlanAction.DIRECT,
+            )
+            assert ground.check_gate_overlap(s, package) == (), (row.flight_id, seed)
+            busy_somewhere |= any(
+                o.gate_id != planned for o in s.gate_occupancies.value or ()
+            )
+    assert busy_somewhere  # other gates are occupied, so the check is not vacuous
+    assert "legal at schedule" in FIELD_NOTES["planned_gate"]
+
+
+def test_the_worst_case_scenario_stays_inside_the_package_bound() -> None:
+    p = GeneratorParams()
+    step = rv.rule_value(rv.SLOT_STEP_MIN).value
+    slots = p.plan_window_min // step
+    # Airborne: DIRECT at zero delay, then hold and vector at every later slot.
+    per_cell = 1 + 2 * slots
+    assert (
+        per_cell * p.max_runways * p.max_gates <= rv.rule_value(rv.MAX_PACKAGES).value
+    )

@@ -228,13 +228,19 @@ def test_traffic_uses_scheduled_times_and_excludes_the_subject(csv_file: Path) -
         a.flight_id: a.arrival_min
         for a in dot.traffic_near(subject, 470, 650, csv_file)
     }
-    assert "NK301" not in found
+    # The subject (BOS origin) is excluded; a same-numbered flight from CLE is not.
+    origins = {
+        (a.flight_id, a.origin) for a in dot.traffic_near(subject, 470, 650, csv_file)
+    }
+    assert ("NK301", "BOS") not in origins
+    assert ("NK301", "CLE") in origins
     assert found["DL1003"] == 510  # scheduled 08:30; actual was 10:10
     assert found["AA1004"] == 525  # scheduled 08:45; actual was 06:00
     assert found["WN1005"] == 540  # no tail number, still a scheduled arrival
     assert "DL1010" not in found  # 15:00, outside the window
     assert "AA1011" not in found  # 03:00, outside the window
-    assert list(found.values()) == sorted(found.values())
+    times = [a.arrival_min for a in dot.traffic_near(subject, 470, 650, csv_file)]
+    assert times == sorted(times)
 
 
 def test_traffic_is_not_changed_by_actual_arrival_columns(

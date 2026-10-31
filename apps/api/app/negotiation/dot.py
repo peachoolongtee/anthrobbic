@@ -540,6 +540,8 @@ class ScheduledArrival:
 
     flight_id: str
     arrival_min: int  # relative to the subject flight's departure-date midnight
+    origin: str
+    departure_min: int  # scheduled, origin clock, same reference as arrival_min
 
 
 @dataclass(frozen=True, slots=True)
@@ -575,7 +577,12 @@ def traffic_near(
     )
     own_dep = base + hhmm_to_min(row.scheduled_departure)
     return tuple(
-        ScheduledArrival(flight_id=flight, arrival_min=arr_abs - base)
+        ScheduledArrival(
+            flight_id=flight,
+            arrival_min=arr_abs - base,
+            origin=origin,
+            departure_min=dep_abs - base,
+        )
         for flight, arr_abs, origin, dep_abs in found
         if not (
             flight == row.flight_id
