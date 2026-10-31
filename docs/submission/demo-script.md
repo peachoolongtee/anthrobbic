@@ -1,4 +1,4 @@
-# Demo script: 3 minutes, five beats, on Live, new dashboard design
+# Demo script: 3 minutes, five beats, on Live, Magic Airbus dashboard
 
 Autonomous SG 2026, Airbus track, Challenge 2. Read aloud at 150 words a minute. The spoken text is 295 words in total on the two-turn path (about 118 seconds of speech), which leaves about 62 seconds for the clicks. You speak over the wait for the live run. Each beat has its own word budget in its heading. Rehearse once with a timer.
 
@@ -14,7 +14,7 @@ Follow `runbook.md` first. Then:
 
 1. The intro (a plane crossing the screen) plays once per browser tab. Open `http://localhost:3000` in the tab you will use, click anywhere to skip it, and leave the tab open on the overview. Landing and intro are not part of the 3 minutes.
 2. The demo runs on **Live**: the flights page starts in Live, built as the runbook says, and runs only the flight you pick. One run-through makes up to 6 model calls, about $0.15. Check the network. Restart the API before each rehearsal: a used approval is refused until then.
-3. Know where WN4832 is. In the overview's **Arrivals** list (scroll down past the globe), look for the row "DCA → MDW" with "WN4832" under it. The list shows 50 flights, those with saved answers first, then by scheduled arrival, and it scrolls inside its own panel. WN4832 is row 16, in the left column, so scroll the list about two rows. Do not click another flight first: each one you pick in Live spends up to 6 calls.
+3. Know where WN4832 is. In the overview's **Arrivals** table (scroll down past the globe), look for the row "WN4832", "DCA → MDW". The table holds 50 flights, 10 to a page, those with saved answers first, then by scheduled arrival. WN4832 is row 6 of page 2, so click **Next** once. Do not click another flight first: each one you pick in Live spends up to 6 calls.
 
 **Stage rule.** If the Live run has not come back after 40 seconds (the strip counts them), or it shows faults, click **Recorded** and say "the live call did not come back, so this is a saved run". Then use the recorded wording in beat 2.
 
@@ -22,9 +22,9 @@ Follow `runbook.md` first. Then:
 
 ## Beat 1. The user (0:00 to 0:22). Budget 55 words, spoken text 52
 
-**Screen:** the overview. The globe is headed "Demo flights", with the **Arrivals** list under it.
+**Screen:** the overview. The globe is headed "Demo flights", with the **Arrivals** table under it. Its Outcome column comes from saved runs, which the page replays on load with no model calls.
 
-**Click:** in the **Arrivals** list, scroll the list about two rows and click the row "DCA → MDW" (WN4832), as you say "I pick". It opens the flights page, and the strip shows "Agents working, live" with a seconds count. It takes about 15 to 20 seconds, and the rest of beat 1 and the opening of beat 2 fill that.
+**Click:** under the **Arrivals** table, click **Next** once, then click the row "WN4832", "DCA → MDW", as you say "I pick". It opens the flights page, and the strip shows "Agents working, live" with a seconds count. It takes about 15 to 20 seconds, and the rest of beat 1 and the opening of beat 2 fill that.
 
 **Say:**
 
@@ -139,7 +139,7 @@ Also read these before the talk, because judges ask: "NO_GO NOTHING_LEGAL rate, 
 |---|---|---|
 | C1 | The intro plays once per tab and a click skips it | Yes |
 | C2 | Toggle reads Model off, Recorded, Live; a flight with saved answers opens in Recorded | Yes |
-| C3 | WN4832 DCA to MDW is in the overview **Arrivals** list | Yes, row 16 of 50, in the panel's own scroll; row 4 of 200 on the flights page |
+| C3 | WN4832 DCA to MDW is in the overview **Arrivals** list | Yes, page 2, row 6 of the 50-flight table; row 4 of 200 on the flights page |
 | C4 | Clicking it opens the flights page with that flight selected and a Recorded run | Yes |
 | C5 | Agent strip shows counts per turn | ATC 4 › 12, Pilot 8 › 8, Ground 7 › 12 |
 | C6 | Map draws the route, labelled illustrative, and works with no network | Yes, on a local basemap; the hold is drawn only because this plan's action is a hold |
