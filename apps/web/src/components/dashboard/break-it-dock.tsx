@@ -1,0 +1,176 @@
+"use client";
+
+import { useState } from "react";
+import { CircleAlert, CircleCheck, Info, Wrench } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import type { Run, RunOverrides } from "@/lib/api-types";
+import type { BreakKind, BreakOutcome } from "@/hooks/use-dashboard";
+import { UNSAFE_OPTIONS } from "@/lib/labels";
+import { cn } from "@/lib/utils";
+
+interface Props {
+  run: Run | null;
+  overrides: RunOverrides;
+  busy: BreakKind | null;
+  disabled: boolean;
+  outcome: BreakOutcome | null;
+  onRunway: (id: string) => void;
+  onGate: (id: string) => void;
+  onUnsafe: (ruleId: string) => void;
+  onStale: () => void;
+  onTamper: () => void;
+  onReset: () => void;
+}
+
+/** Resources to offer: the API's airport list, else what the plan and overrides name. */
+function options(run: Run | null, kind: "runways" | "gates", closed: string[]): { id: string; closed: boolean }[] {
+  if (run?.airport) return run.airport[kind];
+  const ids = new Set<string>(closed);
+  if (run?.decision.kind === "DEAL") ids.add(kind === "runways" ? run.decision.package.runway_id : run.decision.package.gate_id);
+  return [...ids].map((id) => ({ id, closed: closed.includes(id) }));
+}
+
+const TONE = {
+  ok: { icon: CircleCheck, cls: "border-success/40 bg-success-soft", iconCls: "text-success" },
+  bad: { icon: CircleAlert, cls: "border-destructive/40 bg-destructive-soft", iconCls: "text-destructive" },
+  info: { icon: Info, cls: "border-info/40 bg-info-soft", iconCls: "text-info" },
+} as const;
+
+export function BreakItDock(p: Props) {
+  const [unsafe, setUnsafe] = useState<string>(UNSAFE_OPTIONS[0].value);
+  const closedRunways = p.overrides.closed_runways ?? [];
+  const closedGates = p.overrides.closed_gates ?? [];
+  const runways = options(p.run, "runways", closedRunways);
+  const gates = options(p.run, "gates", closedGates);
+  const off = p.disabled || p.busy !== null || p.run === null;
+  const hasOverrides = closedRunways.length > 0 || closedGates.length > 0 || !!p.overrides.inject_unsafe;
+  const tone = p.outcome ? TONE[p.outcome.tone] : null;
+  const Icon = tone?.icon;
+
+  return (
+    <section
+      aria-labelledby="break-heading"
+      className="shrink-0 border-t bg-card px-4 py-2.5 lg:sticky lg:bottom-0 lg:z-10"
+    >
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <h2 id="break-heading" className="flex items-center gap-1.5 text-sm font-semibold">
+          <Wrench aria-hidden className="size-4" />
+          Try to break it
+        </h2>
+
+        <div className="flex items-center gap-1.5">
+          <span id="rwy-label" className="text-xs text-muted-foreground">
+            Close runway
+          </span>
+          <ToggleGroup
+            aria-labelledby="rwy-label"
+            multiple
+            variant="outline"
+            size="sm"
+            spacing={0}
+            value={closedRunways}
+            disabled={off}
+            onValueChange={(next) => {
+              const changed = next.find((v) => !closedRunways.includes(v)) ?? closedRunways.find((v) => !next.includes(v));
+              if (changed) p.onRunway(changed);
+            }}
+          >
+            {runways.map((r) => (
+              <ToggleGroupItem key={r.id} value={r.id} aria-label={`Runway ${r.id}, ${r.closed ? "closed" : "open"}`}>
+                {r.id}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <span id="gate-label" className="text-xs text-muted-foreground">
+            Block gate
+          </span>
+          <ToggleGroup
+            aria-labelledby="gate-label"
+            multiple
+            variant="outline"
+            size="sm"
+            spacing={0}
+            value={closedGates}
+            disabled={off}
+            onValueChange={(next) => {
+              const changed = next.find((v) => !closedGates.includes(v)) ?? closedGates.find((v) => !next.includes(v));
+              if (changed) p.onGate(changed);
+            }}
+          >
+            {gates.map((g) => (
+              <ToggleGroupItem key={g.id} value={g.id} aria-label={`Gate ${g.id}, ${g.closed ? "blocked" : "free"}`}>
+                {g.id}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <span id="unsafe-label" className="text-xs text-muted-foreground">
+            Inject an unsafe plan
+          </span>
+          <Select
+            items={UNSAFE_OPTIONS}
+            value={unsafe}
+            onValueChange={(v) => v && setUnsafe(v)}
+            disabled={off}
+          >
+            <SelectTrigger size="sm" aria-labelledby="unsafe-label" className="w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {UNSAFE_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button size="sm" variant="outline" disabled={off} onClick={() => p.onUnsafe(unsafe)}>
+            Inject
+          </Button>
+        </div>
+
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={off}
+          onClick={p.onStale}
+          title="Blocks the plan's gate on the server while this screen keeps showing the old plan. Then try to approve."
+        >
+          Change the airport after I looked
+        </Button>
+        <Button size="sm" variant="outline" disabled={off} onClick={p.onTamper}>
+          Tamper with the log
+        </Button>
+        {hasOverrides && (
+          <Button size="sm" variant="ghost" disabled={off} onClick={p.onReset}>
+            Reset
+          </Button>
+        )}
+      </div>
+
+      <div role="status" aria-live="polite" className="mt-2 min-h-8">
+        {p.busy !== null && <p className="text-sm text-muted-foreground">Running&hellip;</p>}
+        {p.busy === null && p.outcome && tone && Icon && (
+          <p className={cn("flex items-start gap-2 rounded-lg border px-2.5 py-1.5 text-sm", tone.cls)}>
+            <Icon aria-hidden className={cn("mt-0.5 size-4 shrink-0", tone.iconCls)} />
+            <span>
+              <strong>{p.outcome.title}.</strong> {p.outcome.detail}
+            </span>
+          </p>
+        )}
+        {p.busy === null && !p.outcome && (
+          <p className="text-xs text-muted-foreground">
+            Each control changes the situation and shows its result here.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
