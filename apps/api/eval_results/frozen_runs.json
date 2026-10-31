@@ -1,0 +1,23 @@
+{
+  "first_frozen_score": null,
+  "live_call_ceiling": 320,
+  "planned_frozen_live_runs": 2,
+  "runs": [
+    {
+      "actual_calls": 27,
+      "commit": "77bd6dc80b3f91253a091517ca184877ed56f5e5",
+      "commit_dirty": false,
+      "forced": false,
+      "frozen_live_run_number": null,
+      "mode": "live",
+      "planned_calls": 60,
+      "run_id": "run-0001",
+      "sample_size": 10,
+      "score": null,
+      "seed": 0,
+      "split": "tune",
+      "started_at": "2026-10-31T05:39:57+00:00",
+      "status": "completed"
+    }
+  ]
+}
