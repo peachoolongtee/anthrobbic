@@ -14,7 +14,7 @@ The map and the 3D airport are illustrative. The route is a curve between two ai
 
 - **Overview** (home page): a globe headed "Demo flights", labelled as an illustration, an **Arrivals** list of 50 flights that scrolls inside its panel, saying how many eligible flights there are, and 2015 record counts. Panels are tagged "Demo flights" or "US DOT 2015" (real counts).
 - **Flights**: the flight list on the left, 200 flights with the total beside them (**Filter this list** filters only those; **Find any flight** searches them all), the map in the middle with the agent strip (ATC, Pilot, Ground) above it, a **Try to break it** card at the bottom right of the map (closed at first; click its heading to open it), a bottom bar with **Plan**, **Negotiation**, **Log** and **Evidence**, and the plan summary and **Sign off** on the right. A **Map** and **Airport 3D** switch sits at the top left of the map area.
-- **Run mode** at the top right: **Model off**, **Recorded** or **Live**. A flight marked "Recorded" opens in Recorded; any other opens in Model off. Live is available only when the API is started with `ALLOW_LIVE=1`. Live spends money, so please leave it to the presenter.
+- **Run mode** at the top right: **Model off**, **Recorded** or **Live**. A flight marked "Recorded" opens in Recorded; any other opens in Model off. Live is available only when the API is started with `ALLOW_LIVE=1`. The presenter's laptop is set up that way for the demo, and switches to **Recorded** before handing over. Each run in Live spends up to 6 model calls, so please leave Live to the presenter.
 
 ## Things to try
 
