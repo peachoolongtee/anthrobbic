@@ -1,9 +1,11 @@
-import { Ban, ShieldX } from "lucide-react";
+import { Ban, CircleCheck, ShieldX } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { Domain, Run, Turn, TurnResponse } from "@/lib/api-types";
 import { DOMAIN_LABEL, DOMAIN_ROLE, FAULT_LABEL, agentReasonLabel, planLabel, publicReasonLabel } from "@/lib/labels";
 import { EmptyPanel } from "@/components/dashboard/states";
 import { OutcomeStrip } from "@/components/dashboard/outcome-strip";
+import { ProvenanceMark } from "@/components/dashboard/provenance-badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { RuleList } from "@/components/dashboard/rule-line";
 
 const DOMAINS: Domain[] = ["atc", "pilot", "ground"];
@@ -160,6 +162,7 @@ export function NegotiationView({ run }: { run: Run }) {
               : "The agents did not reach a plan, so code chose one. A fallback is never shown as a clean result."
             : "No plan passed the rules, so the system stopped instead of guessing."}
       </p>
+      <PlansConsidered run={run} />
       {injected && removed}
       {run.turns.length === 0 ? (
         <EmptyPanel title="The agents did not run.">
@@ -170,6 +173,81 @@ export function NegotiationView({ run }: { run: Run }) {
       )}
       {!injected && removed}
     </div>
+  );
+}
+
+/** What the flight was due to do, and, only if the agents answered, what they were offered. */
+function PlansConsidered({ run }: { run: Run }) {
+  const offered = run.offered_plans ?? [];
+  const last = [...run.turns].reverse().find((t) => t.responses.length > 0);
+  if (!run.original && offered.length === 0) return null;
+  return (
+    <section aria-label="Plans considered" className="space-y-2">
+      {run.original && (
+        <p className="flex flex-wrap items-center gap-1.5 text-sm">
+          <span className="text-muted-foreground">Originally:</span> gate {run.original.gate_id}
+          <ProvenanceMark provenance={run.original.gate_provenance} />, due {run.original.due}
+          <ProvenanceMark provenance={run.original.due_provenance} />
+        </p>
+      )}
+      {offered.length > 0 && last && (
+        <>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+            <h3 className="text-sm font-semibold">Plans considered</h3>
+            {run.packages_legal !== undefined && (
+              <p className="text-xs text-muted-foreground tabular-nums">
+                {offered.length} of {run.packages_legal} legal plans were offered to the agents
+              </p>
+            )}
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <Table className="text-xs">
+              <TableHeader>
+                <TableRow>
+                  {["Gate", "Runway", "Lands", "Action"].map((h) => (
+                    <TableHead key={h} className="h-8 px-2.5">
+                      {h}
+                    </TableHead>
+                  ))}
+                  {DOMAINS.map((d) => (
+                    <TableHead key={d} className="h-8 px-2.5 text-center">
+                      {DOMAIN_LABEL[d]}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {offered.map((plan) => (
+                  <TableRow key={plan.package} aria-current={plan.chosen || undefined} className={plan.chosen ? "bg-primary/15 font-medium hover:bg-primary/20" : undefined}>
+                    <TableCell className="px-2.5 py-1">{plan.gate_id}</TableCell>
+                    <TableCell className="px-2.5 py-1">{plan.runway_id}</TableCell>
+                    <TableCell className="px-2.5 py-1 tabular-nums">{plan.lands}</TableCell>
+                    <TableCell className="px-2.5 py-1">
+                      {plan.action.replaceAll("_", " ")}
+                      {plan.chosen && (
+                        <Badge variant="outline" className="ml-1.5">
+                          Chosen
+                        </Badge>
+                      )}
+                    </TableCell>
+                    {DOMAINS.map((d) => {
+                      const accepted = last.responses.find((r) => r.domain === d)?.accepted?.includes(plan.package);
+                      return (
+                        <TableCell key={d} className="px-2.5 py-1 text-center">
+                          {accepted ? <CircleCheck aria-hidden className="mx-auto size-3.5 text-success" /> : <span aria-hidden className="text-muted-foreground">–</span>}
+                          <span className="sr-only">{accepted ? "accepted" : "did not accept"}</span>
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <p className="text-xs text-muted-foreground">Ticks show who accepted each plan on turn {last.turn}, the last turn played.</p>
+        </>
+      )}
+    </section>
   );
 }
 

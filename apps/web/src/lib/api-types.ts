@@ -95,6 +95,24 @@ export interface TurnResponse {
   public_reason_classes: string[];
 }
 
+/** (addition) A plan offered to the agents. `package` matches `TurnResponse.accepted`. */
+export interface OfferedPlan {
+  package: string;
+  gate_id: string;
+  runway_id: string;
+  lands: string;
+  action: string;
+  chosen: boolean;
+}
+
+/** (addition) What the flight was due to do before the disruption. */
+export interface OriginalPlan {
+  gate_id: string;
+  gate_provenance: Provenance;
+  due: string;
+  due_provenance: Provenance;
+}
+
 export interface Turn {
   turn: number;
   responses: TurnResponse[];
@@ -249,6 +267,10 @@ export interface Run {
   removed_packages: RemovedPackage[];
   /** (addition) Illegal plans in all. `removed_packages` shows one per distinct failure. */
   removed_total?: number;
+  original?: OriginalPlan | null;
+  /** (addition) Empty unless an agent answered. */
+  offered_plans?: OfferedPlan[];
+  packages_legal?: number;
   decision: Decision;
   /** Null when there is no plan to show. */
   card: Card | null;
