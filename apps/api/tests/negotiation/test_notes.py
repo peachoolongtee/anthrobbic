@@ -86,7 +86,9 @@ def test_a_quiet_note_is_not_scored() -> None:
 
 
 def test_with_nothing_legal_no_note_claims_to_matter() -> None:
-    scenario = make_scenario(runways=(Runway(runway_id="28L", closed=True),))
+    scenario = make_scenario(
+        runways=(Runway(runway_id="28L", closed=True, parallel_group=None),)
+    )
     truths = ground_truth_preferences(scenario, 1)
     assert truths
     assert all(t.relevance != "affects_ranking" for t in truths)

@@ -590,8 +590,8 @@ def test_unknown_mode_is_rejected() -> None:
 def test_nothing_legal_is_a_no_deal_with_no_fault_and_no_call() -> None:
     scenario = make_scenario(
         runways=(
-            Runway(runway_id="28L", closed=True),
-            Runway(runway_id="28R", closed=True),
+            Runway(runway_id="28L", closed=True, parallel_group=None),
+            Runway(runway_id="28R", closed=True, parallel_group=None),
         )
     )
     client = ScriptedClient(accept_all)
