@@ -1,4 +1,7 @@
-import { CircleAlert, CircleCheck, CircleDashed } from "lucide-react";
+"use client";
+
+import { useEffect, useState } from "react";
+import { CircleAlert, CircleCheck, CircleDashed, Loader2 } from "lucide-react";
 import type { Domain, Run, RunMode } from "@/lib/api-types";
 import { DOMAIN_LABEL, DOMAIN_ROLE, FAULT_LABEL, MODE_LABEL } from "@/lib/labels";
 import { cn } from "@/lib/utils";
@@ -6,6 +9,36 @@ import { cn } from "@/lib/utils";
 const DOMAINS: Domain[] = ["atc", "pilot", "ground"];
 
 const STRIP = "flex items-center divide-x divide-border rounded-xl border border-border bg-card/85 shadow-lg shadow-black/30 backdrop-blur";
+
+/** A live run takes many seconds. Says so, and counts them, so nobody takes the wait for a hang. */
+export function LiveWorking() {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const t = window.setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+  return (
+    <div role="status" className={STRIP}>
+      <span className="flex items-center gap-2 px-3 py-1.5">
+        <Loader2 aria-hidden className="size-4 shrink-0 text-beacon motion-safe:animate-spin" />
+        <span className="font-display text-sm font-semibold">Agents working, live</span>
+        <span className="text-sm text-muted-foreground tabular-nums">{seconds} s</span>
+      </span>
+    </div>
+  );
+}
+
+/** A live run that failed or was refused. The reason is on the panel. */
+export function LiveFailed() {
+  return (
+    <div role="status" className={STRIP}>
+      <span className="flex items-center gap-2 px-3 py-1.5">
+        <CircleAlert aria-hidden className="size-4 shrink-0 text-destructive" />
+        <span className="font-display text-sm font-semibold">The live run did not finish</span>
+      </span>
+    </div>
+  );
+}
 
 /**
  * The three agents at a glance, read only from the run: how many plans each

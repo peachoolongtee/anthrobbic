@@ -25,6 +25,8 @@ import { mockBackend } from "@/lib/mock/backend";
  * NEXT_PUBLIC_API_URL. The value is inlined at build time.
  */
 export const IS_MOCK = process.env.NEXT_PUBLIC_API_MODE === "mock";
+/** Set for the presenter's build, and inlined at build time. Unset, the flights page opens as it always has. */
+export const STARTS_LIVE = process.env.NEXT_PUBLIC_DEFAULT_RUN_MODE === "live";
 
 export class ApiError extends Error {
   /** "unreachable" means no HTTP response arrived at all. */

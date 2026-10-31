@@ -18,7 +18,8 @@ import { Button } from "@/components/ui/button";
 import { FINAL_DECISION_LABEL, isApproved, refusalBanner, signoffStatusLabel } from "@/lib/labels";
 import { planActionFromLabel } from "@/lib/plan-action";
 import { cn } from "@/lib/utils";
-import { AgentStrip } from "@/components/dashboard/agent-strip";
+import { STARTS_LIVE } from "@/lib/api";
+import { AgentStrip, LiveFailed, LiveWorking } from "@/components/dashboard/agent-strip";
 import { AirportMap } from "@/components/dashboard/airport-map";
 import { BreakItDock, BreakNotice, SceneHint } from "@/components/dashboard/break-it-dock";
 import { DelaySpreadView } from "@/components/dashboard/delay-spread";
@@ -92,7 +93,13 @@ export function Dashboard() {
 
   return (
     <div className="flex min-h-screen flex-col lg:h-screen">
-      <ModeBanner mode={d.mode} onModeChange={d.setMode} disabled={running || d.selectedId === null} />
+      {/* During a live run the mode stays open, so a slow call can be left for Recorded. With
+          STARTS_LIVE nothing is selected at first, and the mode can be changed before anything runs. */}
+      <ModeBanner
+        mode={d.mode}
+        onModeChange={d.setMode}
+        disabled={running ? d.mode !== "live" : d.selectedId === null && !STARTS_LIVE}
+      />
 
       <div className="relative flex flex-1 flex-col gap-3 p-3 lg:block lg:min-h-0 lg:overflow-hidden lg:p-0">
         {/* Backdrop: the flight map or the 3D airport. Full-bleed on large
@@ -164,7 +171,13 @@ export function Dashboard() {
               try-to-break-it card, for framing the route. Hidden on small screens. */}
           <div ref={clearArea} aria-hidden className={cn("pointer-events-none! absolute inset-x-0 top-28 max-lg:hidden", breakOpen ? "bottom-[21rem]" : "bottom-32")} />
           <div className="flex justify-center lg:absolute lg:top-3 lg:left-1/2 lg:-translate-x-1/2">
-            <AgentStrip run={running ? null : run} mode={d.mode} />
+            {running && d.mode === "live" ? (
+              <LiveWorking />
+            ) : d.runState.status === "error" && d.mode === "live" ? (
+              <LiveFailed />
+            ) : (
+              <AgentStrip run={running ? null : run} mode={d.mode} />
+            )}
           </div>
 
           {/* Map or 3D airport */}
@@ -405,6 +418,13 @@ function RunGate({
   compact?: boolean;
   children: React.ReactNode;
 }) {
+  if (running && d.mode === "live")
+    return (
+      <div className="space-y-2">
+        <p className="text-sm font-medium">Asking the model, live. This usually takes 15 to 20 seconds.</p>
+        <LoadingBlock label="Making a recovery plan" lines={compact ? 3 : 6} />
+      </div>
+    );
   if (running) return <LoadingBlock label="Making a recovery plan" lines={compact ? 3 : 6} />;
   if (d.runState.status === "idle" && d.scenarios.status === "loading")
     return <LoadingBlock label="Loading flights" lines={compact ? 3 : 6} />;
@@ -431,7 +451,11 @@ function RunGate({
   if (!run)
     return (
       <EmptyPanel title="Pick a flight">
-        {d.scenarios.status === "ready" && d.scenarios.data.length === 0 ? "No delayed flights to recover." : null}
+        {d.scenarios.status === "ready" && d.scenarios.data.length === 0
+          ? "No delayed flights to recover."
+          : d.mode === "live"
+            ? "Live is on. Nothing has run. Picking a flight runs it, and can use up to 6 model calls."
+            : null}
       </EmptyPanel>
     );
   return <>{children}</>;

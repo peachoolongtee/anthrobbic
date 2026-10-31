@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, describeError, isUnreachable } from "@/lib/api";
+import { api, describeError, isUnreachable, STARTS_LIVE } from "@/lib/api";
 import type {
   Cause,
   DecisionResult,
@@ -66,7 +66,7 @@ export function useDashboard() {
   const [query, setQuery] = useState("");
   const [scenarios, setScenarios] = useState<Load<ScenarioSummary[]>>({ status: "loading" });
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [mode, setModeState] = useState<RunMode>("recorded");
+  const [mode, setModeState] = useState<RunMode>(STARTS_LIVE ? "live" : "recorded");
   const [overrides, setOverrides] = useState<RunOverrides>({});
   const [runState, setRunState] = useState<RunState>({ status: "idle" });
   const [signoff, setSignoff] = useState<SignoffState>({ status: "idle" });
@@ -85,6 +85,10 @@ export function useDashboard() {
   const [busy, setBusy] = useState<BreakKind | null>(null);
   const runSeq = useRef(0);
   const selectedRef = useRef<string | null>(null);
+  // Read when the list arrives, in case the mode was changed while it loaded.
+  const modeRef = useRef<RunMode>(STARTS_LIVE ? "live" : "recorded");
+  // The ?flight= last acted on. Back from the overview this page keeps its state, so a new one must be noticed.
+  const lastLink = useRef<string | null>(null);
 
   const startRun = useCallback(
     async (scenarioId: string, runMode: RunMode, ov: RunOverrides): Promise<Run | null> => {
@@ -118,14 +122,41 @@ export function useDashboard() {
         .listScenarios(c === "all" ? { limit: LIST_LIMIT } : { cause: c, limit: LIST_LIMIT })
         .then((data) => {
           setScenarios({ status: "ready", data });
-          if (selectedRef.current === null && data.length > 0) {
-            // A flight picked on the home page arrives as ?flight=<scenario_id>.
-            const linked = new URLSearchParams(window.location.search).get("flight");
+          // A flight picked on the home page arrives as ?flight=<scenario_id>.
+          const linked = new URLSearchParams(window.location.search).get("flight");
+          const seenLink = lastLink.current;
+          lastLink.current = linked;
+          if (selectedRef.current !== null) {
+            const asked = linked !== seenLink ? data.find((row) => row.scenario_id === linked) : undefined;
+            if (asked) {
+              const runMode: RunMode = modeRef.current === "recorded" && asked.has_recording === false ? "off" : modeRef.current;
+              selectedRef.current = asked.scenario_id;
+              setSelectedId(asked.scenario_id);
+              setOverrides({});
+              setOutcome(null);
+              setRulesOnlyFlight(null);
+              modeRef.current = runMode;
+              setModeState(runMode);
+              void startRun(asked.scenario_id, runMode, {});
+            }
+            return;
+          }
+          if (data.length > 0) {
+            if (STARTS_LIVE) {
+              // A run here spends model calls, so only a flight someone asked for runs: never the first row by default.
+              const asked = data.find((row) => row.scenario_id === linked);
+              if (!asked) return;
+              selectedRef.current = asked.scenario_id;
+              setSelectedId(asked.scenario_id);
+              void startRun(asked.scenario_id, modeRef.current, {});
+              return;
+            }
             const flight = data.find((row) => row.scenario_id === linked) ?? data[0];
             selectedRef.current = flight.scenario_id;
             setSelectedId(flight.scenario_id);
             // Open on replay only when this row has saved answers to replay.
             const first: RunMode = flight.has_recording === false ? "off" : "recorded";
+            modeRef.current = first;
             setModeState(first);
             void startRun(flight.scenario_id, first, {});
           }
@@ -174,6 +205,7 @@ export function useDashboard() {
       const rulesOnly = mode === "recorded" && flight.has_recording === false;
       const runMode: RunMode = rulesOnly ? "off" : mode;
       setFound((rows) => [flight, ...rows.filter((r) => r.scenario_id !== flight.scenario_id)]);
+      modeRef.current = runMode;
       selectedRef.current = flight.scenario_id;
       setSelectedId(flight.scenario_id);
       setOverrides({});
@@ -206,6 +238,7 @@ export function useDashboard() {
 
   const setMode = useCallback(
     (m: RunMode) => {
+      modeRef.current = m;
       setModeState(m);
       setOutcome(null);
       setRulesOnlyFlight(null);
