@@ -104,7 +104,10 @@ FIELD_NOTES: Final[dict[str, str]] = {
         "synthetic as a field: flight IDs and scheduled arrival times are real "
         "DOT rows, but each one's wake category and runway are synthetic"
     ),
-    "gate_occupancies": "synthetic",
+    "gate_occupancies": (
+        "synthetic, including on a seeded share of flights a stay on the planned "
+        "gate just after its scheduled use, as if reassigned during the disruption"
+    ),
     "planned_gate": (
         "synthetic: deliberately legal at schedule, free through the gate stay the "
         "rule imposes (next departure if later than the minimum turnaround)"
@@ -249,6 +252,15 @@ class GeneratorParams:
     gate_util_span: float = 0.35  # added at 900+ arrivals a day
     gate_util_full_at: int = 900
 
+    # A gate reassigned during the disruption: on this share of flights, another
+    # aircraft is put on the planned gate just after its scheduled use, so the
+    # flight can move gate or wait. Added after a run showed that without it no
+    # package ever traded one cost against another. Fixed before any model output,
+    # and not to be tuned against results. See `PARAMETER_STATUS`.
+    p_planned_gate_conflict: float = 0.5
+    planned_gate_conflict_lead_min: tuple[int, int] = (0, 15)  # before earliest gate-in
+    planned_gate_conflict_stay_min: tuple[int, int] = (10, 25)  # short, so it clears
+
     # Other arrivals' wake mix: super, heavy, small; the rest are large.
     other_wake_weights: tuple[float, float, float] = (0.01, 0.12, 0.04)
 
@@ -308,6 +320,13 @@ class GeneratorParams:
 
 
 PARAMS: Final = GeneratorParams()
+
+# Generator values with a stated status, in the terms `rule_values` uses.
+PARAMETER_STATUS: Final[dict[str, rv.Status]] = {
+    "p_planned_gate_conflict": rv.Status.ASSUMPTION,
+    "planned_gate_conflict_lead_min": rv.Status.ASSUMPTION,
+    "planned_gate_conflict_stay_min": rv.Status.ASSUMPTION,
+}
 _SIZES: Final = tuple(AircraftSize)
 _DEFAULT_TAXI_IN_MIN: Final = 15  # only to place synthetic times when unknown
 
@@ -499,6 +518,43 @@ def _occupancies(
     return found
 
 
+def _with_planned_gate_conflict(
+    rng: random.Random,
+    occupancies: list[GateOccupancy],
+    planned_gate_id: str,
+    earliest_gate_in: int,
+    free_until: int,
+    p: GeneratorParams,
+) -> list[GateOccupancy]:
+    """On a seeded share of flights, put another stay on the planned gate.
+
+    It starts near the earliest gate-in but never before `free_until`, so the gate
+    stays legal at the scheduled time. It has its own random stream, so it shifts no
+    other field, and any stay it would overlap on that gate gives way to it.
+    """
+    if rng.random() >= p.p_planned_gate_conflict:
+        return occupancies
+    start = max(
+        free_until,
+        earliest_gate_in - rng.randint(*p.planned_gate_conflict_lead_min),
+    )
+    end = start + rng.randint(*p.planned_gate_conflict_stay_min)
+    kept = [
+        o
+        for o in occupancies
+        if not (
+            o.gate_id == planned_gate_id and o.start_min < end and o.end_min > start
+        )
+    ]
+    conflict = GateOccupancy(
+        gate_id=planned_gate_id,
+        flight_id=f"REASSIGNED-{planned_gate_id}",
+        start_min=start,
+        end_min=end,
+    )
+    return [*kept, conflict]
+
+
 def build_scenario(
     row: DotRow,
     seed: int = 0,
@@ -600,6 +656,14 @@ def build_scenario(
             and o.end_min > plan_lo
         )
     ]
+    occupancies = _with_planned_gate_conflict(
+        _rng(key, "gate-conflict"),
+        occupancies,
+        planned.gate_id,
+        earliest + (_DEFAULT_TAXI_IN_MIN if taxi_in is None else taxi_in),
+        plan_hi,
+        p,
+    )
 
     # Fuel.
     rng_fuel = _rng(key, "fuel")

@@ -14,6 +14,7 @@ from app.negotiation.contracts import (
     Deal,
     DecisionPoint,
     FlightPlanAction,
+    GateOccupancy,
     NoDeal,
     Package,
     Provenance,
@@ -21,10 +22,13 @@ from app.negotiation.contracts import (
     WakeCategory,
 )
 from app.negotiation.dot import DotRow
+from app.negotiation.evaluate import pick_dominates
 from app.negotiation.fallback import decide
-from app.negotiation.rules import ground
+from app.negotiation.options import enumerate_packages
+from app.negotiation.rules import check_package, ground
 from app.negotiation.scenario import (
     FIELD_NOTES,
+    PARAMETER_STATUS,
     AsFlownOutcome,
     EarliestBasis,
     GeneratorParams,
@@ -567,6 +571,125 @@ def test_the_planned_gate_is_free_for_the_imposed_stay_at_the_scheduled_time(
             )
     assert busy_somewhere  # other gates are occupied, so the check is not vacuous
     assert "legal at schedule" in FIELD_NOTES["planned_gate"]
+
+
+NO_CONFLICT = GeneratorParams(p_planned_gate_conflict=0.0)
+ALWAYS_CONFLICT = GeneratorParams(p_planned_gate_conflict=1.0)
+
+
+def _conflicts(scenario: Scenario) -> list[GateOccupancy]:
+    return [
+        o
+        for o in scenario.gate_occupancies.value or ()
+        if o.flight_id.startswith("REASSIGNED-")
+    ]
+
+
+def test_the_planned_gate_conflict_rate_is_the_fixed_assumption() -> None:
+    assert GeneratorParams().p_planned_gate_conflict == 0.5
+    assert PARAMETER_STATUS["p_planned_gate_conflict"] is rv.Status.ASSUMPTION
+    assert "reassigned" in FIELD_NOTES["gate_occupancies"]
+
+
+def test_conflicts_are_seeded_per_flight_at_about_the_stated_rate(
+    rows: dict[str, DotRow], csv_file: Path
+) -> None:
+    drawn = [
+        bool(_conflicts(build(row, csv_file, seed)))
+        for row in rows.values()
+        for seed in range(100)
+    ]
+    assert 0.40 < sum(drawn) / len(drawn) < 0.60
+    row = rows["NK301"]
+    assert build(row, csv_file, 7).model_dump_json() == (
+        build(row, csv_file, 7).model_dump_json()
+    )
+
+
+def test_the_conflict_is_only_on_the_planned_gate_and_labelled_synthetic(
+    rows: dict[str, DotRow], csv_file: Path
+) -> None:
+    for row in rows.values():
+        s = build_scenario(row, 0, csv_file, ALWAYS_CONFLICT)
+        found = _conflicts(s)
+        assert [o.gate_id for o in found] == [s.planned_gate.value]
+        assert s.gate_occupancies.provenance is SYNTHETIC
+
+
+def test_with_the_rate_at_zero_nothing_else_about_a_scenario_changes(
+    rows: dict[str, DotRow], csv_file: Path
+) -> None:
+    """Its own random stream: only gate use on the planned gate may differ."""
+    for row in rows.values():
+        for seed in range(10):
+            off = build_scenario(row, seed, csv_file, NO_CONFLICT)
+            on = build_scenario(row, seed, csv_file, ALWAYS_CONFLICT)
+            assert not _conflicts(off)
+            for name in Scenario.model_fields:
+                if name != "gate_occupancies":
+                    assert getattr(off, name) == getattr(on, name), name
+            planned = on.planned_gate.value
+            others_off = [
+                o for o in off.gate_occupancies.value or () if o.gate_id != planned
+            ]
+            others_on = [
+                o for o in on.gate_occupancies.value or () if o.gate_id != planned
+            ]
+            assert others_off == others_on
+
+
+def test_a_conflict_leaves_the_plan_legal_at_the_scheduled_time(
+    rows: dict[str, DotRow], csv_file: Path
+) -> None:
+    for row in rows.values():
+        for seed in range(40):
+            s = build_scenario(row, seed, csv_file, ALWAYS_CONFLICT)
+            if s.taxi_in_min.value is None:
+                continue
+            planned = s.planned_gate.value
+            assert planned is not None
+            package = Package(
+                slot=ArrivalSlot(
+                    runway_id="R1", time_min=dot.scheduled_arrival_min(row)
+                ),
+                gate_id=planned,
+                action=FlightPlanAction.DIRECT,
+            )
+            assert ground.check_gate_overlap(s, package) == (), (row.flight_id, seed)
+
+
+def test_a_conflict_never_double_books_the_planned_gate_with_its_stay(
+    rows: dict[str, DotRow], csv_file: Path
+) -> None:
+    for row in rows.values():
+        for seed in range(20):
+            s = build_scenario(row, seed, csv_file, ALWAYS_CONFLICT)
+            conflict = _conflicts(s)[0]
+            for other in s.gate_occupancies.value or ():
+                if other.gate_id != conflict.gate_id or other == conflict:
+                    continue
+                apart = (
+                    other.start_min >= conflict.end_min
+                    or other.end_min <= conflict.start_min
+                )
+                assert apart, (row.flight_id, seed)
+
+
+def test_a_conflict_can_create_a_real_trade_off(
+    rows: dict[str, DotRow], csv_file: Path
+) -> None:
+    """The reason for the change: moving gate against waiting. The rules and costs
+    are unchanged, so a trade-off appearing here comes from the scenario alone."""
+    found = 0
+    for row in rows.values():
+        for seed in range(40):
+            s = build_scenario(row, seed, csv_file, ALWAYS_CONFLICT)
+            decision = decide(s)
+            if not isinstance(decision, Deal):
+                continue
+            legal = [p for p in enumerate_packages(s) if not check_package(s, p)]
+            found += pick_dominates(s, legal, decision.package) is False
+    assert found > 0
 
 
 def test_the_worst_case_scenario_stays_inside_the_package_bound() -> None:
