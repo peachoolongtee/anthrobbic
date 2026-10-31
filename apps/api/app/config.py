@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     SUPABASE_SECRET_KEY: SecretStr = SecretStr("")
     # Comma-separated list of allowed browser origins.
     CORS_ORIGINS: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
+    # `live` runs spend money, so they are refused unless this is set to 1.
+    ALLOW_LIVE: bool = False
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
@@ -30,6 +32,11 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
+
+    @field_validator("ALLOW_LIVE", mode="before")
+    @classmethod
+    def _only_one_allows_live(cls, value: object) -> bool:
+        return value is True or (isinstance(value, str) and value.strip() == "1")
 
 
 @lru_cache
