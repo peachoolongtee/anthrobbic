@@ -64,9 +64,9 @@ from app.negotiation.signoff import (
 MAX_RUNS: Final = 500
 # One package per distinct set of failing rules; the total is reported beside it.
 MAX_REMOVED_SHOWN: Final = 12
-# Far enough past any window that a package held this long runs out of fuel.
-_FUEL_EXHAUSTING_DELAY_MIN: Final = 100_000
 _UNKNOWN_RESOURCE: Final = "INJECTED-UNKNOWN"
+# The fuel rule also reports these, which are about coherence and not fuel.
+_INCIDENTAL_UNITS: Final = frozenset({"impossible actions", "min of delay"})
 _BLOCK_MARGIN_MIN: Final = 2_880
 
 _TRIGGER_REASONS: Final = {
@@ -178,7 +178,10 @@ def _constructed_candidates(scenario: Scenario) -> Iterator[Package]:
         yield package(other.runway_id, other.time_min, gate_id)
     for occupancy in scenario.gate_occupancies.value or ():
         yield package(runway_id, occupancy.start_min - taxi, occupancy.gate_id)
-    yield package(runway_id, earliest + _FUEL_EXHAUSTING_DELAY_MIN, gate_id)
+    # Held until the tanks are empty, however thin the burn rate.
+    fuel = scenario.fuel_on_board_kg.value or 0
+    burn = max(scenario.hold_burn_kg_per_min.value or 1, 1)
+    yield package(runway_id, earliest + fuel // burn + 1, gate_id)
     yield package(runway_id, earliest - 1, gate_id)
     yield package(_UNKNOWN_RESOURCE, earliest, gate_id)
     yield package(runway_id, earliest, _UNKNOWN_RESOURCE)
@@ -192,6 +195,14 @@ def _candidates(scenario: Scenario) -> Iterator[Package]:
     yield from _constructed_candidates(scenario)
 
 
+def _is_the_limit_itself(violation: Violation) -> bool:
+    """A real limit broken, not missing data or the fuel rule's coherence checks."""
+    return (
+        violation.cause is ViolationCause.CONSTRAINT
+        and violation.unit not in _INCIDENTAL_UNITS
+    )
+
+
 def build_injected(scenario: Scenario, rule_id: str) -> Judged | None:
     """A package the named rule stops, preferring a real limit over missing data.
 
@@ -200,18 +211,23 @@ def build_injected(scenario: Scenario, rule_id: str) -> Judged | None:
     """
     rule = next(r for r in ALL_RULES if r.rule_id == rule_id)
     chosen: Package | None = None
+    fallback: Package | None = None
     for package in _candidates(scenario):
         found = rule.check(scenario, package)
-        if any(v.cause is ViolationCause.CONSTRAINT for v in found):
+        if any(_is_the_limit_itself(v) for v in found):
             chosen = package
             break
-        if found and chosen is None:
-            chosen = package
+        if found and fallback is None:
+            fallback = package
+    chosen = chosen or fallback
     if chosen is None:
         return None
-    # The named rule first, so the catch reads as the control the user asked for.
-    judged = sorted(check_package(scenario, chosen), key=lambda v: v.rule_id != rule_id)
-    return chosen, tuple(judged)
+
+    # The named rule's real limit first, so the catch reads as what was asked for.
+    def order(violation: Violation) -> tuple[bool, bool]:
+        return (violation.rule_id != rule_id, not _is_the_limit_itself(violation))
+
+    return chosen, tuple(sorted(check_package(scenario, chosen), key=order))
 
 
 def removed_by_rules(scenario: Scenario) -> tuple[list[Judged], int]:

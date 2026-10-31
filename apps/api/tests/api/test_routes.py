@@ -521,6 +521,19 @@ def test_injected_plan_is_stopped_by_its_named_rule_and_marked(
     assert package["violations"][0]["rule_id"] == rule_id
     assert package["violations"][0]["message"]
     assert not [p for p in run["removed_packages"][1:] if p["injected"]]
+    # The catch reads as the rule asked for, with its own limit, not a side check.
+    closed = any(r["closed"] for r in run["airport"]["runways"])
+    if rule_id == "ATC-RWY-CLOSED" and not closed:
+        # No runway here is closed, so the only breach is one the airport lacks.
+        assert package["violations"][0]["cause"] == "missing_data"
+        return
+    assert package["violations"][0]["cause"] == "constraint"
+    assert package["violations"][0]["unit"] not in (
+        "impossible actions",
+        "min of delay",
+    )
+    if rule_id == "PLT-FUEL-POLICY":
+        assert package["violations"][0]["unit"] == "kg"
 
     log = client.get(f"/runs/{run['run_id']}/log").json()
     entries = [e for e in log["entries"] if e["kind"] == "injected_unsafe"]
@@ -560,11 +573,8 @@ def test_the_injected_package_really_fails_every_scenario_it_is_built_for(
             if judged is None:
                 continue
             package, violations = judged
-            assert violations == tuple(
-                sorted(
-                    check_package(scenario, package),
-                    key=lambda v: v.rule_id != rule_id,
-                )
+            assert sorted(violations, key=repr) == sorted(
+                check_package(scenario, package), key=repr
             )
             assert violations[0].rule_id == rule_id
 
