@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { FlaskConical } from "lucide-react";
+import { motion } from "motion/react";
 import { IS_MOCK } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Airliner } from "@/components/landing/airliner";
@@ -33,11 +34,13 @@ export function AppNav() {
               href={l.href}
               aria-current={on ? "page" : undefined}
               className={cn(
-                "rounded-full px-3 py-1 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
-                on ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground",
+                "relative rounded-full px-3 py-1 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                on ? "text-background" : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {l.label}
+              {/* One pill, shared by both links, so it glides to the page you open. */}
+              {on && <motion.span layoutId="nav-pill" aria-hidden className="absolute inset-0 rounded-full bg-foreground" />}
+              <span className="relative">{l.label}</span>
             </Link>
           );
         })}

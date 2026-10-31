@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { CloudLightning, CornerDownRight, Layers, PlaneLanding, Search } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { Cause, ScenarioSummary } from "@/lib/api-types";
 import { CAUSE_LABEL } from "@/lib/labels";
@@ -139,21 +140,35 @@ export function FlightList({
         )}
         {rows.length > 0 && (
           <ul className="space-y-1.5">
+            {/* Cards a filter removes fade out while the rest glide together. */}
+            <AnimatePresence initial={false} mode="popLayout">
             {rows.map((s) => {
               const selected = s.scenario_id === selectedId;
               const Icon = CAUSE_ICON[s.cause];
               return (
-                <li key={s.scenario_id}>
-                  <button
+                <motion.li
+                  key={s.scenario_id}
+                  layout="position"
+                  initial={{ opacity: 0, scale: 0.97 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.97 }}
+                >
+                  <motion.button
                     type="button"
                     onClick={() => onSelect(s.scenario_id)}
+                    whileTap={{ scale: 0.985 }}
                     aria-pressed={selected}
                     aria-label={`${s.flight_id}, ${s.route}, due ${s.scheduled_arrival}, ${s.delay_minutes} minutes late, ${CAUSE_LABEL[s.cause]}`}
-                    className={cn(
-                      "w-full rounded-xl border bg-card/70 px-3 py-2.5 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
-                      selected ? "border-beacon ring-1 ring-beacon" : "border-border",
-                    )}
+                    className="relative w-full rounded-xl border border-border bg-card/70 px-3 py-2.5 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
                   >
+                    {/* One ring, shared by every card, so it slides to the flight you pick. */}
+                    {selected && (
+                      <motion.span
+                        layoutId="flight-selected"
+                        aria-hidden
+                        className="pointer-events-none absolute -inset-px rounded-xl border border-beacon ring-1 ring-beacon"
+                      />
+                    )}
                     <div className="flex items-center gap-2 text-sm">
                       <Icon aria-hidden className="size-3.5 text-muted-foreground" />
                       <span className="font-medium">{s.flight_id}</span>
@@ -184,10 +199,11 @@ export function FlightList({
                         </span>
                       )}
                     </div>
-                  </button>
-                </li>
+                  </motion.button>
+                </motion.li>
               );
             })}
+            </AnimatePresence>
           </ul>
         )}
       </div>
