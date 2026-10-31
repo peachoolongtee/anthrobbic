@@ -2,6 +2,7 @@ import { API_URL } from "@/lib/env";
 import type {
   Cause,
   DecisionResult,
+  DelaySpread,
   Evaluation,
   Headline,
   WorkbookLimits,
@@ -125,6 +126,11 @@ export const api = {
   getLog(runId: string): Promise<RunLog> {
     if (IS_MOCK) return mockBackend.getLog(runId);
     return http<RunLog>(`/runs/${encodeURIComponent(runId)}/log`);
+  },
+
+  getSpread(runId: string): Promise<DelaySpread> {
+    if (IS_MOCK) return mockBackend.getSpread(runId);
+    return http<DelaySpread>(`/runs/${encodeURIComponent(runId)}/spread`);
   },
 
   /** A link to the whole record of a run, as one JSON file. Works in any run state. */

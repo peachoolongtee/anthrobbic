@@ -405,6 +405,34 @@ export interface Headline {
   other: HeadlineItem[];
 }
 
+/** The same aircraft's later flights, from the schedule. Never as flown. */
+export interface DelaySpread {
+  flight_id: string;
+  route: string;
+  tail_number: string;
+  scheduled_arrival: string;
+  /** When this plan puts the aircraft at its gate. Null for a no-go. */
+  plan_arrival: string | null;
+  plan_arrival_provenance: Provenance | null;
+  legs: {
+    flight_id: string;
+    route: string;
+    scheduled_departure: string;
+    scheduled_arrival: string;
+    provenance: Provenance;
+    projection: {
+      earliest_departure: string;
+      turnaround_min: number;
+      turnaround_provenance: Provenance;
+      knock_on_min: number;
+      projected_arrival: string;
+      provenance: Provenance;
+    } | null;
+    unprojected_reason: string | null;
+  }[];
+  note: string;
+}
+
 export interface StateChange {
   closed_runways?: string[];
   closed_gates?: string[];

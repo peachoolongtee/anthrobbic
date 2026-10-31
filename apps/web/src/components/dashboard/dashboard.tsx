@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { AgentStrip } from "@/components/dashboard/agent-strip";
 import { AirportMap } from "@/components/dashboard/airport-map";
 import { BreakItDock } from "@/components/dashboard/break-it-dock";
+import { DelaySpreadView } from "@/components/dashboard/delay-spread";
 import { EvidenceView } from "@/components/dashboard/evidence-view";
 import { FindFlight } from "@/components/dashboard/find-flight";
 import { FlightList } from "@/components/dashboard/flight-list";
@@ -229,6 +230,11 @@ export function Dashboard() {
                       <PlanCard run={run} card={run.card} deal={run.decision} modelNotes={run.model_notes} />
                     )}
                     {run && run.decision.kind === "NO_GO" && <NoGoView decision={run.decision} />}
+                    {run && (
+                      <div className="mt-3">
+                        <DelaySpreadView key={run.run_id} runId={run.run_id} />
+                      </div>
+                    )}
                   </RunGate>
                 )}
                 {tab === "negotiation" && (

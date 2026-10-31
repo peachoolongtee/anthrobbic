@@ -9,6 +9,7 @@ import type {
   Card,
   Cause,
   DecisionResult,
+  DelaySpread,
   Domain,
   Evaluation,
   Fact,
@@ -629,6 +630,34 @@ export const mockBackend = {
         "case_taken_over",
         `reason_type: ${decision.reason_type}; decided_by: ${body.decided_by}; has_unverified_note: ${Boolean(body.note)}; issued: false`,
       ),
+    };
+  },
+
+  async getSpread(runId: string): Promise<DelaySpread> {
+    await wait(150);
+    const s = need(runId);
+    const { flight_id, route, scheduled_arrival, next_leg } = s.scenario.summary;
+    return {
+      flight_id,
+      route,
+      tail_number: "mock",
+      scheduled_arrival,
+      plan_arrival: null,
+      plan_arrival_provenance: null,
+      legs: next_leg
+        ? [
+            {
+              flight_id: next_leg.flight_id,
+              route: next_leg.route,
+              scheduled_departure: next_leg.scheduled_departure,
+              scheduled_arrival: "",
+              provenance: "derived",
+              projection: null,
+              unprojected_reason: "The mock does not project this. Start the API for a scheduled projection.",
+            },
+          ]
+        : [],
+      note: "Mock sample data.",
     };
   },
 
