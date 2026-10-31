@@ -140,6 +140,10 @@ NOT_A_SAVING = "not a saving: simulated window versus real outcome"
 BASIS_INBOUND = "inbound_leg"
 BASIS_FLOOR = "disruption_floor"
 BASIS_UNKNOWN = "unknown"
+# With these faults no model answered, so the agents' path did not run on that row.
+NO_MODEL_FAULTS = frozenset({"recording_miss", "missing_key"})
+NO_MODEL_REASON = "no model answered: the recordings missed, or there is no key"
+RUN_NO_MODEL = "no_model_ran"
 
 
 class EvidenceClass(StrEnum):
@@ -697,10 +701,14 @@ def _ledger_lock(results_dir: Path) -> Iterator[None]:
 
 
 def _live_frozen_runs(ledger: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Live frozen runs that count against the plan. One where no model answered,
+    such as a missing key, scored nothing and spends none of the planned runs."""
     return [
         r
         for r in ledger["runs"]
-        if r["mode"] == MODE_LIVE and r["split"] == SPLIT_FROZEN
+        if r["mode"] == MODE_LIVE
+        and r["split"] == SPLIT_FROZEN
+        and r["status"] != RUN_NO_MODEL
     ]
 
 
@@ -1899,6 +1907,15 @@ class LlmRow:
     harmful: bool = False
     harm_only: tuple[str, ...] = ()
 
+    @property
+    def model_answered(self) -> bool:
+        return (
+            self.reached
+            and self.path != PATH_ERROR
+            and self.model_calls > 0
+            and not set(self.faults) & NO_MODEL_FAULTS
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class UnguardedRow:
@@ -1912,6 +1929,7 @@ class UnguardedRow:
     harm_only: tuple[str, ...] = ()
     model_calls: int = 0
     error: str | None = None
+    faults: tuple[str, ...] = ()
 
 
 def run_llm_arm(
@@ -2025,7 +2043,13 @@ def run_unguarded_arm(
             package = done.package
             if package is None:
                 results.append(
-                    UnguardedRow(key=key, cause=cause, reached=True, model_calls=calls)
+                    UnguardedRow(
+                        key=key,
+                        cause=cause,
+                        reached=True,
+                        model_calls=calls,
+                        faults=_fault_texts(getattr(done, "faults", ())),
+                    )
                 )
                 continue
             violations = check_package(scenario, package)
@@ -2072,16 +2096,24 @@ def score_llm_group(rows: Sequence[LlmRow]) -> dict[str, Any]:
         and r.fallback_cost_total is not None
     ]
 
-    def share(k: int) -> dict[str, Any]:
-        if n == 0:
+    def share(k: int, of: int | None = None) -> dict[str, Any]:
+        total = n if of is None else of
+        if total == 0:
             return {"k": k, "n": 0, "rate": None, "ci95": None}
-        low, high = wilson_interval(k, n)
-        return {"k": k, "n": n, "rate": k / n, "ci95": [low, high]}
+        low, high = wilson_interval(k, total)
+        return {"k": k, "n": total, "rate": k / total, "ci95": [low, high]}
+
+    answered = [r for r in reached if r.model_answered]
 
     return {
         "n_planned": len(rows),
         "n_reached": n,
-        "consensus": share(sum(r.path == PATH_CONSENSUS for r in reached)),
+        "model_answered": share(len(answered)),
+        # Only rows a model answered can converge. A missed recording is not a
+        # failure to agree.
+        "consensus": share(
+            sum(r.path == PATH_CONSENSUS for r in answered), len(answered)
+        ),
         "fallback": share(sum(r.path == PATH_FALLBACK for r in reached)),
         "no_deal": share(sum(r.path == PATH_NO_DEAL for r in reached)),
         "error": share(sum(r.path == PATH_ERROR for r in reached)),
@@ -2633,6 +2665,22 @@ def rules_only_panel(
                 empty_reason=empty_reason,
             )
 
+    # How much there is to decide. A pick with zero soft cost stays cheapest under
+    # any positive weights, and leaves agents and baselines nothing to differ on.
+    builder.rate(
+        "Chosen package has zero soft cost",
+        sum(r.cost_total == 0 for r in deal_rows),
+        len(deal_rows),
+        note="under any positive weights this pick cannot be beaten",
+        empty_reason=empty_reason,
+    )
+    builder.mean(
+        "Legal packages per deal row",
+        [float(r.packages_legal) for r in deal_rows],
+        "packages",
+        empty_reason=empty_reason,
+    )
+
     # Harm check on final packages.
     builder.rate(
         "Final packages breaking a rule",
@@ -2853,11 +2901,15 @@ def llm_panel(
         *[(c, [r for r in reached if r.cause == c]) for c in CAUSES],
     ]:
         n = len(group)
+        answered = [r for r in group if r.model_answered]
+        builder.rate(f"Rows a model answered, {label}", len(answered), n)
         builder.rate(
             f"Convergence rate, {label}",
-            sum(r.path == PATH_CONSENSUS for r in group),
-            n,
+            sum(r.path == PATH_CONSENSUS for r in answered),
+            len(answered),
+            "rows a model answered",
             note="agents agreed and all rules passed",
+            empty_reason=NO_MODEL_REASON,
         )
         builder.rate(
             f"Fallback rate, {label}",
@@ -2879,8 +2931,14 @@ def llm_panel(
             n,
         )
 
-    turns = [float(r.turns_used) for r in reached if r.turns_used is not None]
-    builder.mean("Turns used", turns, "turns", "turn cap of 2")
+    turns = [
+        float(r.turns_used)
+        for r in reached
+        if r.model_answered and r.turns_used is not None
+    ]
+    builder.mean(
+        "Turns used", turns, "turns", "turn cap of 2", empty_reason=NO_MODEL_REASON
+    )
     over_cap = sum(t > TURN_CAP for t in turns)
     calls = [r.model_calls for r in reached]
     over_calls = sum(c > CALLS_PER_SCENARIO for c in calls)
@@ -2905,7 +2963,7 @@ def llm_panel(
     if over_calls:
         failures.append(f"{over_calls} runs went over the call cap")
 
-    fault_counts = Counter(fault for r in reached for fault in r.faults)
+    fault_counts = Counter(fault for r in reached for fault in set(r.faults))
     for fault, count in sorted(fault_counts.items()):
         builder.rate(f"Fault: {fault}", count, len(reached))
 
@@ -3023,7 +3081,13 @@ def guarded_vs_unguarded_panel(
     )
     errors = sum(r.error is not None for r in unguarded)
     reached = sum(r.reached for r in unguarded)
-    builder.rate("Unguarded runs with no package chosen", picked_none, reached)
+    blocked = sum(bool(set(r.faults) & NO_MODEL_FAULTS) for r in unguarded)
+    builder.rate(
+        "Unguarded runs with no package chosen",
+        picked_none,
+        reached,
+        note=f"{blocked} because no model answered" if blocked else "",
+    )
     builder.rate("Unguarded runs that raised an error", errors, reached)
     return builder.build(sample_size=len(unguarded))
 
@@ -3040,7 +3104,8 @@ def frozen_score_panel(
     groups += sorted(score["by_disruption_type"].items())
     for label, group in groups:
         for metric, against in (
-            ("consensus", "reported as measured"),
+            ("model_answered", "rows the agents' path actually ran on"),
+            ("consensus", "rows a model answered"),
             ("fallback", "reported as measured"),
             ("no_deal", "reported as measured"),
             ("final_rule_violation", "must be zero: the gate"),
@@ -3282,6 +3347,7 @@ def run_evaluation(request: RunRequest, backends: Backends | None = None) -> Rep
     try:
         panels: list[Panel] = []
         failures: list[str] = []
+        llm_rows: list[LlmRow] = []
 
         controls, control_failures = controls_panel(
             meta.model_copy(update={"mode": MODE_OFF}), resolved
@@ -3375,14 +3441,17 @@ def run_evaluation(request: RunRequest, backends: Backends | None = None) -> Rep
                     "the arm runs on frozen rows only, and once when live",
                 )
                 panels.append(builder.build())
-        status = "completed"
+        answered_any = request.mode != MODE_LIVE or any(
+            r.model_answered for r in llm_rows
+        )
+        status = "completed" if answered_any else RUN_NO_MODEL
     finally:
         if run_id is not None:
             ledger = complete_run(
                 request.results_dir,
                 run_id,
                 score if status == "completed" else None,
-                actual_calls if status == "completed" else None,
+                None if status == "failed" else actual_calls,
                 status,
             )
 

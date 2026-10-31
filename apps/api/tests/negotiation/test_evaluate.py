@@ -650,7 +650,13 @@ def test_the_call_ceiling_is_the_planned_320() -> None:
     first = ev.plan_live_calls("frozen", 20, ledger)
     assert (first.negotiation_calls, first.unguarded_calls) == (120, 20)
     ledger["runs"].append(
-        {"mode": "live", "split": "frozen", "planned_calls": 140, "actual_calls": 140}
+        {
+            "mode": "live",
+            "split": "frozen",
+            "status": "completed",
+            "planned_calls": 140,
+            "actual_calls": 140,
+        }
     )
     assert ev.plan_live_calls("frozen", 20, ledger).unguarded_calls == 0
     assert ev.plan_live_calls("frozen", 20, ledger).total == 120
@@ -831,6 +837,72 @@ def test_gate_breach_by_the_protocol_is_a_failure() -> None:
     assert any("break a rule" in failure for failure in failures)
 
 
+def test_a_fault_raised_by_all_three_agents_counts_once_per_row() -> None:
+    """Found on a real replay: three agents missing a recording crashed the rate."""
+    row = ev.LlmRow(
+        key="k",
+        cause=ev.CAUSE_WEATHER,
+        reached=True,
+        path=ev.PATH_FALLBACK,
+        faults=("recording_miss", "recording_miss", "recording_miss"),
+    )
+    panel, _ = ev.llm_panel([row], ev.EvidenceClass.RECORDED, _meta("recorded"), "t")
+    fault = next(m for m in panel.measures if m.name == "Fault: recording_miss")
+    assert (fault.k, fault.n) == (1, 1)
+
+
+def test_a_missed_recording_is_not_a_failure_to_converge() -> None:
+    missed = ev.LlmRow(
+        key="k",
+        cause=ev.CAUSE_WEATHER,
+        reached=True,
+        path=ev.PATH_FALLBACK,
+        faults=("recording_miss",),
+        model_calls=3,
+    )
+    assert not missed.model_answered
+    panel, _ = ev.llm_panel([missed], ev.EvidenceClass.RECORDED, _meta("recorded"), "t")
+    named = {m.name: m for m in panel.measures}
+    assert named["Convergence rate, all rows"].status is ev.MeasureStatus.NOT_REACHED
+    assert named["Turns used"].status is ev.MeasureStatus.NOT_REACHED
+    assert named["Rows a model answered, all rows"].k == 0
+    assert ev.score_llm_group([missed])["consensus"]["n"] == 0
+
+
+def _no_key_backends(fake: FakeProtocol) -> ev.Backends:
+    def no_key(scenario: Scenario, mode: str, **_: Any) -> FakeNegotiation:
+        if mode == ev.MODE_LIVE:
+            path = ev.PATH_FALLBACK
+            return FakeNegotiation(decide(scenario), path, 0, ("missing_key",), 0)
+        return fake.run_negotiation(scenario, mode, **_)
+
+    return replace(fake_backends(fake), run_negotiation=no_key)
+
+
+def test_a_live_run_with_no_key_spends_no_planned_run_and_sets_no_score(
+    tmp_path: Path,
+) -> None:
+    """Otherwise a forgotten key would freeze 0% as the permanent first score."""
+    fake = FakeProtocol()
+    request = _request(
+        tmp_path, mode="live", split="frozen", confirm_live_calls=140, synthetic_seeds=1
+    )
+    ev.run_evaluation(request, _no_key_backends(fake))
+    ledger = ev.load_ledger(tmp_path)
+    assert ledger["runs"][0]["status"] == ev.RUN_NO_MODEL
+    assert ledger["first_frozen_score"] is None
+    assert ev._live_frozen_runs(ledger) == []
+    assert ev.plan_live_calls("frozen", 20, ledger).unguarded_calls == 20
+    report = ev.run_evaluation(request, fake_backends(fake))
+    assert report.first_frozen_score is not None
+    assert report.first_frozen_score["frozen_live_run_number"] == 1
+    assert any(
+        p.evidence_class is ev.EvidenceClass.UNSEEN
+        and p.title.startswith("Frozen score")
+        for p in report.panels
+    )
+
+
 def test_turn_and_call_caps_are_checked() -> None:
     row = ev.LlmRow(
         key="k",
@@ -887,8 +959,20 @@ def test_unguarded_with_no_protocol_is_not_reached() -> None:
 
 def test_frozen_score_reports_overall_and_each_type_with_sizes() -> None:
     rows = [
-        ev.LlmRow(key="a", cause=ev.CAUSE_WEATHER, reached=True, path="consensus"),
-        ev.LlmRow(key="b", cause=ev.CAUSE_WEATHER, reached=True, path="fallback"),
+        ev.LlmRow(
+            key="a",
+            cause=ev.CAUSE_WEATHER,
+            reached=True,
+            path="consensus",
+            model_calls=3,
+        ),
+        ev.LlmRow(
+            key="b",
+            cause=ev.CAUSE_WEATHER,
+            reached=True,
+            path="fallback",
+            model_calls=6,
+        ),
         ev.LlmRow(key="c", cause=ev.CAUSE_LATE_AIRCRAFT, reached=True, path="no_deal"),
         ev.LlmRow(key="d", cause=ev.CAUSE_LATE_AIRCRAFT, reached=False),
     ]
@@ -1058,6 +1142,16 @@ def test_generator_sweep_runs_on_an_evenly_spaced_subset() -> None:
     assert not any(
         r.generator for r in ev.evaluate_rows(_rows(4), off, fake_backends())
     )
+
+
+def test_zero_cost_picks_are_reported_with_the_weight_result(tmp_path: Path) -> None:
+    report = ev.run_evaluation(
+        _request(tmp_path, sample=20, synthetic_seeds=1), fake_backends()
+    )
+    measure = _by_name(report, "Chosen package has zero soft cost")[0]
+    assert measure.status is ev.MeasureStatus.MEASURED
+    assert measure.n == _by_name(report, "Final packages breaking a rule")[0].n
+    assert _by_name(report, "Legal packages per deal row")[0].unit == "packages"
 
 
 def test_binding_is_reported_by_decision_point(tmp_path: Path) -> None:
