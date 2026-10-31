@@ -121,7 +121,7 @@ def scenario_summary(
             scheduled_departure=clock(leg.scheduled_departure_min),
             delay_minutes=_next_leg_delay(scenario),
             provenance=scenario.next_departure_min.provenance,
-            delay_provenance=scenario.aircraft_size.provenance,
+            delay_provenance=scenario.min_turnaround_min.provenance,
         )
     scenario_id = scenario.scenario_id.value
     flight_id = scenario.flight_id.value
