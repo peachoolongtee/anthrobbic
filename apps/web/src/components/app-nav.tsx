@@ -38,8 +38,16 @@ export function AppNav() {
                 on ? "text-background" : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {/* One pill, shared by both links, so it glides to the page you open. */}
-              {on && <motion.span layoutId="nav-pill" aria-hidden className="absolute inset-0 rounded-full bg-foreground" />}
+              {/* Each page draws its own header, so the pill fades in rather than
+                  gliding from the other header's position, which jumped. */}
+              {on && (
+                <motion.span
+                  aria-hidden
+                  initial={{ opacity: 0, scale: 0.92 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="absolute inset-0 rounded-full bg-foreground"
+                />
+              )}
               <span className="relative">{l.label}</span>
             </Link>
           );

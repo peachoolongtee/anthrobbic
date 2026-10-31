@@ -16,11 +16,12 @@ export const EASE_OUT: Transition = { duration: 0.45, ease: [0.22, 1, 0.36, 1] }
 /** A container whose children rise into place one after another. */
 export const STAGGER: Variants = {
   hidden: {},
-  shown: { transition: { staggerChildren: 0.06, delayChildren: 0.05 } },
+  shown: { transition: { staggerChildren: 0.04 } },
 };
 
-/** A child of STAGGER: fades in while rising a short way. */
+/** A child of STAGGER: fades in while rising a short way. Transform and
+ * opacity only, so it stays smooth beside the WebGL globe. */
 export const RISE: Variants = {
-  hidden: { opacity: 0, y: 16, filter: "blur(4px)" },
-  shown: { opacity: 1, y: 0, filter: "blur(0px)", transition: EASE_OUT },
+  hidden: { opacity: 0, y: 10 },
+  shown: { opacity: 1, y: 0, transition: { ...EASE_OUT, duration: 0.35 } },
 };
