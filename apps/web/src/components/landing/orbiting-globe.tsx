@@ -10,10 +10,10 @@ export interface GlobeRoute {
   to: [number, number]
 }
 
-const NIGHT_BASE: [number, number, number] = [0.22, 0.29, 0.45]
-const SKY: [number, number, number] = [0.42, 0.72, 1]
-const BEACON: [number, number, number] = [1, 0.74, 0.32]
-const HALO: [number, number, number] = [0.16, 0.24, 0.42]
+const NIGHT_BASE: [number, number, number] = [0.26, 0.26, 0.3]
+const ROUTE: [number, number, number] = [0.62, 0.58, 0.78]
+const BEACON: [number, number, number] = [0.72, 0.6, 1]
+const HALO: [number, number, number] = [0.2, 0.19, 0.27]
 // Starts with North America facing the viewer.
 const START_PHI = Math.PI - ((-95 * Math.PI) / 180 - Math.PI / 2)
 
@@ -195,7 +195,7 @@ export function OrbitingGlobe({
           mapBrightness={7}
           baseColor={NIGHT_BASE}
           markerColor={BEACON}
-          arcColor={SKY}
+          arcColor={ROUTE}
           glowColor={HALO}
           markerSize={0.02}
           arcHeight={0.2}

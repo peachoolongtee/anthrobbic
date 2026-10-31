@@ -18,10 +18,10 @@ import { cn } from "@/lib/utils";
  */
 
 const STYLE_URL = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
-const NIGHT = "#0b1222";
-const DEEP_WATER = "#060a14";
-const BEACON = "#f5b544";
-const ROUTE_DIM = "rgba(150, 180, 230, 0.28)";
+const NIGHT = "#111215";
+const DEEP_WATER = "#0a0a0d";
+const BEACON = "#a48bfa";
+const ROUTE_DIM = "rgba(180, 180, 200, 0.28)";
 
 type LngLat = [number, number];
 

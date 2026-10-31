@@ -94,7 +94,7 @@ export function Globe({
   mapSamples = 16000,
   showLabels = true,
   highlightArc = null,
-  highlightColor = [1, 0.74, 0.32],
+  highlightColor = [0.72, 0.6, 1],
   focus = null,
   focusScale = 1,
 }: GlobeProps) {

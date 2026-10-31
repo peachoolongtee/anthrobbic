@@ -16,13 +16,13 @@ import { useReducedMotion } from "@/hooks/use-reduced-motion";
  * the scene says so. Select a runway or gate to close it.
  */
 
-const NIGHT = "#0b1222";
-const ASPHALT = "#2a3550";
-const ASPHALT_HOVER = "#36446a";
-const MARKING = "#c9d4e8";
-const BEACON = "#f5b544";
-const DANGER = "#ef5a4c";
-const HULL = "#dfe6f2";
+const NIGHT = "#111215";
+const ASPHALT = "#2b2d34";
+const ASPHALT_HOVER = "#3a3c46";
+const MARKING = "#d6d7de";
+const BEACON = "#a48bfa";
+const DANGER = "#f87171";
+const HULL = "#e6e7ec";
 
 const RUNWAY_Z: Record<string, number> = { "27L": -7, "27R": 5 };
 const RUNWAY_HALF = 32;
@@ -58,7 +58,7 @@ function Airliner({ accent = HULL, glow = false }: { accent?: string; glow?: boo
       {[1, -1].map((side) => (
         <mesh key={side} position={[0.25, -0.32, side * 1.25]} rotation={[0, 0, Math.PI / 2]}>
           <cylinderGeometry args={[0.2, 0.22, 0.8, 10]} />
-          <meshStandardMaterial color="#8592a8" />
+          <meshStandardMaterial color="#8c8e99" />
         </mesh>
       ))}
       {/* Tailplane */}
@@ -169,7 +169,7 @@ function Runway({
   onToggle: () => void;
 }) {
   const [hover, setHover] = useState(false);
-  const color = closed ? "#3a1a1f" : hover && !disabled ? ASPHALT_HOVER : ASPHALT;
+  const color = closed ? "#3a1d22" : hover && !disabled ? ASPHALT_HOVER : ASPHALT;
   const handlers = {
     onPointerOver: (e: ThreeEvent<PointerEvent>) => {
       e.stopPropagation();
@@ -254,7 +254,7 @@ function Gate({
   onToggle: () => void;
 }) {
   const [hover, setHover] = useState(false);
-  const color = closed ? DANGER : assigned ? BEACON : hover && !disabled ? "#3b4a68" : "#2a3550";
+  const color = closed ? DANGER : assigned ? BEACON : hover && !disabled ? "#3d3f49" : "#2b2d34";
   return (
     <group position={[x, 0, GATE_Z]}>
       <mesh
@@ -285,11 +285,11 @@ function Gate({
       {/* Jet bridge */}
       <mesh position={[0, 1, 1.4]}>
         <boxGeometry args={[0.6, 0.6, 2.4]} />
-        <meshStandardMaterial color="#3a4660" />
+        <meshStandardMaterial color="#3a3b44" />
       </mesh>
       {parked && !closed && (
         <group position={[0, 0.6, -2]} rotation={[0, Math.PI / 2, 0]} scale={0.8}>
-          <Airliner accent="#7f8ba3" />
+          <Airliner accent="#7d7f8a" />
         </group>
       )}
       <Html position={[0, 0.2, 2.6]} center zIndexRange={[4, 0]}>
@@ -347,32 +347,32 @@ export function AirportScene({
         <color attach="background" args={[NIGHT]} />
         <fog attach="fog" args={[NIGHT, 130, 260]} />
         <ambientLight intensity={0.9} />
-        <hemisphereLight args={["#9fb7ff", "#0b1222", 0.5]} />
+        <hemisphereLight args={["#d9d4ff", "#111215", 0.5]} />
         <directionalLight position={[30, 60, 40]} intensity={1.9} castShadow />
 
         {/* Ground and a faint grid */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
           <planeGeometry args={[400, 400]} />
-          <meshStandardMaterial color="#111c31" />
+          <meshStandardMaterial color="#16171b" />
         </mesh>
-        <gridHelper args={[200, 50, "#1c2a45", "#142038"]} position={[0, 0.01, 0]} />
+        <gridHelper args={[200, 50, "#26272e", "#1c1d22"]} position={[0, 0.01, 0]} />
 
         {/* Taxiway and links */}
         <mesh position={[-2, 0.04, TAXI_Z]}>
           <boxGeometry args={[RUNWAY_HALF * 2 - 4, 0.06, 1.6]} />
-          <meshStandardMaterial color="#202b40" />
+          <meshStandardMaterial color="#23252b" />
         </mesh>
         {[-22, 18].map((x) => (
           <mesh key={x} position={[x, 0.04, (RUNWAY_Z["27L"] + TAXI_Z) / 2]}>
             <boxGeometry args={[1.6, 0.06, TAXI_Z - RUNWAY_Z["27L"]]} />
-            <meshStandardMaterial color="#202b40" />
+            <meshStandardMaterial color="#23252b" />
           </mesh>
         ))}
 
         {/* Terminal */}
         <mesh position={[-3, 1.4, GATE_Z + 4.5]} castShadow>
           <boxGeometry args={[42, 2.8, 5]} />
-          <meshStandardMaterial color="#1f2a40" metalness={0.3} roughness={0.6} />
+          <meshStandardMaterial color="#202127" metalness={0.3} roughness={0.6} />
         </mesh>
 
         {runways.map((r, i) => (
@@ -430,7 +430,7 @@ export function AirportScene({
           target={[2, 2, 2]}
         />
       </Canvas>
-      <p className="pointer-events-none absolute right-3 bottom-3 rounded bg-warning-soft px-1.5 py-0.5 text-[11px] font-medium text-warning lg:right-[24.5rem]">
+      <p className="pointer-events-none absolute right-3 bottom-3 rounded border border-dashed border-muted-foreground/60 bg-card/70 px-1.5 py-0.5 text-xs text-muted-foreground lg:right-[24.5rem]">
         Synthetic airport layout. Drag to turn.
       </p>
     </div>
