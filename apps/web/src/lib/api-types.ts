@@ -155,6 +155,8 @@ export interface Card {
   card_hash: string;
   /** (addition) Hash per hashed card fact, sent back as `card_field_hashes_seen`. */
   field_hashes?: Record<string, string>;
+  /** (addition) How the plan was chosen. Stated on the card and in its hash. */
+  how_reached?: "consensus" | "fallback" | "fallback_after_fault";
   /** The action as one sentence, written from a template. */
   action: string;
   action_facts: Fact[];
@@ -249,6 +251,7 @@ export type SignoffStatus =
   | "REFUSED_CARD_CHANGED"
   | "REFUSED_RULES_FAILED"
   | "REFUSED_ALREADY_USED"
+  | "REFUSED_NOT_ELIGIBLE"
   | "REFUSED_ALREADY_DECIDED";
 
 /** A run has one final decision. A refused attempt does not set it. */

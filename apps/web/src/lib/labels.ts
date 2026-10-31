@@ -121,11 +121,32 @@ export const SIGNOFF_STATUS: Record<SignoffStatus, { title: string; detail: stri
     title: "Refused: this approval was already used",
     detail: "Each approval can be used once. Make a new recovery plan to approve again.",
   },
+  REFUSED_NOT_ELIGIBLE: {
+    title: "Refused: this plan was not offered for sign-off",
+    detail: "Only a plan the system itself offered for this flight can be approved.",
+  },
   REFUSED_ALREADY_DECIDED: {
     title: "Refused: this run was already decided",
     detail: "A run has one final decision, and this one is recorded. Make a new recovery plan to decide again.",
   },
 };
+
+/** Why a log failed its check, in plain words. Unknown reasons are shown as received. */
+const VERIFY_REASON_LABEL: Record<string, string> = {
+  malformed_entry: "A log line cannot be read.",
+  seq_mismatch: "An entry was deleted, moved or inserted.",
+  prev_hash_mismatch: "An entry no longer links to the one before it.",
+  entry_hash_mismatch: "An entry's content was edited.",
+  anchor_not_found: "The log was rewritten or cut short: its recorded head is missing.",
+  non_canonical_line: "A log line was rewritten: it is not in the exact form it was written in.",
+  file_diverged: "The log file no longer matches what this service wrote.",
+  log_failed: "A log write failed and could not be undone, so this log is closed.",
+};
+
+export function verifyReasonLabel(reason: string | null): string {
+  if (reason === null) return "";
+  return VERIFY_REASON_LABEL[reason] ?? reason;
+}
 
 /** Log entry kinds with a plain name. Others are shown as logged. */
 const LOG_KIND_LABEL: Record<string, string> = {

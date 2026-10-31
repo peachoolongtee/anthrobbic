@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { CircleAlert, CircleCheck } from "lucide-react";
 import { api, describeError, isUnreachable } from "@/lib/api";
 import type { RunLog, VerifyResult } from "@/lib/api-types";
-import { logKindLabel } from "@/lib/labels";
+import { logKindLabel, verifyReasonLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyPanel, ErrorPanel, LoadingBlock } from "@/components/dashboard/states";
@@ -70,7 +70,7 @@ export function LogView({
           )}
           <span>
             <strong>{log.verify.valid ? "The log checks out." : "The log does not check out."}</strong>{" "}
-            {log.verify.reason ?? ""}
+            {verifyReasonLabel(log.verify.reason)}
           </span>
         </p>
         {tamper && (
@@ -83,7 +83,7 @@ export function LogView({
             {tamper.valid ? <CircleAlert aria-hidden className="size-4 text-destructive" /> : <CircleCheck aria-hidden className="size-4 text-success" />}
             <span>
               <strong>Tampered copy: {tamper.valid ? "not detected." : "detected."}</strong>{" "}
-              {tamper.reason ?? ""}
+              {verifyReasonLabel(tamper.reason)}
               {tamper.first_bad_seq !== null && ` First bad entry: ${tamper.first_bad_seq}.`}
             </span>
           </p>

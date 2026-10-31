@@ -12,6 +12,7 @@ import type {
   SignoffResult,
   VerifyResult,
 } from "@/lib/api-types";
+import { verifyReasonLabel } from "@/lib/labels";
 
 type Load<T> =
   | { status: "loading" }
@@ -277,7 +278,7 @@ export function useDashboard() {
         title: result.valid ? "The tampered log passed. That is a failure." : "Tampering detected",
         detail: result.valid
           ? undefined
-          : `${result.reason ?? "The log no longer checks out."}${
+          : `${verifyReasonLabel(result.reason) || "The log no longer checks out."}${
               result.first_bad_seq !== null ? ` First bad entry: ${result.first_bad_seq}.` : ""
             }`,
       });

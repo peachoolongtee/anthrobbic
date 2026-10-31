@@ -507,7 +507,10 @@ export const mockBackend = {
       status = "REFUSED_STATE_CHANGED";
       changedFields = changedNames(body.field_versions_seen, body.state_version_seen, current);
     } else if (violations.length > 0) status = "REFUSED_RULES_FAILED";
-    else if (body.card_hash_seen !== card.card_hash) {
+    else if (!RUNWAYS.includes(deal.package.runway_id) || !GATES.includes(deal.package.gate_id)) {
+      // As the real sign-off: only a package this flight's enumeration offers.
+      status = "REFUSED_NOT_ELIGIBLE";
+    } else if (body.card_hash_seen !== card.card_hash) {
       status = "REFUSED_CARD_CHANGED";
       const seen = body.card_field_hashes_seen;
       const now = card.field_hashes ?? {};
