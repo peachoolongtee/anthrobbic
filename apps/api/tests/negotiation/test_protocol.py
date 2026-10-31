@@ -1434,3 +1434,24 @@ def test_the_real_evidence_log_accepts_every_event_and_verifies() -> None:
     assert len(log.entries) == sum(
         len(r.events) for r in (consensus, capped, faulted, baseline)
     )
+
+
+def test_a_sink_that_fails_on_the_result_event_cannot_read_as_clean_consensus() -> None:
+    class FailsOnResult:
+        def __init__(self) -> None:
+            self.kinds: list[str] = []
+
+        def append(self, kind: str, payload: Any) -> None:
+            if kind == "result":
+                raise OSError("disk full")
+            self.kinds.append(kind)
+
+    sink = FailsOnResult()
+    result = run_negotiation(
+        make_scenario(), "live", sink=sink, client=ScriptedClient(accept_all)
+    )
+    assert "consensus" in sink.kinds  # the agreement itself was logged
+    assert "result" not in sink.kinds  # but its result never was
+    assert result.path != "consensus"
+    assert result.path == "fallback"
+    assert FaultKind.SINK_FAILURE in {f.kind for f in result.faults}

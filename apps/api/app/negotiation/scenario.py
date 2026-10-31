@@ -111,7 +111,8 @@ FIELD_NOTES: Final[dict[str, str]] = {
     ),
     "next_departure_min": "derived: the same tail's next scheduled departure",
     "next_leg_turnaround_hard": (
-        "synthetic: a seeded draw when a next leg exists, false when none does"
+        "synthetic (a seeded draw) when a next leg exists; derived false when "
+        "none does, since there is nothing to hold"
     ),
     "ground_shift_end_min": "synthetic",
     "connections": "synthetic: anchored on the real scheduled gate-in",

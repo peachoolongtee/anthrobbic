@@ -397,3 +397,206 @@ def test_clocked_file_survives_reload(tmp_path: Path) -> None:
     log = EvidenceLog(path, clock=lambda: "2026-10-31T09:00:00Z")
     log.append("k", {"n": 1})
     assert EvidenceLog(path).head == log.head
+
+
+# ------------------------------------------- D2: a failed write rolls back
+
+
+def test_an_fsync_failure_leaves_file_and_memory_consistent_and_retry_works(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "evidence.jsonl"
+    log = build(path)
+    before = path.read_bytes()
+    head = log.head
+
+    def boom(_: int) -> None:
+        raise OSError("fsync failed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr("app.negotiation.log.os.fsync", boom)
+        with pytest.raises(OSError):
+            log.append("signoff", {"status": "APPROVED"})
+    # The caller was told it failed, and the file agrees.
+    assert path.read_bytes() == before
+    assert log.head == head and len(log.entries) == 5
+
+    retried = log.append("signoff", {"status": "APPROVED"})
+    assert retried.seq == 5  # not a second line with a repeated seq
+    assert [e.seq for e in EvidenceLog(path).entries] == [0, 1, 2, 3, 4, 5]
+    assert len(path.read_text().splitlines()) == 6
+    reopened = EvidenceLog(path)
+    assert reopened.head == log.head == retried.entry_hash
+    assert reopened.verify().valid
+
+
+def test_a_failed_first_write_leaves_no_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "evidence.jsonl"
+    log = EvidenceLog(path)
+
+    def boom(_: int) -> None:
+        raise OSError("fsync failed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr("app.negotiation.log.os.fsync", boom)
+        with pytest.raises(OSError):
+            log.append("k", {})
+    assert path.read_text() == ""
+    assert EvidenceLog(path).entries == ()
+    assert log.append("k", {}).seq == 0
+
+
+def test_if_the_rollback_also_fails_the_log_refuses_everything_after(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    log = build(tmp_path / "evidence.jsonl")
+
+    def boom(*_: Any) -> None:
+        raise OSError("io error")
+
+    with monkeypatch.context() as patch:
+        patch.setattr("app.negotiation.log.os.fsync", boom)
+        patch.setattr("app.negotiation.log.os.truncate", boom)
+        with pytest.raises(OSError):
+            log.append("lost", {})
+    with pytest.raises(LogIntegrityError):
+        log.append("later", {})
+    result = log.verify()
+    assert not result.valid and result.reason == VerifyReason.LOG_FAILED
+    assert len(log.entries) == 5
+
+
+# --------------------------------------- D3: verify reads the file itself
+
+
+def edit_line(path: Path, index: int, change: Callable[[dict[str, Any]], None]) -> None:
+    lines = path.read_text().splitlines()
+    record = json.loads(lines[index])
+    change(record)
+    lines[index] = canonical_json(record)  # a well-formed, canonical line
+    path.write_text("\n".join(lines) + "\n")
+
+
+def test_verify_reads_the_file_so_a_live_edit_is_reported(tmp_path: Path) -> None:
+    path = tmp_path / "evidence.jsonl"
+    log = build(path)
+    assert log.verify().valid
+    edit_line(path, 2, lambda r: r["payload"].update(passed=True))
+    assert log.entries[2].payload["passed"] is False  # memory is still the old one
+    result = log.verify()
+    assert (result.valid, result.first_bad_seq) == (False, 2)
+    assert result.reason == VerifyReason.ENTRY_HASH_MISMATCH
+
+
+def test_verify_reports_a_file_cut_short_or_extended_behind_the_logs_back(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "evidence.jsonl"
+    log = build(path)
+    lines = path.read_text().splitlines()
+    path.write_text("\n".join(lines[:3]) + "\n")
+    cut = log.verify()
+    assert not cut.valid and cut.reason == VerifyReason.FILE_DIVERGED
+    assert cut.first_bad_seq == 3
+    # Cut short, the chain is still valid on its own: only the comparison with
+    # what was written (or an anchor) can see it.
+    assert verify_entries(load_entries(path)).valid
+    assert not log.verify(anchored_head=log.head).valid
+
+
+def test_a_live_edit_stops_further_appends(tmp_path: Path) -> None:
+    path = tmp_path / "evidence.jsonl"
+    log = build(path)
+    edit_line(path, 1, lambda r: r["payload"].update(turn=9))
+    with pytest.raises(LogIntegrityError):
+        log.append("later", {})
+    assert len(log.entries) == 5
+    assert len(path.read_text().splitlines()) == 5
+
+
+def test_an_appended_foreign_line_stops_further_appends(tmp_path: Path) -> None:
+    path = tmp_path / "evidence.jsonl"
+    log = build(path)
+    other = EvidenceLog()
+    for kind, payload in PAYLOADS:
+        other.append(kind, payload)
+    extra = other.append("extra", {})
+    with path.open("a") as handle:
+        handle.write(canonical_json(extra.as_dict()) + "\n")
+    with pytest.raises(LogIntegrityError):
+        log.append("later", {})
+
+
+def test_an_untouched_file_keeps_appending_without_error(tmp_path: Path) -> None:
+    log = build(tmp_path / "evidence.jsonl")
+    for n in range(3):
+        log.append("k", {"n": n})
+    assert log.verify().valid
+
+
+def test_a_memory_log_verifies_memory() -> None:
+    assert build().verify().valid
+
+
+# --------------------------------------- L2: only canonical lines verify
+
+
+def rewrite_line(path: Path, index: int, text: str) -> None:
+    lines = path.read_text().splitlines()
+    lines[index] = text
+    path.write_text("\n".join(lines) + "\n")
+
+
+def test_a_reformatted_line_fails_verification_though_its_hashes_hold(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "evidence.jsonl"
+    log = build(path)
+    record = json.loads(path.read_text().splitlines()[1])
+    rewrite_line(path, 1, json.dumps(record, indent=None))  # spaces after separators
+    assert verify_entries(load_entries(path)).valid  # the chain alone is fine
+    result = log.verify()
+    assert (result.valid, result.first_bad_seq) == (False, 1)
+    assert result.reason == VerifyReason.NON_CANONICAL_LINE
+    with pytest.raises(LogIntegrityError):
+        EvidenceLog(path)
+
+
+def test_a_duplicate_json_key_fails_verification(tmp_path: Path) -> None:
+    path = tmp_path / "evidence.jsonl"
+    log = build(path)
+    line = path.read_text().splitlines()[0]
+    # A second `kind` key that json.loads would silently resolve to the last one.
+    forged = line.replace('"kind":"proposal"', '"kind":"other","kind":"proposal"')
+    assert forged != line
+    rewrite_line(path, 0, forged)
+    assert verify_entries(load_entries(path)).valid
+    result = log.verify()
+    assert (result.valid, result.first_bad_seq) == (False, 0)
+    assert result.reason == VerifyReason.NON_CANONICAL_LINE
+
+
+def test_crlf_and_a_missing_final_newline_are_not_canonical(tmp_path: Path) -> None:
+    path = tmp_path / "evidence.jsonl"
+    log = build(path)
+    path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+    assert log.verify().reason == VerifyReason.NON_CANONICAL_LINE
+    path.write_bytes(
+        b"\n".join(
+            line
+            for line in path.read_bytes().replace(b"\r\n", b"\n").split(b"\n")
+            if line
+        )
+    )
+    assert log.verify().reason == VerifyReason.NON_CANONICAL_LINE
+
+
+def test_a_broken_line_is_reported_by_verify_not_raised(tmp_path: Path) -> None:
+    path = tmp_path / "evidence.jsonl"
+    log = build(path)
+    rewrite_line(path, 3, "not json")
+    result = log.verify()
+    assert (result.valid, result.first_bad_seq) == (False, 3)
+    assert result.reason == VerifyReason.MALFORMED_ENTRY
