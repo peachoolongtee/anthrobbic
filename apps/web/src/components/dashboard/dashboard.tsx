@@ -9,6 +9,8 @@ import {
   FlaskConical,
   Map as MapIcon,
   MessagesSquare,
+  PanelRightClose,
+  PanelRightOpen,
   ScrollText,
   X,
   type LucideIcon,
@@ -65,6 +67,7 @@ export function Dashboard() {
   const d = useDashboard();
   const [tab, setTab] = useState<Tab | null>(null);
   const [view, setView] = useState<View>("map");
+  const [sideOpen, setSideOpen] = useState(true);
   // The clear area between the panels, where the map frames the route.
   const clearArea = useRef<HTMLDivElement>(null);
   // The list is longer than the map can show: more lines would bury the chosen route.
@@ -335,13 +338,41 @@ export function Dashboard() {
           </div>
         </main>
 
-        {/* Plan and sign-off */}
+        {/* Plan and sign-off, collapsible */}
+        {!sideOpen && (
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Show plan and sign-off"
+            title="Show plan and sign-off"
+            aria-expanded={false}
+            aria-controls="plan-signoff"
+            onClick={() => setSideOpen(true)}
+            className={cn(PANEL, "self-end lg:absolute lg:top-3 lg:right-3 lg:z-10")}
+          >
+            <PanelRightOpen aria-hidden />
+          </Button>
+        )}
         <aside
+          id="plan-signoff"
+          hidden={!sideOpen}
           className={cn(
             PANEL,
             "relative space-y-4 p-4 lg:absolute lg:top-3 lg:right-3 lg:bottom-3 lg:z-10 lg:w-[23rem] lg:overflow-y-auto",
           )}
         >
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Hide plan and sign-off"
+            title="Hide plan and sign-off"
+            aria-expanded
+            aria-controls="plan-signoff"
+            onClick={() => setSideOpen(false)}
+            className="absolute top-3 right-3 z-10 text-muted-foreground"
+          >
+            <PanelRightClose aria-hidden />
+          </Button>
           {d.rulesOnlyFlight && (
             <p role="status" className="rounded-xl border border-info/40 bg-info-soft p-3 text-sm">
               <strong>{d.rulesOnlyFlight} runs on rules only</strong>, because no model answers were saved for it. The mode
