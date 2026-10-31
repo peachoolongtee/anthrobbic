@@ -143,6 +143,11 @@ export function FlightList({
                     <div className="flex items-center gap-2 text-sm">
                       <Icon aria-hidden className="size-3.5 text-muted-foreground" />
                       <span className="font-medium">{s.flight_id}</span>
+                      {s.has_recording && (
+                        <span title="Saved model answers exist for this flight" className="rounded bg-info-soft px-1 text-[10px] font-medium text-info">
+                          Recorded
+                        </span>
+                      )}
                       <span className="ml-auto flex items-center gap-1 font-display font-semibold text-beacon tabular-nums">
                         +{s.delay_minutes}
                         {s.delay_provenance && <ProvenanceMark provenance={s.delay_provenance} />}

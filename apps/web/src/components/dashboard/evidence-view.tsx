@@ -74,6 +74,16 @@ function WorkbookDifferences() {
   );
 }
 
+/** One card per measure: the run with the most cases, so small samples do not crowd it. */
+function largest(items: HeadlineItem[]): HeadlineItem[] {
+  const best = new Map<string, HeadlineItem>();
+  for (const item of items) {
+    const current = best.get(item.key);
+    if (!current || (item.n ?? -1) > (current.n ?? -1)) best.set(item.key, item);
+  }
+  return [...best.values()];
+}
+
 function HeadlineCard({ item }: { item: HeadlineItem }) {
   return (
     <div className="rounded-xl border border-border bg-card p-3">
@@ -216,6 +226,11 @@ function EvaluationResults() {
 
   const headline = state.headline;
   const rulesOnly = rows.filter((r) => WITHOUT_A_MODEL.has(r.evidence_class));
+  // Live reports carry small rules-only samples of their own. The headline and the
+  // main table use the largest rules-only run; the rest stay available below.
+  const mainCommit = largest(headline?.rules_only ?? [])[0]?.commit ?? null;
+  const mainRows = rulesOnly.filter((r) => !mainCommit || r.commit.startsWith(mainCommit.slice(0, 12)) || mainCommit.startsWith(r.commit));
+  const sampleRows = rulesOnly.filter((r) => !mainRows.includes(r));
   const withModel = rows.filter((r) => !WITHOUT_A_MODEL.has(r.evidence_class));
 
   return (
@@ -235,16 +250,26 @@ function EvaluationResults() {
       )}
       {headline && (
         <>
-          <HeadlineGroup title="Rules only" detail="Code and rules, with no model. Read from the results file." items={[...headline.rules_only]} />
+          <HeadlineGroup title="Rules only" detail="Code and rules, with no model. Read from the results file." items={largest(headline.rules_only)} />
           <HeadlineGroup title="Live model" detail="With the agents, live. Never compare with rules only." items={[...headline.live]} />
-          <HeadlineGroup title="Other evidence" detail="Other classes of evidence. Never compare across classes." items={[...headline.other]} />
+          <HeadlineGroup
+            title="With the model: tuned and unseen flights"
+            detail="Run with the agents on the tuning and held-out flights. Each card names its class. Never compare across classes."
+            items={[...headline.other]}
+          />
         </>
       )}
       <p className="text-xs text-muted-foreground">
         Generated from run output. Numbers with different evidence classes must not be compared with each other.
       </p>
-      <ResultsTable title="Full results: rules only and tests" rows={rulesOnly} />
+      <ResultsTable title="Full results: rules only and tests" rows={mainRows} />
       <ResultsTable title="Full results: with the model" rows={withModel} />
+      {sampleRows.length > 0 && (
+        <details>
+          <summary className="cursor-pointer text-sm font-medium">Rules-only rows from the smaller samples of the live runs</summary>
+          <ResultsTable title="Rules only, on the live runs' samples" rows={sampleRows} />
+        </details>
+      )}
       {limits.length > 0 && (
         <section aria-label="Limits" className="space-y-1">
           <h3 className="font-display text-sm font-semibold">Limits: what these numbers do not show</h3>

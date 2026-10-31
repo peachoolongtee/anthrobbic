@@ -430,7 +430,7 @@ export function AirportScene({
           target={[2, 2, 2]}
         />
       </Canvas>
-      <p className="pointer-events-none absolute right-3 bottom-3 rounded bg-warning-soft px-1.5 py-0.5 text-[11px] font-medium text-warning lg:right-[24.5rem]">
+      <p className="pointer-events-none absolute top-3 right-3 max-w-60 rounded bg-warning-soft px-1.5 py-0.5 text-[11px] font-medium text-warning lg:top-[7.75rem] lg:right-[24.5rem]">
         Illustrative layout, not to scale: only the runway and gate IDs are from this run. Drag to turn.
       </p>
     </div>

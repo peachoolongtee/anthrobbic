@@ -6,6 +6,7 @@ import { Box, CircleAlert, Map as MapIcon, X } from "lucide-react";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { Button } from "@/components/ui/button";
 import { FINAL_DECISION_LABEL, isApproved, refusalBanner, signoffStatusLabel } from "@/lib/labels";
+import { planActionFromLabel } from "@/lib/plan-action";
 import { cn } from "@/lib/utils";
 import { AgentStrip } from "@/components/dashboard/agent-strip";
 import { AirportMap } from "@/components/dashboard/airport-map";
@@ -34,7 +35,7 @@ const TABS: { id: Tab; label: string }[] = [
 const NO_FLIGHTS: never[] = [];
 
 // The 3D airport loads only when chosen, so three.js stays off the first load.
-const AirportScene = dynamic(() => import("@/components/dashboard/airport-scene"), {
+const AirportScene = dynamic(() => import("@/components/dashboard/safe-airport-scene"), {
   ssr: false,
   loading: () => <div className="size-full bg-background" />,
 });
@@ -76,6 +77,7 @@ export function Dashboard() {
             screens, a box above the panels on small ones. */}
         {view === "map" ? (
           <FlightMap
+            planAction={planActionFromLabel(run?.card?.action_facts.find((f) => f.key === "action")?.value)}
             flights={d.scenarios.status === "ready" ? d.scenarios.data : NO_FLIGHTS}
             selected={selected}
             frame={clearArea}
@@ -192,7 +194,8 @@ export function Dashboard() {
               aria-label={TABS.find((t) => t.id === tab)?.label}
               className={cn(
                 PANEL,
-                "relative z-10 flex flex-col bg-card/95 animate-in fade-in slide-in-from-bottom-4 duration-200 lg:absolute lg:inset-x-0 lg:top-3",
+                "relative z-20 flex flex-col bg-card/95 animate-in fade-in slide-in-from-bottom-4 duration-200 lg:absolute lg:right-0 lg:top-3",
+                tab === "details" ? "lg:left-0" : "lg:-left-[20rem]",
                 clearOfOutcome ? "lg:bottom-[11.5rem]" : "lg:bottom-[9.5rem]",
               )}
             >
@@ -289,7 +292,7 @@ export function Dashboard() {
                 <span>
                   <strong>{banner.lead}</strong>{" "}
                   {banner.outOfDate
-                    ? signoffStatusLabel(refused.status).title.replace(/^Refused: /, "")
+                    ? `Sign-off refused: ${signoffStatusLabel(refused.status).title.replace(/^Refused: /, "")}.`
                     : `${refused.final_decision ? `${FINAL_DECISION_LABEL[refused.final_decision]} ` : ""}${signoffStatusLabel(refused.status).detail}`}
                 </span>
               </p>

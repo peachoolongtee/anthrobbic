@@ -20,6 +20,12 @@ function withdrawn(previous: TurnResponse | undefined, now: TurnResponse) {
   return (previous.declined ?? []).filter((d) => accepted.has(d.package));
 }
 
+function byReason(items: { package: string; reason: string }[]) {
+  const groups = new Map<string, string[]>();
+  for (const item of items) groups.set(item.reason, [...(groups.get(item.reason) ?? []), item.package]);
+  return groups;
+}
+
 /** The opposite move: plans it accepted before and no longer does. */
 function dropped(previous: TurnResponse | undefined, now: TurnResponse) {
   if (!previous?.accepted || !now.accepted) return [];
@@ -66,9 +72,9 @@ function TurnColumns({ turn, run, previous }: { turn: Turn; run: Run; previous?:
                     <div>
                       <p className="text-xs font-medium">Withdrew its objection to</p>
                       <ul className="list-disc pl-4 text-muted-foreground">
-                        {withdrawn(previous?.responses.find((x) => x.domain === d), r).map((w) => (
-                          <li key={w.package}>
-                            <span className="font-mono text-xs">{w.package}</span> (was: {publicReasonLabel(w.reason)})
+                        {[...byReason(withdrawn(previous?.responses.find((x) => x.domain === d), r))].map(([reason, plans]) => (
+                          <li key={reason} title={plans.join(", ")}>
+                            {plans.length} {plans.length === 1 ? "plan" : "plans"} (was: {publicReasonLabel(reason)})
                           </li>
                         ))}
                       </ul>
