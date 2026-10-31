@@ -2,6 +2,7 @@
 
 import ast
 import json
+import os
 import threading
 from pathlib import Path
 from typing import Any
@@ -286,17 +287,20 @@ def test_racing_decisions_leave_exactly_one_final_decision(client: TestClient) -
     assert len(final) == 1
 
 
-def test_a_failed_log_write_is_not_a_decision(client: TestClient, logs: Path) -> None:
+def test_a_failed_log_write_is_not_a_decision(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     run = _deal_run(client)
-    aside = logs.parent / "logs-aside"
-    logs.rename(aside)
-    logs.write_text("a file where the directory was")
+
+    def full_disk(_: int) -> None:
+        raise OSError("no space left on device")
+
     failing = TestClient(client.app, raise_server_exceptions=False)
-    response = _reject(failing, run)
+    with monkeypatch.context() as broken:
+        broken.setattr(os, "fsync", full_disk)
+        response = _reject(failing, run)
     assert response.status_code == 503
     assert "nothing was issued" in response.json()["detail"]
-    logs.unlink()
-    aside.rename(logs)
     assert _reject(failing, run).json()["status"] == "REJECTED"
     assert _log(client, run)["verify"]["valid"] is True
 
@@ -321,6 +325,29 @@ def test_a_log_edited_on_disk_refuses_decisions_and_issues_nothing(
     # Neither attempt counted as the run's decision.
     path.write_text(original)
     assert _sign(failing, run)["status"] == "APPROVED"
+
+
+def test_an_edit_that_keeps_size_and_mtime_still_stops_every_decision(
+    client: TestClient, logs: Path
+) -> None:
+    run = _deal_run(client)
+    path = logs / f"{run['run_id']}.jsonl"
+    original = path.read_text()
+    times = path.stat()
+    target = next(c for c in original if c.isdigit())
+    swapped = "1" if target != "1" else "2"
+    path.write_text(original.replace(target, swapped, 1))
+    os.utime(path, ns=(times.st_atime_ns, times.st_mtime_ns))
+
+    failing = TestClient(client.app, raise_server_exceptions=False)
+    for response in (
+        _reject(failing, run),
+        failing.post(f"/runs/{run['run_id']}/signoff", json=_signoff_body(run)),
+    ):
+        assert response.status_code == 409
+        assert response.json()["code"] == "LOG_INTEGRITY"
+    assert path.read_text() != original
+    assert len(path.read_text()) == len(original)
 
 
 def test_a_package_the_scenario_cannot_show_it_offered_is_not_eligible(

@@ -331,11 +331,13 @@ function SignoffResultView({ signoff, onNewPlan }: { signoff: SignoffState; onNe
         <div className="space-y-2 rounded-lg border border-success/40 bg-success-soft p-3 text-sm">
           <p className="flex items-center gap-1.5 font-semibold text-success">
             <CircleCheck aria-hidden className="size-4" />
-            Requests issued, nothing executed
+            {signoff.result.requests.length > 0 ? "Requests issued, nothing executed" : "No requests issued, nothing executed"}
           </p>
           <p className="text-xs">
-            Approved by {DECIDED_BY}. {signoffStatusLabel(signoff.result.status).detail} ATC and the pilot still
-            have to act on the requests.
+            Approved by {DECIDED_BY}.{" "}
+            {signoff.result.requests.length > 0
+              ? "Requests were issued, not granted. Nothing has been executed. ATC and the pilot still have to act on the requests."
+              : "You chose not to send any requests, so ATC and the pilot have not been asked. Nothing has been executed."}
           </p>
           <TermList title="Airline decisions approved" items={signoff.result.airline_decisions} />
           <TermList title="Requests issued" items={signoff.result.requests} />
