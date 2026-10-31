@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, CircleCheck, CircleX, Hash, Send, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -250,12 +251,6 @@ function SignoffForm({
             </li>
           ))}
         </ul>
-        <div className="flex items-start gap-2 pt-1 text-sm">
-          <Checkbox id="approve-decisions" checked={decide} onCheckedChange={(v) => setDecide(v)} className="mt-0.5" />
-          <label htmlFor="approve-decisions" className="font-medium">
-            I approve these decisions
-          </label>
-        </div>
       </fieldset>
 
       <fieldset className="space-y-1.5" disabled={locked}>
@@ -278,16 +273,26 @@ function SignoffForm({
             </li>
           ))}
         </ul>
-        <div className="flex items-start gap-2 pt-1 text-sm">
-          <Checkbox id="send-requests" checked={request} onCheckedChange={(v) => setRequest(v)} className="mt-0.5" />
-          <label htmlFor="send-requests" className="font-medium">
-            Send these requests
-          </label>
-        </div>
       </fieldset>
 
-      {/* Stays on screen while the rest of the panel scrolls. */}
-      <div className="sticky -bottom-4 z-10 space-y-1 bg-card pt-2 pb-3">
+      {/* Stops following the scroll once decided, so it cannot cover the outcome above it. */}
+      <div className={cn("space-y-1.5 bg-card pt-2 pb-3", !approved && !decided && "sticky -bottom-4 z-10")}>
+        {!confirmingReject && !locked && !refused && (
+          <div className="space-y-1 text-sm">
+            <div className="flex items-start gap-2">
+              <Checkbox id="approve-decisions" checked={decide} disabled={locked} onCheckedChange={(v) => setDecide(v)} className="mt-0.5" />
+              <label htmlFor="approve-decisions" className="font-medium">
+                I approve these decisions
+              </label>
+            </div>
+            <div className="flex items-start gap-2">
+              <Checkbox id="send-requests" checked={request} disabled={locked} onCheckedChange={(v) => setRequest(v)} className="mt-0.5" />
+              <label htmlFor="send-requests" className="font-medium">
+                Send these requests
+              </label>
+            </div>
+          </div>
+        )}
         {confirmingReject && !decided ? (
           <div ref={showWhenOpened} className="space-y-2 rounded-lg border border-destructive/40 bg-destructive-soft p-2">
             <p className="text-sm font-semibold">Reject this plan? Nothing is issued, and this run cannot then be approved.</p>

@@ -436,6 +436,11 @@ function FlightMapView({ flights, selected, planAction, frame: frameRef, classNa
         aria-label={selected ? `Map of ${selected.flight_id}, ${selected.route}. The aircraft position is illustrative.` : "Map of delayed flights"}
         className={cn("absolute inset-0 transition-opacity duration-700", ready ? "opacity-100" : "opacity-0")}
       />
+      {!ready && (
+        <p role="status" className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+          Loading map
+        </p>
+      )}
     </div>
   );
 }
