@@ -22,7 +22,7 @@ Follow `runbook.md` first. Then:
 
 ## Beat 1. The user (0:00 to 0:22). Budget 55 words, spoken text 52
 
-**Screen:** the overview. The globe is headed "Demo flights", with the **Arrivals** table under it. Its Outcome column comes from saved runs, which the page replays on load with no model calls.
+**Screen:** the overview. The globe is headed "Demo flights", with the **Arrivals** table under it. Its Outcome column comes from 19 saved runs, which the page replays on load with no model calls. On a first load the table takes a few seconds to fill (about 8 when measured), so open the overview before you go on.
 
 **Click:** under the **Arrivals** table, click **Next** once, then click the row "WN4832", "DCA → MDW", as you say "I pick". It opens the flights page, and the strip shows "Agents working, live" with a seconds count. It takes about 15 to 20 seconds, and the rest of beat 1 and the opening of beat 2 fill that.
 
