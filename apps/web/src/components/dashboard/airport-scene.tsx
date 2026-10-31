@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { Canvas, useFrame, type ThreeEvent } from "@react-three/fiber";
-import { Html, OrbitControls } from "@react-three/drei";
+import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import type { Run, RunOverrides } from "@/lib/api-types";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
@@ -35,6 +35,58 @@ function slot(i: number, count: number, from: number, to: number) {
 }
 const rz = (i: number, count: number) => slot(i, count, -12, 7);
 const gx = (i: number, count: number) => slot(i, count, -20, 14);
+
+/**
+ * Screen labels for points in the scene. The labels are ordinary page
+ * elements over the canvas, moved each frame to where their point projects.
+ * drei's <Html> was used before; it makes one React root per label and
+ * unmounts them during React's own render, which raised console errors and
+ * crashed the page when switching back to the map.
+ */
+type LabelEls = MutableRefObject<Map<string, HTMLElement>>;
+interface LabelAnchor {
+  key: string;
+  /** A fixed point, or a live one that something in the scene updates. */
+  at: [number, number, number] | MutableRefObject<THREE.Vector3>;
+}
+
+function LabelProjector({ anchors, els }: { anchors: LabelAnchor[]; els: LabelEls }) {
+  const v = useMemo(() => new THREE.Vector3(), []);
+  useFrame(({ camera, size }) => {
+    for (const a of anchors) {
+      const el = els.current.get(a.key);
+      if (!el) continue;
+      if (Array.isArray(a.at)) v.set(a.at[0], a.at[1], a.at[2]);
+      else v.copy(a.at.current);
+      v.project(camera);
+      if (v.z > 1) {
+        el.style.visibility = "hidden";
+        continue;
+      }
+      const x = ((v.x + 1) / 2) * size.width;
+      const y = ((1 - v.y) / 2) * size.height;
+      el.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
+      el.style.visibility = "visible";
+    }
+  });
+  return null;
+}
+
+/** A label placed by LabelProjector. Hidden until the first frame places it. */
+function ScreenLabel({ id, els, z, children }: { id: string; els: LabelEls; z: number; children: ReactNode }) {
+  return (
+    <div
+      ref={(el) => {
+        if (el) els.current.set(id, el);
+        else els.current.delete(id);
+      }}
+      className="absolute top-0 left-0"
+      style={{ visibility: "hidden", zIndex: z }}
+    >
+      {children}
+    </div>
+  );
+}
 
 function cursor(on: boolean) {
   document.body.style.cursor = on ? "pointer" : "";
@@ -85,14 +137,15 @@ function DelayedFlight({
   runwayZ,
   gateX,
   holds,
-  label,
+  anchorRef,
   moving,
 }: {
   runwayZ: number | null;
   gateX: number | null;
   /** True only when the plan's action really is a hold. */
   holds: boolean;
-  label: React.ReactNode;
+  /** Updated each frame with where the flight's label goes. */
+  anchorRef: MutableRefObject<THREE.Vector3>;
   moving: boolean;
 }) {
   const ref = useRef<THREE.Group>(null);
@@ -135,6 +188,8 @@ function DelayedFlight({
     const p = path.getPointAt(u);
     path.getPointAt(Math.min(u + 0.002, 1), ahead);
     g.position.copy(p);
+    g.getWorldPosition(anchorRef.current);
+    anchorRef.current.y += 2.4;
     if (ahead.distanceToSquared(p) > 1e-6) {
       g.lookAt(ahead);
       g.rotateY(-Math.PI / 2);
@@ -152,22 +207,17 @@ function DelayedFlight({
         <ringGeometry args={[3.2, 3.4, 48]} />
         <meshBasicMaterial color={BEACON} transparent opacity={0.6} side={THREE.DoubleSide} />
       </mesh>
-      <Html position={[0, 2.4, 0]} center zIndexRange={[5, 0]}>
-        {label}
-      </Html>
     </group>
   );
 }
 
 function Runway({
-  id,
   z,
   closed,
   assigned,
   disabled,
   onToggle,
 }: {
-  id: string;
   z: number;
   closed: boolean;
   assigned: boolean;
@@ -224,33 +274,17 @@ function Runway({
             ))}
           </group>
         ))}
-      <Html position={[RUNWAY_HALF + 3, 0.2, 0]} center zIndexRange={[4, 0]}>
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={onToggle}
-          aria-pressed={closed}
-          aria-label={`Runway ${id}, ${closed ? "closed" : "open"}${assigned ? ", assigned" : ""}. ${closed ? "Reopen" : "Close"} it.`}
-          className={`rounded-md px-1.5 py-0.5 font-display text-sm font-semibold whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-            closed ? "bg-destructive/20 text-destructive" : assigned ? "bg-beacon/15 text-beacon" : "bg-card/70 text-muted-foreground"
-          }`}
-        >
-          {id}
-        </button>
-      </Html>
     </group>
   );
 }
 
 function Gate({
-  id,
   x,
   closed,
   assigned,
   disabled,
   onToggle,
 }: {
-  id: string;
   x: number;
   closed: boolean;
   assigned: boolean;
@@ -291,20 +325,6 @@ function Gate({
         <boxGeometry args={[0.6, 0.6, 2.4]} />
         <meshStandardMaterial color="#3a3b44" />
       </mesh>
-      <Html position={[0, 0.2, 2.6]} center zIndexRange={[4, 0]}>
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={onToggle}
-          aria-pressed={closed}
-          aria-label={`Gate ${id}, ${closed ? "blocked" : "free"}${assigned ? ", assigned" : ""}. ${closed ? "Free" : "Block"} it.`}
-          className={`rounded-md px-1.5 py-0.5 font-display text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-            closed ? "bg-destructive/20 text-destructive" : assigned ? "bg-beacon/15 text-beacon" : "bg-card/70 text-muted-foreground"
-          }`}
-        >
-          {id}
-        </button>
-      </Html>
     </group>
   );
 }
@@ -335,11 +355,19 @@ export function AirportScene({
   const runwayIdx = deal ? runways.findIndex((r) => r.id === deal.runway_id) : -1;
   const gateIdx = deal ? gates.findIndex((g) => g.id === deal.gate_id) : -1;
 
+  const labelEls = useRef(new Map<string, HTMLElement>());
+  const planeAt = useRef(new THREE.Vector3(0, -1000, 0));
+  const anchors: LabelAnchor[] = [
+    ...runways.map((r, i) => ({ key: `rwy-${r.id}`, at: [RUNWAY_HALF + 3, 0.2, rz(i, runways.length)] as [number, number, number] })),
+    ...gates.map((g, i) => ({ key: `gate-${g.id}`, at: [gx(i, gates.length), 0.2, GATE_Z + 2.6] as [number, number, number] })),
+    ...(flightId ? [{ key: "flight", at: planeAt }] : []),
+  ];
+
   return (
     <div className="relative size-full">
       <Canvas
         dpr={[1, 1.5]}
-        shadows
+        shadows="percentage"
         camera={{ position: [6, 70, 112], fov: 34, near: 1, far: 500 }}
         gl={{ antialias: true }}
         aria-label="3D model of the arrival airport"
@@ -378,7 +406,6 @@ export function AirportScene({
         {runways.map((r, i) => (
           <Runway
             key={r.id}
-            id={r.id}
             z={rz(i, runways.length)}
             closed={r.closed}
             assigned={deal?.runway_id === r.id}
@@ -389,7 +416,6 @@ export function AirportScene({
         {gates.map((g, i) => (
           <Gate
             key={g.id}
-            id={g.id}
             x={gx(i, gates.length)}
             closed={g.closed}
             assigned={deal?.gate_id === g.id}
@@ -404,22 +430,9 @@ export function AirportScene({
           gateX={deal ? gx(gateIdx, gates.length) : null}
           holds={holds}
           moving={moving}
-          label={
-            flightId && (
-              <div className="pointer-events-none rounded-lg border border-beacon/50 bg-card/85 px-2 py-1 text-xs whitespace-nowrap backdrop-blur">
-                <span className="font-display font-semibold">{flightId}</span>
-                {deal ? (
-                  <span className="text-muted-foreground">
-                    {" "}
-                    {deal.runway_id} {arrival ? `at ${arrival}` : ""}, gate {deal.gate_id}
-                  </span>
-                ) : (
-                  <span className="text-destructive"> no recovery plan</span>
-                )}
-              </div>
-            )
-          }
+          anchorRef={planeAt}
         />
+        <LabelProjector anchors={anchors} els={labelEls} />
 
         <OrbitControls
           enablePan={false}
@@ -430,6 +443,66 @@ export function AirportScene({
           target={[2, 2, 2]}
         />
       </Canvas>
+
+      {/* Labels over the canvas, placed each frame by LabelProjector. */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        {runways.map((r) => {
+          const closed = r.closed;
+          const assigned = deal?.runway_id === r.id;
+          const off = disabled || (r.closed && !closedRunways.includes(r.id));
+          return (
+            <ScreenLabel key={`rwy-${r.id}`} id={`rwy-${r.id}`} els={labelEls} z={4}>
+              <button
+                type="button"
+                disabled={off}
+                onClick={() => onRunway(r.id)}
+                aria-pressed={closed}
+                aria-label={`Runway ${r.id}, ${closed ? "closed" : "open"}${assigned ? ", assigned" : ""}. ${closed ? "Reopen" : "Close"} it.`}
+                className={`pointer-events-auto rounded-md px-1.5 py-0.5 font-display text-sm font-semibold whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  closed ? "bg-destructive/20 text-destructive" : assigned ? "bg-beacon/15 text-beacon" : "bg-card/70 text-muted-foreground"
+                }`}
+              >
+                {r.id}
+              </button>
+            </ScreenLabel>
+          );
+        })}
+        {gates.map((g) => {
+          const closed = g.closed;
+          const assigned = deal?.gate_id === g.id;
+          return (
+            <ScreenLabel key={`gate-${g.id}`} id={`gate-${g.id}`} els={labelEls} z={4}>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => onGate(g.id)}
+                aria-pressed={closed}
+                aria-label={`Gate ${g.id}, ${closed ? "blocked" : "free"}${assigned ? ", assigned" : ""}. ${closed ? "Free" : "Block"} it.`}
+                className={`pointer-events-auto rounded-md px-1.5 py-0.5 font-display text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  closed ? "bg-destructive/20 text-destructive" : assigned ? "bg-beacon/15 text-beacon" : "bg-card/70 text-muted-foreground"
+                }`}
+              >
+                {g.id}
+              </button>
+            </ScreenLabel>
+          );
+        })}
+        {flightId && (
+          <ScreenLabel id="flight" els={labelEls} z={5}>
+            <div className="rounded-lg border border-beacon/50 bg-card/85 px-2 py-1 text-xs whitespace-nowrap backdrop-blur">
+              <span className="font-display font-semibold">{flightId}</span>
+              {deal ? (
+                <span className="text-muted-foreground">
+                  {" "}
+                  {deal.runway_id} {arrival ? `at ${arrival}` : ""}, gate {deal.gate_id}
+                </span>
+              ) : (
+                <span className="text-destructive"> no recovery plan</span>
+              )}
+            </div>
+          </ScreenLabel>
+        )}
+      </div>
       <p className="pointer-events-none absolute top-3 right-3 max-w-60 rounded border border-dashed border-muted-foreground/60 bg-card/70 px-1.5 py-0.5 text-xs text-muted-foreground lg:top-[7.75rem] lg:right-[24.5rem]">
         Illustrative layout, not to scale: only the runway and gate IDs are from this run. Drag to turn.
       </p>
