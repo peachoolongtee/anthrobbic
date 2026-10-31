@@ -29,11 +29,14 @@ logger = logging.getLogger(__name__)
 POOL_SIZE: Final = 200
 POOL_SEED: Final = 0
 SCENARIO_SEED: Final = 0
-# Bounds the replay check when a recorded flight number recurs through the year.
-MAX_RECORDING_CANDIDATES: Final = 100
+# Bounds the replay check. A row must already match a brief to reach it.
+MAX_RECORDING_CANDIDATES: Final = 200
 
 _BRIEF_FLIGHT = re.compile(
     r'"flight_id":\s*\{\s*"provenance":\s*"\w+",\s*"value":\s*"([^"]+)"'
+)
+_BRIEF_EARLIEST = re.compile(
+    r'"earliest_arrival_min":\s*\{\s*"provenance":\s*"\w+",\s*"value":\s*(-?\d+)'
 )
 _DOT_FLIGHT = re.compile(r"[A-Z0-9]{2}\d+")
 
@@ -44,9 +47,10 @@ class CatalogueEntry:
     scenario: Scenario
 
 
-def recorded_flights(directory: Path) -> frozenset[str]:
-    """Flight IDs named in the briefs of the recordings on disk."""
-    found: set[str] = set()
+def recorded_briefs(directory: Path) -> frozenset[tuple[str, int]]:
+    """(flight ID, earliest arrival) from the briefs of the recordings on disk. A
+    flight number recurs through the year; the pair narrows it to its real rows."""
+    found: set[tuple[str, int]] = set()
     for path in directory.glob("*.json"):
         try:
             document = json.loads(path.read_text(encoding="utf-8"))
@@ -55,7 +59,11 @@ def recorded_flights(directory: Path) -> frozenset[str]:
             logger.warning("skipping unreadable recording %s", path.name)
             continue
         for message in messages:
-            found.update(_BRIEF_FLIGHT.findall(str(message.get("content", ""))))
+            content = str(message.get("content", ""))
+            flight = _BRIEF_FLIGHT.search(content)
+            earliest = _BRIEF_EARLIEST.search(content)
+            if flight is not None and earliest is not None:
+                found.add((flight.group(1), int(earliest.group(1))))
     return frozenset(found)
 
 
@@ -78,19 +86,23 @@ class Catalogue:
         self._entries: dict[str, CatalogueEntry] | None = None
 
     def _recorded_entries(self) -> list[CatalogueEntry]:
-        flights = recorded_flights(self._recordings_dir)
-        if not any(_DOT_FLIGHT.fullmatch(flight) for flight in flights):
+        briefs = recorded_briefs(self._recordings_dir)
+        flights = {flight for flight, _ in briefs if _DOT_FLIGHT.fullmatch(flight)}
+        if not flights:
             return []  # nothing can match a DOT row, so skip scanning the file
         entries: list[CatalogueEntry] = []
         tried = 0
         for row in dot.iter_eligible_rows():
             if row.flight_id not in flights:
                 continue
+            scenario = build_scenario(row, SCENARIO_SEED)
+            earliest = scenario.earliest_arrival_min.value
+            if earliest is None or (row.flight_id, earliest) not in briefs:
+                continue
             tried += 1
             if tried > MAX_RECORDING_CANDIDATES:
                 logger.warning("recording check stopped at the candidate bound")
                 break
-            scenario = build_scenario(row, SCENARIO_SEED)
             if replays_cleanly(scenario, self._recordings_dir):
                 entries.append(_entry(row, scenario, has_recording=True))
         return entries

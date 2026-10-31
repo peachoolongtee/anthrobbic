@@ -2,14 +2,16 @@
 
 import json
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
+from app.api import evaluation as evaluation_module
 from app.api import runs as runs_module
-from app.api.runs import RunService, build_injected
+from app.api.runs import RunService, build_injected, injection_scenario
 from app.config import Settings
 from app.main import create_app
 from app.negotiation import dot
@@ -270,6 +272,12 @@ def test_off_mode_returns_the_full_run_with_card_text_from_the_card(
     assert run["mode"] == "off"
     assert run["path"] == "fallback"
     assert run["fallback_trigger"] == "llm_off"
+    assert run["card"]["how_reached"] == "fallback_model_off"
+    assert (
+        "Chosen by rules. The model was off, so the agents did not run."
+        in (run["card"]["why"])
+    )
+    assert not any("did not agree" in line for line in run["card"]["why"])
     assert run["turns"] == []
     assert run["faults"] == []
     assert run["model_notes"] == []
@@ -525,7 +533,14 @@ def test_injected_plan_is_stopped_by_its_named_rule_and_marked(
     closed = any(r["closed"] for r in run["airport"]["runways"])
     if rule_id == "ATC-RWY-CLOSED" and not closed:
         # No runway here is closed, so the only breach is one the airport lacks.
-        assert package["violations"][0]["cause"] == "missing_data"
+        assert package["violations"][0]["cause"] == "constraint"
+        assert package["violations"][0]["message"] == "Uses a closed runway"
+        named = run["injection"]["closed_for_check"]
+        assert named == run["airport"]["runways"][0]["id"]
+        # Closed for that check only: the run's airport still has it open.
+        assert not any(r["closed"] for r in run["airport"]["runways"])
+        log = client.get(f"/runs/{run['run_id']}/log").text
+        assert f"closed_for_check: {named}" in log
         return
     assert package["violations"][0]["cause"] == "constraint"
     assert package["violations"][0]["unit"] not in (
@@ -577,6 +592,21 @@ def test_the_injected_package_really_fails_every_scenario_it_is_built_for(
                 check_package(scenario, package), key=repr
             )
             assert violations[0].rule_id == rule_id
+
+
+def test_a_closed_for_check_plan_is_illegal_in_the_runs_own_scenario_too(
+    flights_csv: Path,
+) -> None:
+    """Otherwise closing a runway only to judge it could name the run's own plan."""
+    for row in dot.iter_eligible_rows():
+        scenario = build_scenario(row)
+        judged_on, closed = injection_scenario(scenario, "ATC-RWY-CLOSED")
+        if closed is None:
+            continue
+        judged = build_injected(judged_on, "ATC-RWY-CLOSED", real=scenario)
+        assert judged is not None
+        assert check_package(scenario, judged[0])
+        assert judged[1][0].rule_id == "ATC-RWY-CLOSED"
 
 
 def test_a_run_that_somehow_ends_on_the_injected_plan_is_refused(
@@ -791,7 +821,7 @@ def _measure(**changes: Any) -> dict[str, Any]:
         "name": "Fallback rate",
         "compared_against": "reported as measured",
         "evidence_class": "rules_only",
-        "status": "measured",
+        "status": "MEASURED",
         "value": 0.25,
         "unit": "",
         "k": 1,
@@ -799,7 +829,15 @@ def _measure(**changes: Any) -> dict[str, Any]:
         "ci_low": 0.05,
         "ci_high": 0.7,
         "note": "",
-        "meta": {"commit": "abc1234", "mode": "off", "seed": 7},
+        "meta": {
+            "commit": "abc1234",
+            "commit_dirty": False,
+            "mode": "off",
+            "split": "none",
+            "seed": 7,
+            "sample_size": 4,
+            "generated_at": "2026-10-31T04:21:02+00:00",
+        },
         **changes,
     }
 
@@ -809,6 +847,7 @@ def test_evaluation_with_no_output_is_marked_not_yet_run(client: TestClient) -> 
         "status": "not_yet_run",
         "rows": [],
         "limits": [],
+        "failures": [],
     }
 
 
@@ -818,11 +857,14 @@ def test_evaluation_reads_output_without_changing_a_number(
     report = {
         "panels": [
             {
+                "title": "A panel",
                 "measures": [
                     _measure(),
                     _measure(name="Unguarded violations", k=None, value=3, unit="rows"),
-                    _measure(name="Control", status="NOT_REACHED", value=None),
-                ]
+                    _measure(
+                        name="Control", status="NOT_REACHED", value=None, k=None, n=None
+                    ),
+                ],
             }
         ],
         "limits": ["Simulated outcomes on 2015 data."],
@@ -832,14 +874,40 @@ def test_evaluation_reads_output_without_changing_a_number(
     assert body["status"] == "ok"
     assert body["limits"] == ["Simulated outcomes on 2015 data."]
     first, unguarded, control = body["rows"]
-    assert first["value"] == "1/4"
+    assert first["value"] == "1/4 (25.0%)"
     assert first["interval"] == [0.05, 0.7]
+    assert first["interval_text"] == "5.0-70.0%"
+    assert first["panel"] == "A panel"
     assert first["evidence_class"] == "rules_only"
     assert (first["commit"], first["mode"], first["seed"]) == ("abc1234", "off", 7)
     assert first["arm"] == "guarded"
     assert unguarded["arm"] == "unguarded_model"
     assert unguarded["value"] == "3 rows"
     assert control["value"] == "NOT_REACHED"
+
+
+def test_the_real_rules_only_report_is_read_with_its_numbers_and_limits(
+    client: TestClient, results: Path
+) -> None:
+    """The committed report, not a test file: its shape is what the reader must fit."""
+    real = Path(evaluation_module.DEFAULT_RESULTS_DIR) / "latest_off_none.json"
+    report = json.loads(real.read_text())
+    shutil.copy(real, results / real.name)
+    body = client.get("/evaluation").json()
+    assert body["status"] == "ok"
+    assert body["failures"] == report["failures"]
+    assert body["limits"] == report["limits"]
+    measures = [m for p in report["panels"] for m in p["measures"]]
+    assert len(body["rows"]) == len(measures)
+    assert {r["evidence_class"] for r in body["rows"]} == {"rules_only", "test"}
+    by_name = {r["metric"]: r for r in body["rows"]}
+    deal = by_name["Deal rate, all rows"]
+    source = next(m for m in measures if m["name"] == "Deal rate, all rows")
+    assert deal["value"].startswith(f"{source['k']}/{source['n']} (")
+    assert deal["interval_text"].endswith("%")
+    assert deal["mode"] == "off"
+    reached = {r["value"] for r in body["rows"] if r["value"] == "NOT_REACHED"}
+    assert reached  # what needs a model says so, with no number beside it
 
 
 def test_broken_evaluation_output_shows_no_numbers(
@@ -850,8 +918,13 @@ def test_broken_evaluation_output_shows_no_numbers(
         "status": "unreadable",
         "rows": [],
         "limits": [],
+        "failures": [],
     }
     (results / "latest_off_all.json").write_text(json.dumps({"panels": [{}]}))
+    assert client.get("/evaluation").json()["status"] == "unreadable"
+    wrong = {"panels": [{"title": "x", "measures": [{"name": "no fields"}]}]}
+    wrong["limits"] = []
+    (results / "latest_off_all.json").write_text(json.dumps(wrong))
     assert client.get("/evaluation").json()["status"] == "unreadable"
 
 
