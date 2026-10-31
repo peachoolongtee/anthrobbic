@@ -115,6 +115,10 @@ Turn 1 is each agent answering alone. Turn 2 happens only when turn 1 gave no pl
 
 The crew-duty and gate-notice rules measured time across a time-zone difference. The crew report time and the late-aircraft decision time came from the origin airport's scheduled departure, while slots and taxi-in are on the destination's clock, so the two sides of the sum were on different clocks. The independent verification caught it. The fix (commit `83d7a7e`) moves both onto the destination clock, using the offset the arrival arithmetic already derives from the row, and adds a test file for the clocks. Because it changed what is legal, we regenerated the rules-only results and do not quote the older run. We tell you this because it is how we work: a check by someone other than the author found a real defect, we fixed it, and then we re-measured. It does not show there are no more.
 
+## 26. Why can the live run differ from the recording?
+
+A live run asks the model again. Recorded replays what it answered once. In the one live test we measured on WN4832 (n=1), the counts were ATC 4 then 12, Pilot 8 then 8, Ground 7 then 7, and the plan was gate G2, runway R3, hold, landing 21:15. The recording has Ground 7 then 12 and gate G1. We make no claim about how often they differ. In both, code decides what is legal, and Live is available only when the API is started with `ALLOW_LIVE=1`.
+
 ---
 
 ## Notes for the team (not for the stage)
