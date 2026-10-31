@@ -61,6 +61,10 @@ export function Dashboard() {
   // A refused sign-off leaves the plan on screen out of date until a new one is made.
   const refused = d.signoff.status === "done" && !isApproved(d.signoff.result.status) ? d.signoff.result : null;
   const banner = refused ? refusalBanner(refused.status) : null;
+  const changed = [
+    ...(d.overrides.closed_runways ?? []).map((id) => `runway ${id} closed`),
+    ...(d.overrides.closed_gates ?? []).map((id) => `gate ${id} blocked`),
+  ];
 
   const pickFlight = (id: string) => {
     setTab(null);
@@ -295,6 +299,14 @@ export function Dashboard() {
             <p role="status" className="rounded-xl border border-info/40 bg-info-soft p-3 text-sm">
               <strong>{d.rulesOnlyFlight} runs on rules only</strong>, because no model answers were saved for it. The mode
               was moved to Model off for this.
+            </p>
+          )}
+
+          {run && !running && changed.length > 0 && run.faults.some((f) => f.kind === "recording_miss") && (
+            <p role="status" className="rounded-xl border border-info/40 bg-info-soft p-3 text-sm">
+              <strong>This plan is for the changed airport</strong> ({changed.join(", ")}). Saved model answers only cover
+              the airport as recorded, so the rules chose this plan and the agents show no answer. Reset returns to the
+              recorded plan.
             </p>
           )}
 

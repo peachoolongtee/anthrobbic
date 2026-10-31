@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CircleAlert, CircleCheck } from "lucide-react";
+import { CircleAlert, CircleCheck, Download } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
 import { api, describeError, isUnreachable } from "@/lib/api";
 import type { RunLog, VerifyResult } from "@/lib/api-types";
 import { logKindLabel, verifyReasonLabel } from "@/lib/labels";
@@ -92,6 +93,14 @@ export function LogView({
           Each entry holds the hash of the one before, so an edit breaks the chain. The chain alone cannot catch a
           full rewrite. The head below is recorded on the sign-off so it can be compared.
         </p>
+        <a
+          href={api.consensusLogUrl(runId)}
+          download={`consensus-log-${runId}.json`}
+          className={buttonVariants({ variant: "secondary", size: "sm" })}
+        >
+          <Download aria-hidden />
+          Download consensus log
+        </a>
         <p className="font-mono text-xs break-all">
           <span className="font-sans font-medium">Log head </span>
           {log.head ?? logHead}

@@ -632,6 +632,13 @@ export const mockBackend = {
     };
   },
 
+  /** The mock's record of a run, marked as such, since no API can serve it. */
+  consensusLogUrl(runId: string): string {
+    const s = need(runId);
+    const file = { format: "mock-consensus-log", mock: "Every figure is invented sample data.", run: s.run, entries: logFor(s) };
+    return `data:application/json,${encodeURIComponent(JSON.stringify(file, null, 2))}`;
+  },
+
   async getLog(runId: string): Promise<RunLog> {
     await wait(200);
     const s = need(runId);

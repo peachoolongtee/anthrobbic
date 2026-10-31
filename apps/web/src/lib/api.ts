@@ -127,6 +127,12 @@ export const api = {
     return http<RunLog>(`/runs/${encodeURIComponent(runId)}/log`);
   },
 
+  /** A link to the whole record of a run, as one JSON file. Works in any run state. */
+  consensusLogUrl(runId: string): string {
+    if (IS_MOCK) return mockBackend.consensusLogUrl(runId);
+    return `${API_URL}/runs/${encodeURIComponent(runId)}/consensus-log`;
+  },
+
   verifyLog(runId: string, body: { tamper?: boolean } = {}): Promise<VerifyResult> {
     if (IS_MOCK) return mockBackend.verifyLog(runId, body);
     return post<VerifyResult>(`/runs/${encodeURIComponent(runId)}/log/verify`, body);
