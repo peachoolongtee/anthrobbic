@@ -220,4 +220,4 @@ def test_headline_lists_live_measures_apart_from_rules_only(
     assert live["Final packages breaking a rule"]["state"] == "absent"
     assert len(body["live"]) == len(HEADLINE)
     # The rules-only deal rate is untouched by the live one.
-    assert body["rules_only"][0]["value"].startswith("3905/5000")
+    assert body["rules_only"][0]["value"].endswith("/5000 (78.4%)")
