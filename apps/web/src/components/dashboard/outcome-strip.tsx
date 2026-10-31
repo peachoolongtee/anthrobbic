@@ -49,7 +49,7 @@ export function OutcomeStrip({ run }: { run: Run }) {
         <Chip label="Chosen by" tone="neutral">
           {run.path === "consensus" && "agents, then rules"}
           {run.path === "fallback" && "rules only, not agents"}
-          {run.path === "no_deal" && "nobody: yours to decide"}
+          {run.path === "no_go" && "nobody: no-go, yours to decide"}
         </Chip>
       </div>
       {run.faults.length > 0 && (

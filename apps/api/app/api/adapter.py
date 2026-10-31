@@ -20,7 +20,7 @@ from app.api.wire import (
     LogEntryView,
     ModelNoteView,
     NextLegView,
-    NoDealView,
+    NoGoView,
     PackageRef,
     RemovedPackage,
     RequestFact,
@@ -43,14 +43,14 @@ from app.negotiation.card import (
     RuleStatus,
     authority_terms,
     model_note,
-    no_deal_card,
+    no_go_card,
     package_name,
     violation_lines,
 )
 from app.negotiation.contracts import (
     Deal,
     Domain,
-    NoDeal,
+    NoGo,
     Package,
     Scenario,
     Violation,
@@ -219,11 +219,11 @@ def deal_view(deal: Deal) -> DealView:
     )
 
 
-def no_deal_view(no_deal: NoDeal, scenario: Scenario) -> NoDealView:
-    card = no_deal_card(no_deal, scenario)
-    nearest = no_deal.nearest_package
-    return NoDealView(
-        reason_type=no_deal.reason_type,
+def no_go_view(no_go: NoGo, scenario: Scenario) -> NoGoView:
+    card = no_go_card(no_go, scenario)
+    nearest = no_go.nearest_package
+    return NoGoView(
+        reason_type=no_go.reason_type,
         binding_rules=tuple(rule_result(line) for line in card.binding_evidence),
         packages_considered=card.packages_considered,
         nearest_package=(

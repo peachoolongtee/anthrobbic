@@ -3,7 +3,7 @@ from app.negotiation.contracts import (
     Connection,
     FlightPlanAction,
     GateOccupancy,
-    NoDeal,
+    NoGo,
 )
 from app.negotiation.fallback import decide
 from app.negotiation.utility import DEFAULT_WEIGHTS, compute_cost, weight_sensitivity
@@ -59,7 +59,7 @@ def test_costs_never_override_a_rule() -> None:
         gate_occupancies=(),
     )
     result = decide(scenario, free)
-    assert not isinstance(result, NoDeal)
+    assert not isinstance(result, NoGo)
     assert result.package.gate_id == "B1"  # the only wide-body gate
     # And a rule-breaking package keeps its cost without gaining legality.
     assert compute_cost(scenario, make_package(gate_id="A2"), free).total == 0
@@ -82,7 +82,7 @@ def blocked_g1_scenario():  # noqa: ANN201
 def test_sensitivity_reports_a_changed_choice() -> None:
     scenario = blocked_g1_scenario()
     default_choice = decide(scenario)
-    assert not isinstance(default_choice, NoDeal)
+    assert not isinstance(default_choice, NoGo)
     # Default: moving to B1 (50) beats holding on A1 (400 or more).
     assert default_choice.package.gate_id == "B1"
     expensive_moves = DEFAULT_WEIGHTS.model_copy(update={"per_gate_move": 5000})
@@ -102,7 +102,7 @@ def test_sensitivity_reports_no_change_when_the_choice_is_robust() -> None:
     assert report.default_package == report.alternate_package
 
 
-def test_sensitivity_of_a_no_deal_is_none_and_unchanged() -> None:
+def test_sensitivity_of_a_no_go_is_none_and_unchanged() -> None:
     scenario = make_scenario(fuel_on_board_kg=None)
     report = weight_sensitivity(scenario, DEFAULT_WEIGHTS)
     assert report.default_package is None

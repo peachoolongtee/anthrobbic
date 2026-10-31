@@ -10,8 +10,8 @@ from app.negotiation.contracts import (
     Domain,
     FlightPlanAction,
     GateOccupancy,
-    NoDeal,
-    NoDealReason,
+    NoGo,
+    NoGoReason,
     Package,
     Proposal,
     Provenance,
@@ -251,8 +251,8 @@ def test_occupancy_and_weather_must_be_ordered() -> None:
 
 
 def test_result_kinds_are_discriminated() -> None:
-    no_deal = NoDeal(
-        reason_type=NoDealReason.NOTHING_LEGAL,
+    no_go = NoGo(
+        reason_type=NoGoReason.NOTHING_LEGAL,
         binding_rule_ids=("X",),
         eliminations=(),
         packages_considered=1,
@@ -260,7 +260,7 @@ def test_result_kinds_are_discriminated() -> None:
         nearest_violations=(),
         reason="r",
     )
-    assert no_deal.kind == "NO_DEAL"
+    assert no_go.kind == "NO_GO"
     violation = Violation(
         rule_id="X",
         domain=Domain.ATC,

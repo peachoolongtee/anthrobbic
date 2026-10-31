@@ -15,7 +15,7 @@ from app.negotiation.contracts import (
     DecisionPoint,
     FlightPlanAction,
     GateOccupancy,
-    NoDeal,
+    NoGo,
     Package,
     Provenance,
     Scenario,
@@ -107,7 +107,7 @@ def test_the_fallback_decides_every_fixture_scenario(
 ) -> None:
     for row in rows.values():
         for seed in range(5):
-            assert isinstance(decide(build(row, csv_file, seed)), Deal | NoDeal)
+            assert isinstance(decide(build(row, csv_file, seed)), Deal | NoGo)
 
 
 def test_provenance_labels_are_exact_and_documented(
@@ -468,7 +468,7 @@ def test_real_rows_build_deterministic_scenarios_with_a_real_mix() -> None:
         decision = decide(scenario)
         results.append(decision.kind)
     # Neither trivially legal nor impossible across the sample.
-    assert 0 < results.count("NO_DEAL") < len(results)
+    assert 0 < results.count("NO_GO") < len(results)
     assert 0 < results.count("DEAL") < len(results)
 
 

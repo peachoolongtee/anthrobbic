@@ -16,8 +16,8 @@ from app.negotiation.contracts import (
     ArrivalSlot,
     Deal,
     FlightPlanAction,
-    NoDeal,
-    NoDealReason,
+    NoGo,
+    NoGoReason,
     Package,
     Scenario,
 )
@@ -35,11 +35,11 @@ SMALL_SEEDS = range(150)
 def test_random_scenarios_are_a_meaningful_sample() -> None:
     results = [decide(random_scenario(seed)) for seed in BIG_SEEDS]
     deals = [r for r in results if isinstance(r, Deal)]
-    no_deals = [r for r in results if isinstance(r, NoDeal)]
+    no_gos = [r for r in results if isinstance(r, NoGo)]
     assert len(deals) >= 50
-    assert len(no_deals) >= 20
-    # Both kinds of NoDeal occur, so both paths are exercised.
-    assert {r.reason_type for r in no_deals} == set(NoDealReason)
+    assert len(no_gos) >= 20
+    # Both kinds of NoGo occur, so both paths are exercised.
+    assert {r.reason_type for r in no_gos} == set(NoGoReason)
 
 
 @pytest.mark.parametrize("seed", BIG_SEEDS)
@@ -111,7 +111,7 @@ def test_tie_break_picks_the_minimum_over_an_independent_exhaustive_scan(
             )
 
     if not legal:
-        assert isinstance(result, NoDeal)
+        assert isinstance(result, NoGo)
         return
     assert isinstance(result, Deal)
     best_key, best_package = min(legal, key=lambda item: item[0])
@@ -123,7 +123,7 @@ def test_tie_break_picks_the_minimum_over_an_independent_exhaustive_scan(
 def test_small_sample_has_both_outcomes_and_real_ties() -> None:
     outcomes = [decide(random_scenario(s, small=True)) for s in SMALL_SEEDS]
     assert any(isinstance(o, Deal) for o in outcomes)
-    assert any(isinstance(o, NoDeal) for o in outcomes)
+    assert any(isinstance(o, NoGo) for o in outcomes)
     ties = 0
     for seed in SMALL_SEEDS:
         scenario = random_scenario(seed, small=True)

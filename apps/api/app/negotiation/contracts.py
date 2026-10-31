@@ -405,20 +405,20 @@ class RuleElimination(FrozenModel):
     packages_eliminated: int
 
 
-class NoDealReason(StrEnum):
+class NoGoReason(StrEnum):
     NOTHING_LEGAL = "NOTHING_LEGAL"  # a real constraint blocks every package
     SYSTEM_FAULT = "SYSTEM_FAULT"  # missing data or a failure blocks every package
 
 
-class NoDeal(FrozenModel):
+class NoGo(FrozenModel):
     """No package passed every rule. Escalate to the duty manager.
 
     `nearest_package` is the one failing the fewest rules, so a reader sees what
     would have to change. It is None only when no package was enumerated.
     """
 
-    kind: Literal["NO_DEAL"] = "NO_DEAL"
-    reason_type: NoDealReason
+    kind: Literal["NO_GO"] = "NO_GO"
+    reason_type: NoGoReason
     binding_rule_ids: tuple[str, ...]
     eliminations: tuple[RuleElimination, ...]
     packages_considered: int
@@ -430,7 +430,7 @@ class NoDeal(FrozenModel):
     binding_violations: tuple[Violation, ...] = ()
 
 
-type Decision = Deal | NoDeal
+type Decision = Deal | NoGo
 
 
 @dataclass(frozen=True, slots=True)

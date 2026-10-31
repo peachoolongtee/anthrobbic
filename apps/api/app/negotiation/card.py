@@ -1,4 +1,4 @@
-"""Decision and no-deal cards. Every statement shown as fact is built here.
+"""Decision and no-go cards. Every statement shown as fact is built here.
 
 Text comes from templates in this file and structured values (integers,
 enums, scenario identifiers). Nothing a model wrote can reach a `Card`: the
@@ -28,8 +28,8 @@ from app.negotiation.contracts import (
     Deal,
     Domain,
     FrozenModel,
-    NoDeal,
-    NoDealReason,
+    NoGo,
+    NoGoReason,
     Package,
     Provenance,
     Scenario,
@@ -582,7 +582,7 @@ def decision_card(
 
     `how_reached` is required: the card states how the plan was chosen, and it is
     part of the card hash. `decision` is a `Deal` or a bare `Package`. A
-    `NoDeal` has no package; use `no_deal_card`. `violations` are those the
+    `NoGo` has no package; use `no_go_card`. `violations` are those the
     rules report at this state.
     """
     if isinstance(decision, Deal):
@@ -594,7 +594,7 @@ def decision_card(
     elif isinstance(decision, Package):
         package, selection = decision, None
     else:
-        raise TypeError("decision_card needs a Deal or a Package; see no_deal_card")
+        raise TypeError("decision_card needs a Deal or a Package; see no_go_card")
     if cost is None:
         raise ValueError("a cost breakdown is required for a Package")
 
@@ -672,25 +672,25 @@ def decision_card(
     )
 
 
-# ------------------------------------------------------------ no deal
+# ------------------------------------------------------------ no-go
 
-_NO_DEAL_HEADLINES: Mapping[NoDealReason, str] = MappingProxyType(
+_NO_GO_HEADLINES: Mapping[NoGoReason, str] = MappingProxyType(
     {
-        NoDealReason.NOTHING_LEGAL: (
-            "NO DEAL: nothing legal. A real constraint blocks every candidate package."
+        NoGoReason.NOTHING_LEGAL: (
+            "NO-GO: nothing legal. A real constraint blocks every candidate package."
         ),
-        NoDealReason.SYSTEM_FAULT: (
-            "NO DEAL: system fault. Missing data or a failure blocked the search; "
+        NoGoReason.SYSTEM_FAULT: (
+            "NO-GO: system fault. Missing data or a failure blocked the search; "
             "this is not a finding that nothing is legal."
         ),
     }
 )
-_NO_DEAL_ACTIONS: Mapping[NoDealReason, str] = MappingProxyType(
+_NO_GO_ACTIONS: Mapping[NoGoReason, str] = MappingProxyType(
     {
-        NoDealReason.NOTHING_LEGAL: (
+        NoGoReason.NOTHING_LEGAL: (
             "A human decides this case. Nothing has been approved or requested."
         ),
-        NoDealReason.SYSTEM_FAULT: (
+        NoGoReason.SYSTEM_FAULT: (
             "Fix the fault or supply the missing data, then run again. Nothing has "
             "been approved or requested."
         ),
@@ -699,12 +699,12 @@ _NO_DEAL_ACTIONS: Mapping[NoDealReason, str] = MappingProxyType(
 
 
 NO_RULE = "NO-RULE"
-_NO_PACKAGE_CHANGES: Mapping[NoDealReason, str] = MappingProxyType(
+_NO_PACKAGE_CHANGES: Mapping[NoGoReason, str] = MappingProxyType(
     {
-        NoDealReason.NOTHING_LEGAL: (
+        NoGoReason.NOTHING_LEGAL: (
             "No candidate package fits the planning window; widen the window."
         ),
-        NoDealReason.SYSTEM_FAULT: (
+        NoGoReason.SYSTEM_FAULT: (
             "No candidate package could be built; supply the missing scenario inputs."
         ),
     }
@@ -723,9 +723,9 @@ class ChangeLine(FrozenModel):
     text: str
 
 
-class NoDealCard(FrozenModel):
-    kind: Literal["NO_DEAL"] = "NO_DEAL"
-    reason_type: NoDealReason
+class NoGoCard(FrozenModel):
+    kind: Literal["NO_GO"] = "NO_GO"
+    reason_type: NoGoReason
     headline: str
     what_to_do: str
     packages_considered: int
@@ -760,10 +760,10 @@ def _change(line: RuleLine) -> ChangeLine:
     )
 
 
-def no_deal_card(no_deal: NoDeal, scenario: Scenario | None = None) -> NoDealCard:
-    """The card for a `NoDeal`. `NoDeal.reason` is free text and is not used."""
-    counts = {e.rule_id: e.packages_eliminated for e in no_deal.eliminations}
-    binding_ids = set(no_deal.binding_rule_ids)
+def no_go_card(no_go: NoGo, scenario: Scenario | None = None) -> NoGoCard:
+    """The card for a `NoGo`. `NoGo.reason` is free text and is not used."""
+    counts = {e.rule_id: e.packages_eliminated for e in no_go.eliminations}
+    binding_ids = set(no_go.binding_rule_ids)
     binding = tuple(
         BindingRule(
             rule_id=rule_id if rule_id in _RULES_BY_ID else "UNKNOWN-RULE",
@@ -775,10 +775,10 @@ def no_deal_card(no_deal: NoDeal, scenario: Scenario | None = None) -> NoDealCar
             packages_eliminated=counts.get(rule_id, 0),
             binding=rule_id in binding_ids,
         )
-        for rule_id in dict.fromkeys((*no_deal.binding_rule_ids, *counts))
+        for rule_id in dict.fromkeys((*no_go.binding_rule_ids, *counts))
     )
-    nearest = no_deal.nearest_package
-    lines = rule_lines(scenario, no_deal.nearest_violations, nearest) if nearest else ()
+    nearest = no_go.nearest_package
+    lines = rule_lines(scenario, no_go.nearest_violations, nearest) if nearest else ()
     failing = tuple(line for line in lines if line.status is not RuleStatus.PASS)
     authority: AuthoritySplit | None = None
     if nearest is not None:
@@ -786,13 +786,13 @@ def no_deal_card(no_deal: NoDeal, scenario: Scenario | None = None) -> NoDealCar
         authority = AuthoritySplit(
             airline_decides=airline, requests_only=requests, notes=_AUTHORITY_NOTES
         )
-    return NoDealCard(
-        reason_type=no_deal.reason_type,
-        headline=_NO_DEAL_HEADLINES[no_deal.reason_type],
-        what_to_do=_NO_DEAL_ACTIONS[no_deal.reason_type],
-        packages_considered=no_deal.packages_considered,
+    return NoGoCard(
+        reason_type=no_go.reason_type,
+        headline=_NO_GO_HEADLINES[no_go.reason_type],
+        what_to_do=_NO_GO_ACTIONS[no_go.reason_type],
+        packages_considered=no_go.packages_considered,
         binding_rules=binding,
-        binding_evidence=violation_lines(scenario, no_deal.binding_violations),
+        binding_evidence=violation_lines(scenario, no_go.binding_violations),
         nearest_package_name=package_name(nearest) if nearest else None,
         nearest_authority=authority,
         nearest_rules=failing,
@@ -801,7 +801,7 @@ def no_deal_card(no_deal: NoDeal, scenario: Scenario | None = None) -> NoDealCar
             if nearest is not None
             else (
                 ChangeLine(
-                    rule_id=NO_RULE, text=_NO_PACKAGE_CHANGES[no_deal.reason_type]
+                    rule_id=NO_RULE, text=_NO_PACKAGE_CHANGES[no_go.reason_type]
                 ),
             )
         ),
@@ -860,7 +860,7 @@ def _render_note(note: ModelNote) -> list[str]:
     return ["", f"MODEL NOTE ({note.label})", *body]
 
 
-def render(card: Card | NoDealCard, note: ModelNote | None = None) -> str:
+def render(card: Card | NoGoCard, note: ModelNote | None = None) -> str:
     """Plain text. Facts first; a model note, if any, last and quoted."""
     out: list[str] = [card.headline]
     if isinstance(card, Card):

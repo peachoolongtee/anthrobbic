@@ -64,7 +64,7 @@ def enumerate_packages(scenario: Scenario) -> tuple[Package, ...]:
     """Every coherent package, in stable order.
 
     Raises `PackageBoundError` rather than truncating: a silently dropped
-    package could turn a legal deal into a false `NoDeal`.
+    package could turn a legal deal into a false `NoGo`.
     """
     earliest = scenario.earliest_arrival_min.value
     runways = scenario.runways.value

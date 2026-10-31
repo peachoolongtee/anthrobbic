@@ -329,7 +329,7 @@ def test_recorded_mode_with_no_recording_logs_the_miss_and_falls_back(
 ) -> None:
     row = _scenarios(client, limit=1)[0]
     run = _post_run(client, row["scenario_id"], "recorded")
-    assert run["path"] in ("fallback", "no_deal")
+    assert run["path"] in ("fallback", "no_go")
     assert run["fallback_trigger"] == "fault"
     assert {f["kind"] for f in run["faults"]} == {"recording_miss"}
     assert {f["domain"] for f in run["faults"]} == {"atc", "pilot", "ground"}
@@ -433,18 +433,18 @@ def test_the_key_is_never_returned(
 # --- close a runway, block a gate ----------------------------------------------
 
 
-def test_closing_every_runway_is_no_deal_with_binding_rules_and_no_card(
+def test_closing_every_runway_is_no_go_with_binding_rules_and_no_card(
     client: TestClient,
 ) -> None:
     base = _deal_run(client)
     runways = [r["id"] for r in base["airport"]["runways"]]
     run = _post_run(client, base["scenario_id"], closed_runways=runways)
-    assert run["path"] == "no_deal"
+    assert run["path"] == "no_go"
     assert run["card"] is None
     decision = run["decision"]
-    assert decision["kind"] == "NO_DEAL"
+    assert decision["kind"] == "NO_GO"
     assert decision["reason_type"] == "NOTHING_LEGAL"
-    assert decision["reason"].startswith("NO DEAL: nothing legal.")
+    assert decision["reason"].startswith("NO-GO: nothing legal.")
     binding = {line["rule_id"]: line for line in decision["binding_rules"]}
     assert binding["ATC-RWY-CLOSED"]["observed"] == 1
     assert binding["ATC-RWY-CLOSED"]["limit"] == 0

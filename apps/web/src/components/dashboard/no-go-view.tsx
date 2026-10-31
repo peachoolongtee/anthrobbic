@@ -1,5 +1,5 @@
 import { ServerCrash, ShieldAlert } from "lucide-react";
-import type { NoDeal } from "@/lib/api-types";
+import type { NoGo } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
 import { RuleList } from "@/components/dashboard/rule-line";
 
@@ -9,7 +9,7 @@ const COPY = {
     tone: "border-destructive/40 bg-destructive-soft",
     iconTone: "text-destructive",
     title: "No legal recovery plan",
-    kind: "Nothing is legal",
+    kind: "No-go: nothing is legal",
     lead: "Every possible plan breaks at least one rule. This is a real constraint, not a fault. The system is working as designed: it will not offer an unsafe plan.",
     next: "Decide with air traffic control, the crew and the ramp. The closest plan below shows what would have to change.",
   },
@@ -18,23 +18,23 @@ const COPY = {
     tone: "border-warning/50 bg-warning-soft",
     iconTone: "text-warning",
     title: "The system could not decide",
-    kind: "System fault",
+    kind: "No-go: system fault",
     lead: "Data was missing or a part failed, so the plans could not be checked. No plan was judged illegal. Do not read this as an unrecoverable flight.",
     next: "Fix the data or the failing part, then run it again. If you cannot, decide by hand.",
   },
 } as const;
 
-export function NoDealView({ decision }: { decision: NoDeal }) {
+export function NoGoView({ decision }: { decision: NoGo }) {
   const c = COPY[decision.reason_type];
   const Icon = c.icon;
   return (
     <div className="space-y-3">
-      <section className={cn("rounded-lg border p-3", c.tone)} aria-labelledby="nodeal-heading">
+      <section className={cn("rounded-lg border p-3", c.tone)} aria-labelledby="nogo-heading">
         <div className="flex items-start gap-3">
           <Icon aria-hidden className={cn("mt-0.5 size-6 shrink-0", c.iconTone)} />
           <div className="space-y-1">
             <p className="text-xs font-semibold tracking-wide uppercase">{c.kind}</p>
-            <h2 id="nodeal-heading" className="text-base font-semibold">
+            <h2 id="nogo-heading" className="text-base font-semibold">
               {c.title}
             </h2>
             <p className="text-sm">{c.lead}</p>

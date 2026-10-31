@@ -23,8 +23,8 @@ from app.negotiation.contracts import (
     FlightPlanAction,
     Gate,
     GateOccupancy,
-    NoDeal,
-    NoDealReason,
+    NoGo,
+    NoGoReason,
     OtherArrival,
     Provenance,
     Response,
@@ -233,13 +233,13 @@ def test_each_model_note_names_its_domain_panel() -> None:
 def test_system_fault_survives_a_required_binding_violations_field(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class Strict(NoDeal):
+    class Strict(NoGo):
         binding_violations: tuple[Any, ...]
 
-    monkeypatch.setattr(protocol, "NoDeal", Strict)
+    monkeypatch.setattr(protocol, "NoGo", Strict)
     built = protocol._system_fault("over bound")
     assert built.binding_violations == ()  # type: ignore[attr-defined]
-    assert built.reason_type is NoDealReason.SYSTEM_FAULT
+    assert built.reason_type is NoGoReason.SYSTEM_FAULT
 
 
 def test_turn_records_carry_sets_rankings_codes_classes_and_removals() -> None:
@@ -477,7 +477,7 @@ def test_the_recheck_gate_fires_when_a_consensus_fails_the_rules(
     monkeypatch.setattr(protocol, "_split_legal", leaky)
     result = run_negotiation(scenario, "live", client=ScriptedClient(accept_all))
     assert result.agents_agreed
-    assert not isinstance(result.decision, NoDeal)
+    assert not isinstance(result.decision, NoGo)
     assert result.path == "fallback"
     assert FaultKind.CONSENSUS_RECHECK_FAILED in {f.kind for f in result.faults}
     assert result.decision == fallback.decide(scenario)
@@ -513,7 +513,7 @@ def test_a_consensus_outside_the_enumerated_set_is_refused(
 def test_decide_reporting_over_bound_itself_still_names_one_fault(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`decide` is moving from raising to returning a SYSTEM_FAULT `NoDeal`."""
+    """`decide` is moving from raising to returning a SYSTEM_FAULT `NoGo`."""
     gates = tuple(
         Gate(gate_id=f"G{i}", taxiway_id="T1", max_size=AircraftSize.WIDE_BODY)
         for i in range(120)
@@ -522,7 +522,7 @@ def test_decide_reporting_over_bound_itself_still_names_one_fault(
     returned = protocol._system_fault("over bound")
     monkeypatch.setattr(protocol.fallback, "decide", lambda _s: returned)
     result = run_negotiation(scenario, "live", client=ScriptedClient(accept_all))
-    assert result.path == "no_deal"
+    assert result.path == "no_go"
     assert [f.kind for f in result.faults] == [FaultKind.PACKAGE_BOUND]
 
 
@@ -543,7 +543,7 @@ def test_fault_detail_carries_no_secret_shaped_text() -> None:
     assert "sk-ant" not in result.model_dump_json()
 
 
-# --- off mode and NO_DEAL ------------------------------------------------------
+# --- off mode and NO_GO ------------------------------------------------------
 
 
 def test_off_needs_no_key_and_makes_no_call(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -587,7 +587,7 @@ def test_unknown_mode_is_rejected() -> None:
         run_negotiation(make_scenario(), "chaos")  # type: ignore[arg-type]
 
 
-def test_nothing_legal_is_a_no_deal_with_no_fault_and_no_call() -> None:
+def test_nothing_legal_is_a_no_go_with_no_fault_and_no_call() -> None:
     scenario = make_scenario(
         runways=(
             Runway(runway_id="28L", closed=True, parallel_group=None),
@@ -597,23 +597,23 @@ def test_nothing_legal_is_a_no_deal_with_no_fault_and_no_call() -> None:
     client = ScriptedClient(accept_all)
     result = run_negotiation(scenario, "live", client=client)
     assert not client.calls
-    assert result.path == "no_deal"
-    assert isinstance(result.decision, NoDeal)
-    assert result.decision.reason_type is NoDealReason.NOTHING_LEGAL
+    assert result.path == "no_go"
+    assert isinstance(result.decision, NoGo)
+    assert result.decision.reason_type is NoGoReason.NOTHING_LEGAL
     assert result.decision.binding_rule_ids
     assert not result.faults
     assert not result.rules_passed
 
 
 @pytest.mark.parametrize("mode", ["off", "live", "recorded"])
-def test_missing_data_is_a_system_fault_no_deal_and_logged(mode: Any) -> None:
+def test_missing_data_is_a_system_fault_no_go_and_logged(mode: Any) -> None:
     scenario = make_scenario(taxi_in_min=None)
     client = ScriptedClient(accept_all)
     result = run_negotiation(scenario, mode, client=client)
     assert not client.calls
-    assert result.path == "no_deal"
-    assert isinstance(result.decision, NoDeal)
-    assert result.decision.reason_type is NoDealReason.SYSTEM_FAULT
+    assert result.path == "no_go"
+    assert isinstance(result.decision, NoGo)
+    assert result.decision.reason_type is NoGoReason.SYSTEM_FAULT
     assert [f.kind for f in result.faults] == [FaultKind.SCENARIO_DATA]
 
 
@@ -624,9 +624,9 @@ def test_over_bound_scenario_is_a_system_fault_not_a_crash() -> None:
     )
     scenario = make_scenario(gates=gates, latest_arrival_min=300)
     result = run_negotiation(scenario, "live", client=ScriptedClient(accept_all))
-    assert result.path == "no_deal"
-    assert isinstance(result.decision, NoDeal)
-    assert result.decision.reason_type is NoDealReason.SYSTEM_FAULT
+    assert result.path == "no_go"
+    assert isinstance(result.decision, NoGo)
+    assert result.decision.reason_type is NoGoReason.SYSTEM_FAULT
     assert [f.kind for f in result.faults] == [FaultKind.PACKAGE_BOUND]
 
 

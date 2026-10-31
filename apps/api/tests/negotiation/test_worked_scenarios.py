@@ -46,8 +46,8 @@ from app.negotiation.contracts import (
     FlightPlanAction,
     Gate,
     GateOccupancy,
-    NoDeal,
-    NoDealReason,
+    NoGo,
+    NoGoReason,
     OtherArrival,
     Package,
     Runway,
@@ -498,19 +498,19 @@ def test_connections_at_risk_are_charged_to_atc() -> None:
     assert result.cost.total == 1450
 
 
-def no_deal(scenario: Any) -> NoDeal:
+def no_go(scenario: Any) -> NoGo:
     result = decide(scenario)
-    assert isinstance(result, NoDeal)
+    assert isinstance(result, NoGo)
     return result
 
 
-def test_no_deal_when_fuel_is_one_kg_short() -> None:
+def test_no_go_when_fuel_is_one_kg_short() -> None:
     # W5 with 6449 kg: HOLD at 105 lands with 2249 < 2250, illegal. All 8
     # packages at 105 and 110 break the fuel policy (VECTOR and the later HOLD
     # are worse still); the 2 DIRECT packages at 100 break wake separation only
     # (gap 1 < 2) because 6449 - 4000 = 2449 >= 2250.
-    result = no_deal(worked(other_arrivals=heavy_at(101), fuel_on_board_kg=6_449))
-    assert result.reason_type is NoDealReason.NOTHING_LEGAL
+    result = no_go(worked(other_arrivals=heavy_at(101), fuel_on_board_kg=6_449))
+    assert result.reason_type is NoGoReason.NOTHING_LEGAL
     assert result.binding_rule_ids == ("PLT-FUEL-POLICY",)
     assert [(e.rule_id, e.packages_eliminated) for e in result.eliminations] == [
         ("PLT-FUEL-POLICY", 8),
@@ -530,11 +530,11 @@ def test_no_deal_when_fuel_is_one_kg_short() -> None:
     )
 
 
-def test_no_deal_when_hard_turnaround_and_wake_conflict() -> None:
+def test_no_go_when_hard_turnaround_and_wake_conflict() -> None:
     # Next leg departs at 135 and is hard; HEAVY at 101 rules out 100 (gap 1 < 2).
     # At 105 available time is 135 - 115 = 20 < 25 and at 110 it is 15 < 25, so
     # all 8 later packages break the turnaround rule.
-    result = no_deal(
+    result = no_go(
         worked(
             other_arrivals=heavy_at(101),
             next_departure_min=135,
@@ -546,14 +546,14 @@ def test_no_deal_when_hard_turnaround_and_wake_conflict() -> None:
         ("GND-TURNAROUND", 8),
         ("ATC-WAKE-SEP", 2),
     ]
-    assert result.reason_type is NoDealReason.NOTHING_LEGAL
+    assert result.reason_type is NoGoReason.NOTHING_LEGAL
 
 
-def test_no_deal_when_the_only_runway_is_closed() -> None:
-    result = no_deal(
+def test_no_go_when_the_only_runway_is_closed() -> None:
+    result = no_go(
         worked(runways=(Runway(runway_id="R1", closed=True, parallel_group=None),))
     )
-    assert result.reason_type is NoDealReason.NOTHING_LEGAL
+    assert result.reason_type is NoGoReason.NOTHING_LEGAL
     assert result.binding_rule_ids == ("ATC-RWY-CLOSED",)
     assert [(e.rule_id, e.packages_eliminated) for e in result.eliminations] == [
         ("ATC-RWY-CLOSED", 10)
@@ -563,15 +563,15 @@ def test_no_deal_when_the_only_runway_is_closed() -> None:
 
 
 def test_missing_data_blocking_every_package_is_a_system_fault() -> None:
-    result = no_deal(worked(fuel_on_board_kg=None))
-    assert result.reason_type is NoDealReason.SYSTEM_FAULT
+    result = no_go(worked(fuel_on_board_kg=None))
+    assert result.reason_type is NoGoReason.SYSTEM_FAULT
     assert result.binding_rule_ids == ("PLT-FUEL-POLICY",)
     assert result.nearest_violations[0].observed is None
 
 
 def test_unknown_runways_leave_nothing_to_enumerate() -> None:
-    result = no_deal(worked(runways=None))
-    assert result.reason_type is NoDealReason.SYSTEM_FAULT
+    result = no_go(worked(runways=None))
+    assert result.reason_type is NoGoReason.SYSTEM_FAULT
     assert result.packages_considered == 0
     assert result.nearest_package is None
     assert "runways" in result.reason
@@ -587,8 +587,8 @@ def test_unknown_runways_leave_nothing_to_enumerate() -> None:
     ids=["latest before earliest", "no runways", "no gates"],
 )
 def test_an_empty_or_inconsistent_input_is_a_fault(overrides: dict[str, Any]) -> None:
-    result = no_deal(worked(**overrides))
-    assert result.reason_type is NoDealReason.SYSTEM_FAULT
+    result = no_go(worked(**overrides))
+    assert result.reason_type is NoGoReason.SYSTEM_FAULT
     assert result.packages_considered == 0
     assert result.nearest_package is None
 
@@ -599,14 +599,14 @@ def test_a_package_blocked_only_by_missing_data_makes_it_a_fault() -> None:
     # supplying it might make one legal: that is a fault, not a verdict. VECTOR
     # packages fail the fuel limit for real and DIRECT at 100 fails wake
     # separation.
-    result = no_deal(
+    result = no_go(
         worked(
             other_arrivals=heavy_at(101),
             fuel_on_board_kg=6_449,
             hold_burn_kg_per_min=None,
         )
     )
-    assert result.reason_type is NoDealReason.SYSTEM_FAULT
+    assert result.reason_type is NoGoReason.SYSTEM_FAULT
     assert result.binding_rule_ids == ("PLT-FUEL-POLICY",)
 
 
@@ -615,13 +615,13 @@ def test_missing_data_alongside_a_real_violation_is_still_nothing_legal() -> Non
     # unknown (missing data, on all 10). No package is blocked only by missing
     # data, because every one also hits the closed runway. Both rules eliminate
     # 10 packages, so both bind, in ID order.
-    result = no_deal(
+    result = no_go(
         worked(
             runways=(Runway(runway_id="R1", closed=True, parallel_group=None),),
             fuel_on_board_kg=None,
         )
     )
-    assert result.reason_type is NoDealReason.NOTHING_LEGAL
+    assert result.reason_type is NoGoReason.NOTHING_LEGAL
     assert result.binding_rule_ids == ("ATC-RWY-CLOSED", "PLT-FUEL-POLICY")
     assert [(e.rule_id, e.packages_eliminated) for e in result.eliminations] == [
         ("ATC-RWY-CLOSED", 10),
@@ -642,9 +642,7 @@ def test_eliminations_count_packages_not_violations() -> None:
         )
         for t in (100, 101)
     )
-    result = no_deal(
-        worked(latest_arrival_min=100, gates=(G1,), other_arrivals=arrivals)
-    )
+    result = no_go(worked(latest_arrival_min=100, gates=(G1,), other_arrivals=arrivals))
     assert result.packages_considered == 1
     assert [(e.rule_id, e.packages_eliminated) for e in result.eliminations] == [
         ("ATC-WAKE-SEP", 1)
@@ -667,9 +665,7 @@ def test_nearest_package_prefers_fewer_violations_when_rule_counts_tie() -> None
             time_min=100,
         ),
     )
-    result = no_deal(
-        worked(gates=(G1,), other_arrivals=arrivals, fuel_on_board_kg=6_449)
-    )
+    result = no_go(worked(gates=(G1,), other_arrivals=arrivals, fuel_on_board_kg=6_449))
     assert result.nearest_package == pk("R1", 105, "G1", HOLD)
     assert [(v.rule_id, v.observed, v.limit) for v in result.nearest_violations] == [
         ("PLT-FUEL-POLICY", 2249, 2250)
@@ -692,9 +688,7 @@ def test_nearest_package_prefers_fewer_rules_over_fewer_violations() -> None:
         )
         for t in (99, 100, 101, 106, 111)
     )
-    result = no_deal(
-        worked(gates=(G1,), other_arrivals=arrivals, fuel_on_board_kg=6_449)
-    )
+    result = no_go(worked(gates=(G1,), other_arrivals=arrivals, fuel_on_board_kg=6_449))
     assert result.packages_considered == 5
     assert result.nearest_package == pk("R1", 100, "G1", DIRECT)
     # Gaps 1, 0, 1 against the 2 min needed, in arrival order.
@@ -717,7 +711,7 @@ def test_nearest_package_is_not_just_the_first_package() -> None:
     # every delayed package breaks fuel. G1 packages break two rules. On G2,
     # DIRECT at 100 breaks only wake and the delayed ones only fuel, so G2
     # DIRECT at 100 is the first of the one-rule packages.
-    result = no_deal(
+    result = no_go(
         worked(
             other_arrivals=heavy_at(101),
             fuel_on_board_kg=6_449,
@@ -734,12 +728,12 @@ def test_binding_violations_carry_observed_value_and_limit() -> None:
     # One kg short: the first package to break the fuel policy, in package
     # order, is HOLD at 105 on G1, landing with 6449 - 4000 - 200 = 2249 against
     # 2250.
-    result = no_deal(worked(other_arrivals=heavy_at(101), fuel_on_board_kg=6_449))
+    result = no_go(worked(other_arrivals=heavy_at(101), fuel_on_board_kg=6_449))
     assert [
         (v.rule_id, v.observed, v.limit, v.unit) for v in result.binding_violations
     ] == [("PLT-FUEL-POLICY", 2249, 2250, "kg")]
     # Hard turnaround: HOLD at 105 has 135 - 115 = 20 min against 25.
-    turnaround = no_deal(
+    turnaround = no_go(
         worked(
             other_arrivals=heavy_at(101),
             next_departure_min=135,
@@ -749,7 +743,7 @@ def test_binding_violations_carry_observed_value_and_limit() -> None:
     assert [
         (v.rule_id, v.observed, v.limit, v.unit) for v in turnaround.binding_violations
     ] == [("GND-TURNAROUND", 20, 25, "min")]
-    closed = no_deal(
+    closed = no_go(
         worked(runways=(Runway(runway_id="R1", closed=True, parallel_group=None),))
     )
     assert [(v.rule_id, v.observed, v.limit) for v in closed.binding_violations] == [
@@ -760,7 +754,7 @@ def test_binding_violations_carry_observed_value_and_limit() -> None:
 def test_binding_violation_falls_back_to_missing_data_when_that_is_all_there_is() -> (
     None
 ):
-    result = no_deal(worked(fuel_on_board_kg=None))
+    result = no_go(worked(fuel_on_board_kg=None))
     assert [(v.rule_id, v.observed) for v in result.binding_violations] == [
         ("PLT-FUEL-POLICY", None)
     ]
@@ -771,7 +765,7 @@ def test_binding_violation_prefers_a_real_limit_over_missing_data() -> None:
     # fails only for missing data. The next, VECTOR at 105, lands with
     # 6449 - 4000 - 250 = 2199 against 2250: a real limit, which the card can
     # show with numbers, so it is the one reported.
-    result = no_deal(
+    result = no_go(
         worked(
             other_arrivals=heavy_at(101),
             fuel_on_board_kg=6_449,
@@ -784,7 +778,7 @@ def test_binding_violation_prefers_a_real_limit_over_missing_data() -> None:
 
 
 def test_every_binding_rule_gets_one_violation() -> None:
-    result = no_deal(
+    result = no_go(
         worked(
             runways=(Runway(runway_id="R1", closed=True, parallel_group=None),),
             fuel_on_board_kg=None,
@@ -801,16 +795,16 @@ def test_unknown_decision_point_is_a_fault_named_by_the_fuel_rule() -> None:
     # With no decision point every absorbing action is enumerated: 2 DIRECT at
     # 100, then HOLD, VECTOR and GROUND_DELAY on 2 gates at 105 and 110 = 12;
     # 14 in all. Each fails closed on the decision point.
-    result = no_deal(worked(decision_point=None))
+    result = no_go(worked(decision_point=None))
     assert result.packages_considered == 14
-    assert result.reason_type is NoDealReason.SYSTEM_FAULT
+    assert result.reason_type is NoGoReason.SYSTEM_FAULT
     assert result.binding_rule_ids == ("PLT-FUEL-POLICY",)
 
 
 def test_one_package_over_the_bound_is_a_fault_not_an_exception() -> None:
     # 401 gates x 5 packages = 2005 > 2000.
-    result = no_deal(worked(gates=tuple(many_gates(401))))
-    assert result.reason_type is NoDealReason.SYSTEM_FAULT
+    result = no_go(worked(gates=tuple(many_gates(401))))
+    assert result.reason_type is NoGoReason.SYSTEM_FAULT
     assert result.packages_considered == 0
     assert result.nearest_package is None
     assert "too many" in result.reason

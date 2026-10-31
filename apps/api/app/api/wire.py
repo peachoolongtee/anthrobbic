@@ -7,7 +7,7 @@ from typing import Final, Literal
 
 from app.negotiation.agents.base import FaultKind
 from app.negotiation.card import CostLine, ProvenanceLine, Reached, RuleStatus
-from app.negotiation.contracts import Domain, FrozenModel, NoDealReason, Provenance
+from app.negotiation.contracts import Domain, FrozenModel, NoGoReason, Provenance
 from app.negotiation.dot import Cause
 from app.negotiation.protocol import Mode
 from app.negotiation.signoff import SignOffStatus
@@ -103,9 +103,9 @@ class DealView(FrozenModel):
     packages_legal: int
 
 
-class NoDealView(FrozenModel):
-    kind: Literal["NO_DEAL"] = "NO_DEAL"
-    reason_type: NoDealReason
+class NoGoView(FrozenModel):
+    kind: Literal["NO_GO"] = "NO_GO"
+    reason_type: NoGoReason
     binding_rules: tuple[RuleResult, ...]
     packages_considered: int
     nearest_package: PackageRef | None
@@ -189,14 +189,14 @@ class RunView(FrozenModel):
     mode: Mode
     state_version: str
     field_versions: dict[str, str]
-    path: Literal["consensus", "fallback", "no_deal"]
+    path: Literal["consensus", "fallback", "no_go"]
     # Why the fallback ran, as the protocol logged it. None if it did not.
     fallback_trigger: str | None
     turns: tuple[Turn, ...]
     removed_packages: tuple[RemovedPackage, ...]
     # Illegal packages in all; `removed_packages` shows one per distinct failure.
     removed_total: int
-    decision: DealView | NoDealView
+    decision: DealView | NoGoView
     card: CardView | None
     model_notes: tuple[ModelNoteView, ...]
     faults: tuple[FaultView, ...]

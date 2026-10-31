@@ -203,13 +203,13 @@ export function useDashboard() {
       }
       setOutcome({
         kind,
-        tone: run.path === "no_deal" ? "bad" : "info",
+        tone: run.path === "no_go" ? "bad" : "info",
         title,
         detail:
-          run.decision.kind === "NO_DEAL"
+          run.decision.kind === "NO_GO"
             ? run.decision.reason_type === "NOTHING_LEGAL"
-              ? "No agreement: nothing is legal. See the plan view."
-              : "No agreement: system fault. See the plan view."
+              ? "No-go: nothing is legal. See the plan view."
+              : "No-go: system fault. See the plan view."
             : "A new recovery plan was made. Compare it with the one before.",
       });
     },

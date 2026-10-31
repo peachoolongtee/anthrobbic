@@ -19,12 +19,12 @@ from app.negotiation.card import (
     STATUS_LABELS,
     UNRECOGNISED_CODE,
     Card,
-    NoDealCard,
+    NoGoCard,
     Reached,
     RuleStatus,
     authority_terms,
     model_note,
-    no_deal_card,
+    no_go_card,
     package_name,
     reached_from_result,
     reason_lines,
@@ -40,8 +40,8 @@ from app.negotiation.contracts import (
     DomainCosts,
     FlightPlanAction,
     FlightRules,
-    NoDeal,
-    NoDealReason,
+    NoGo,
+    NoGoReason,
     OtherArrival,
     Provenance,
     Runway,
@@ -204,12 +204,12 @@ def test_a_deal_supplies_cost_and_selection_counts() -> None:
     assert card.costs[-1].units == deal.cost.total
 
 
-def test_a_package_without_cost_is_refused_and_a_no_deal_is_redirected() -> None:
+def test_a_package_without_cost_is_refused_and_a_no_go_is_redirected() -> None:
     with pytest.raises(ValueError):
         decision_card(make_scenario(), BASELINE_PACKAGE)
-    no_deal = decide(make_scenario(runways=None))
+    no_go = decide(make_scenario(runways=None))
     with pytest.raises(TypeError):
-        decision_card(make_scenario(), no_deal)  # type: ignore[arg-type]
+        decision_card(make_scenario(), no_go)  # type: ignore[arg-type]
 
 
 # ------------------------------------------------------- policy labelling
@@ -347,16 +347,16 @@ def test_decision_card_takes_no_free_text_parameter() -> None:
     }
 
 
-def test_no_deal_card_ignores_the_free_text_reason() -> None:
-    no_deal = decide(
+def test_no_go_card_ignores_the_free_text_reason() -> None:
+    no_go = decide(
         make_scenario(
             runways=(Runway(runway_id="28L", closed=True, parallel_group=None),)
         )
     )
-    assert isinstance(no_deal, NoDeal)
-    dirty = no_deal.model_copy(update={"reason": POISON})
-    assert render(no_deal_card(dirty)) == render(no_deal_card(no_deal))
-    assert POISON not in render(no_deal_card(dirty))
+    assert isinstance(no_go, NoGo)
+    dirty = no_go.model_copy(update={"reason": POISON})
+    assert render(no_go_card(dirty)) == render(no_go_card(no_go))
+    assert POISON not in render(no_go_card(dirty))
 
 
 def test_card_is_deterministic() -> None:
@@ -420,7 +420,7 @@ def test_field_hashes_cover_exactly_the_hashed_facts() -> None:
     assert "reasons" not in HASHED_FIELDS and "state_version" not in HASHED_FIELDS
 
 
-# --------------------------------------------------------------- no deal
+# --------------------------------------------------------------- no-go
 
 
 def test_nothing_legal_and_system_fault_read_differently() -> None:
@@ -433,18 +433,18 @@ def test_nothing_legal_and_system_fault_read_differently() -> None:
         )
     )
     unknown = decide(make_scenario(runways=None))
-    assert isinstance(closed, NoDeal) and isinstance(unknown, NoDeal)
-    assert closed.reason_type is NoDealReason.NOTHING_LEGAL
-    assert unknown.reason_type is NoDealReason.SYSTEM_FAULT
-    a, b = no_deal_card(closed), no_deal_card(unknown)
-    assert isinstance(a, NoDealCard)
+    assert isinstance(closed, NoGo) and isinstance(unknown, NoGo)
+    assert closed.reason_type is NoGoReason.NOTHING_LEGAL
+    assert unknown.reason_type is NoGoReason.SYSTEM_FAULT
+    a, b = no_go_card(closed), no_go_card(unknown)
+    assert isinstance(a, NoGoCard)
     assert a.headline != b.headline and a.what_to_do != b.what_to_do
     assert "nothing legal" in a.headline
     assert "not a finding that nothing is legal" in b.headline
     assert "Type: NOTHING_LEGAL" in render(a) and "Type: SYSTEM_FAULT" in render(b)
 
 
-def test_no_deal_shows_binding_rules_nearest_package_and_the_change() -> None:
+def test_no_go_shows_binding_rules_nearest_package_and_the_change() -> None:
     closed = decide(
         make_scenario(
             runways=(
@@ -453,8 +453,8 @@ def test_no_deal_shows_binding_rules_nearest_package_and_the_change() -> None:
             )
         )
     )
-    assert isinstance(closed, NoDeal) and closed.nearest_package is not None
-    card = no_deal_card(closed)
+    assert isinstance(closed, NoGo) and closed.nearest_package is not None
+    card = no_go_card(closed)
     assert card.nearest_package_name == package_name(closed.nearest_package)
     binding = [b for b in card.binding_rules if b.binding]
     assert [b.rule_id for b in binding] == list(closed.binding_rule_ids)
@@ -468,17 +468,17 @@ def test_no_deal_shows_binding_rules_nearest_package_and_the_change() -> None:
     assert "A human decides this case" in text
 
 
-def test_no_deal_with_missing_data_asks_for_the_input() -> None:
-    no_deal = decide(make_scenario(fuel_on_board_kg=None))
-    assert isinstance(no_deal, NoDeal)
-    assert no_deal.reason_type is NoDealReason.SYSTEM_FAULT
-    card = no_deal_card(no_deal)
+def test_no_go_with_missing_data_asks_for_the_input() -> None:
+    no_go = decide(make_scenario(fuel_on_board_kg=None))
+    assert isinstance(no_go, NoGo)
+    assert no_go.reason_type is NoGoReason.SYSTEM_FAULT
+    card = no_go_card(no_go)
     assert any("Supply" in c.text for c in card.what_would_have_to_change)
 
 
-def test_no_deal_with_no_candidate_package_says_so() -> None:
-    empty = NoDeal(
-        reason_type=NoDealReason.NOTHING_LEGAL,
+def test_no_go_with_no_candidate_package_says_so() -> None:
+    empty = NoGo(
+        reason_type=NoGoReason.NOTHING_LEGAL,
         binding_rule_ids=(),
         eliminations=(),
         packages_considered=0,
@@ -486,7 +486,7 @@ def test_no_deal_with_no_candidate_package_says_so() -> None:
         nearest_violations=(),
         reason=POISON,
     )
-    card = no_deal_card(empty)
+    card = no_go_card(empty)
     assert card.nearest_package_name is None
     assert card.what_would_have_to_change[0].rule_id == "NO-RULE"
     assert "Nearest package: none" in render(card)
@@ -679,7 +679,7 @@ def test_term_values_do_not_repeat_their_label() -> None:
         assert term.label.split()[0].lower() not in term.value.lower().split()
 
 
-def test_no_deal_shows_the_binding_violations_with_numbers_and_sources() -> None:
+def test_no_go_shows_the_binding_violations_with_numbers_and_sources() -> None:
     closed = decide(
         make_scenario(
             runways=(
@@ -688,8 +688,8 @@ def test_no_deal_shows_the_binding_violations_with_numbers_and_sources() -> None
             )
         )
     )
-    assert isinstance(closed, NoDeal) and closed.binding_violations
-    card = no_deal_card(closed)
+    assert isinstance(closed, NoGo) and closed.binding_violations
+    card = no_go_card(closed)
     assert [e.rule_id for e in card.binding_evidence] == [
         v.rule_id for v in closed.binding_violations
     ]
@@ -708,7 +708,7 @@ def test_binding_evidence_never_echoes_free_text() -> None:
             runways=(Runway(runway_id="28L", closed=True, parallel_group=None),)
         )
     )
-    assert isinstance(closed, NoDeal)
+    assert isinstance(closed, NoGo)
     dirty = closed.model_copy(
         update={
             "binding_violations": tuple(
@@ -719,7 +719,7 @@ def test_binding_evidence_never_echoes_free_text() -> None:
             )
         }
     )
-    assert POISON not in render(no_deal_card(dirty))
+    assert POISON not in render(no_go_card(dirty))
 
 
 # -------------------------------------------------- how the plan was reached
@@ -780,7 +780,7 @@ def test_how_reached_is_read_from_the_protocol_result() -> None:
     faulted = reached_from_result("fallback", ["x"], model_off=True)
     assert faulted is Reached.FALLBACK_AFTER_FAULT
     with pytest.raises(ValueError):
-        reached_from_result("no_deal", [])
+        reached_from_result("no_go", [])
 
 
 def test_secondary_limits_are_not_called_a_study() -> None:

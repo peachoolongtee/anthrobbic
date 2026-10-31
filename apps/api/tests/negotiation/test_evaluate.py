@@ -20,7 +20,7 @@ from app.negotiation import rules as rules_registry
 from app.negotiation.baselines import PackageMetrics
 from app.negotiation.contracts import (
     Deal,
-    NoDeal,
+    NoGo,
     Package,
     Provenance,
     Runway,
@@ -78,7 +78,7 @@ class FakeParams:
 
 @dataclass(frozen=True)
 class FakeNegotiation:
-    decision: Deal | NoDeal
+    decision: Deal | NoGo
     path: str
     turns_used: int
     faults: tuple[str, ...]
@@ -157,13 +157,13 @@ class FakeProtocol:
         (self.scripted_modes if scripted else self.modes)[mode] += 1
         decision = decide(scenario)
         if isinstance(client, ev.ScriptedAgentClient) and client.hostile:
-            path = ev.PATH_FALLBACK if isinstance(decision, Deal) else ev.PATH_NO_DEAL
+            path = ev.PATH_FALLBACK if isinstance(decision, Deal) else ev.PATH_NO_GO
             return FakeNegotiation(decision, path, 1, ("hallucinated",), 3)
         if mode == ev.MODE_OFF:
-            path = ev.PATH_FALLBACK if isinstance(decision, Deal) else ev.PATH_NO_DEAL
+            path = ev.PATH_FALLBACK if isinstance(decision, Deal) else ev.PATH_NO_GO
             return FakeNegotiation(decision, path, 0, ("llm_off",), 0)
-        if isinstance(decision, NoDeal):
-            return FakeNegotiation(decision, ev.PATH_NO_DEAL, 2, (), self.calls_per_run)
+        if isinstance(decision, NoGo):
+            return FakeNegotiation(decision, ev.PATH_NO_GO, 2, (), self.calls_per_run)
         return FakeNegotiation(decision, ev.PATH_CONSENSUS, 1, (), self.calls_per_run)
 
     def run_unguarded(
@@ -408,7 +408,7 @@ def test_a_decider_that_reacts_to_unrelated_traffic_fails() -> None:
     base = ev.control_scenario()
     other = ev._pkg(runway_id="28R")
 
-    def jumpy(scenario: Scenario) -> Deal | NoDeal:
+    def jumpy(scenario: Scenario) -> Deal | NoGo:
         decision = decide(scenario)
         arrivals = scenario.other_arrivals.value or ()
         if isinstance(decision, Deal) and any(
@@ -421,7 +421,7 @@ def test_a_decider_that_reacts_to_unrelated_traffic_fails() -> None:
     assert pairs["unrelated_far_arrival"].status is ev.PairStatus.FAILED
 
 
-def test_sensitivity_with_no_deal_is_not_reached() -> None:
+def test_sensitivity_with_no_go_is_not_reached() -> None:
     closed = (Runway(runway_id="28L", closed=True, parallel_group=None),)
     pairs = ev.input_sensitivity(ev.control_scenario(runways=closed))
     assert {p.status for p in pairs} == {ev.PairStatus.NOT_REACHED}
@@ -1055,7 +1055,7 @@ def test_frozen_score_reports_overall_and_each_type_with_sizes() -> None:
             path="fallback",
             model_calls=6,
         ),
-        ev.LlmRow(key="c", cause=ev.CAUSE_LATE_AIRCRAFT, reached=True, path="no_deal"),
+        ev.LlmRow(key="c", cause=ev.CAUSE_LATE_AIRCRAFT, reached=True, path="no_go"),
         ev.LlmRow(key="d", cause=ev.CAUSE_LATE_AIRCRAFT, reached=False),
     ]
     score = ev.frozen_score(rows)
@@ -1142,8 +1142,8 @@ def test_mode_off_reports_the_plan_measures(tmp_path: Path) -> None:
     missing = required - names
     assert not missing
     assert any(n.startswith("Binding: ATC-RWY-CLOSED") for n in names)
-    assert any(n.startswith("NO_DEAL SYSTEM_FAULT rate, weather") for n in names)
-    assert any(n.startswith("NO_DEAL NOTHING_LEGAL rate, late_aircraft") for n in names)
+    assert any(n.startswith("NO_GO SYSTEM_FAULT rate, weather") for n in names)
+    assert any(n.startswith("NO_GO NOTHING_LEGAL rate, late_aircraft") for n in names)
 
 
 def test_real_delay_is_context_only_and_split_by_inbound_data(tmp_path: Path) -> None:
@@ -1198,14 +1198,14 @@ def test_generator_table_shows_the_rate_moving(tmp_path: Path) -> None:
     assert panel.evidence_class is ev.EvidenceClass.RULES_ONLY
     named = {m.name: m for m in panel.measures}
     assert len(named) == 3 * (1 + len(ev.GENERATOR_VARIANTS))
-    default = named["NO_DEAL rate, all rows, default parameters"]
-    moved = named["NO_DEAL rate, all rows, p_next_leg_hard=0.7"]
+    default = named["NO_GO rate, all rows, default parameters"]
+    moved = named["NO_GO rate, all rows, p_next_leg_hard=0.7"]
     assert default.n == moved.n == 20
     assert moved.value == 1.0  # the fake's knob empties the runways
     assert default.value is not None and default.value < 1.0
     assert "points against default" in moved.note
     for name in ("gate_util_base=0.55", "surplus_pre_departure_min=(-10, 5)"):
-        assert f"NO_DEAL rate, weather, {name}" in named
+        assert f"NO_GO rate, weather, {name}" in named
 
 
 def test_generator_table_is_not_reached_without_parameters(tmp_path: Path) -> None:
@@ -1298,7 +1298,7 @@ def test_mode_off_decision_differing_from_fallback_is_a_failure(tmp_path: Path) 
 
     def wrong(scenario: Scenario, mode: str, **_: Any) -> FakeNegotiation:
         return FakeNegotiation(
-            decide(ev.control_scenario(gates=None)), ev.PATH_NO_DEAL, 0, ("off",), 0
+            decide(ev.control_scenario(gates=None)), ev.PATH_NO_GO, 0, ("off",), 0
         )
 
     backends = replace(fake_backends(fake), run_negotiation=wrong)
@@ -1374,7 +1374,7 @@ def test_protocol_gate_control_is_not_reached_when_replies_cannot_arrive() -> No
 def test_mode_off_logged_as_clean_is_a_failure(tmp_path: Path) -> None:
     def clean(scenario: Scenario, mode: str, **_: Any) -> FakeNegotiation:
         decision = decide(scenario)
-        path = ev.PATH_FALLBACK if isinstance(decision, Deal) else ev.PATH_NO_DEAL
+        path = ev.PATH_FALLBACK if isinstance(decision, Deal) else ev.PATH_NO_GO
         return FakeNegotiation(decision, path, 0, (), 0)
 
     backends = replace(fake_backends(), run_negotiation=clean)

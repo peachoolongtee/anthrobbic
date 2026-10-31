@@ -12,7 +12,7 @@ import { FlightList } from "@/components/dashboard/flight-list";
 import { LogView } from "@/components/dashboard/log-view";
 import { ModeBanner } from "@/components/dashboard/mode-banner";
 import { NegotiationView } from "@/components/dashboard/negotiation-view";
-import { NoDealView } from "@/components/dashboard/no-deal-view";
+import { NoGoView } from "@/components/dashboard/no-go-view";
 import { OutcomeStrip } from "@/components/dashboard/outcome-strip";
 import { PlanCard } from "@/components/dashboard/plan-card";
 import { SignoffPanel } from "@/components/dashboard/signoff-panel";
@@ -115,7 +115,7 @@ export function Dashboard() {
                 {run && run.decision.kind === "DEAL" && run.card && (
                   <PlanCard run={run} card={run.card} deal={run.decision} modelNotes={run.model_notes} />
                 )}
-                {run && run.decision.kind === "NO_DEAL" && <NoDealView decision={run.decision} />}
+                {run && run.decision.kind === "NO_GO" && <NoGoView decision={run.decision} />}
               </RunGate>
             </TabsContent>
 

@@ -1,4 +1,4 @@
-"""The deterministic decision: lowest-cost legal package, or `NoDeal`.
+"""The deterministic decision: lowest-cost legal package, or `NoGo`.
 
 This is what runs when agents fail to agree, and it is the only authority on
 which package is allowed. Same scenario in, identical result out.
@@ -9,8 +9,8 @@ from collections import Counter
 from app.negotiation.contracts import (
     Deal,
     Decision,
-    NoDeal,
-    NoDealReason,
+    NoGo,
+    NoGoReason,
     Package,
     RuleElimination,
     Scenario,
@@ -26,9 +26,9 @@ from app.negotiation.rules import check_package
 from app.negotiation.utility import DEFAULT_WEIGHTS, CostWeights, compute_cost
 
 
-def _fault(reason: str, packages_considered: int = 0) -> NoDeal:
-    return NoDeal(
-        reason_type=NoDealReason.SYSTEM_FAULT,
+def _fault(reason: str, packages_considered: int = 0) -> NoGo:
+    return NoGo(
+        reason_type=NoGoReason.SYSTEM_FAULT,
         binding_rule_ids=(),
         eliminations=(),
         packages_considered=packages_considered,
@@ -55,11 +55,11 @@ def _representative(
 
 
 def decide(scenario: Scenario, weights: CostWeights = DEFAULT_WEIGHTS) -> Decision:
-    """Pick the cheapest package that passes every rule, else `NoDeal`.
+    """Pick the cheapest package that passes every rule, else `NoGo`.
 
     Never raises for a bad scenario. If nothing could be enumerated, or the
     candidate set exceeds the package bound, the result is
-    `NoDeal(SYSTEM_FAULT)`: an empty or inconsistent input is a fault, not a
+    `NoGo(SYSTEM_FAULT)`: an empty or inconsistent input is a fault, not a
     verdict that nothing is legal.
     """
     try:
@@ -121,10 +121,8 @@ def decide(scenario: Scenario, weights: CostWeights = DEFAULT_WEIGHTS) -> Decisi
         all(v.cause is ViolationCause.MISSING_DATA for v in violations)
         for _, violations in failures
     )
-    return NoDeal(
-        reason_type=NoDealReason.SYSTEM_FAULT
-        if faulted
-        else NoDealReason.NOTHING_LEGAL,
+    return NoGo(
+        reason_type=NoGoReason.SYSTEM_FAULT if faulted else NoGoReason.NOTHING_LEGAL,
         binding_rule_ids=binding,
         eliminations=tuple(
             RuleElimination(rule_id=rule_id, packages_eliminated=n)

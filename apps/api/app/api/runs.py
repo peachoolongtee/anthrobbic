@@ -34,7 +34,7 @@ from app.api.wire import (
     DecisionResult,
     FinalDecision,
     Injection,
-    NoDealView,
+    NoGoView,
     RemovedPackage,
     RunLog,
     RunView,
@@ -354,7 +354,7 @@ class RunRecord:
     log: EvidenceLog
     log_path: Path
     scenario: Scenario
-    # None for a no-deal run. Only ever a package from `run_negotiation`: sign-off
+    # None for a no-go run. Only ever a package from `run_negotiation`: sign-off
     # takes it from here, never from the client, and no unguarded result reaches it.
     package: Package | None
     # How the plan was chosen, from the protocol result. Never from the client.
@@ -529,7 +529,7 @@ class RunService:
             decision=(
                 adapter.deal_view(decision)
                 if isinstance(decision, Deal)
-                else adapter.no_deal_view(decision, scenario)
+                else adapter.no_go_view(decision, scenario)
             ),
             card=card,
             model_notes=adapter.model_notes_view(result.model_notes),
@@ -581,7 +581,7 @@ class RunService:
         if package is None or reached is None:
             raise ApiError(
                 409,
-                "This run has no plan to sign: it ended in no deal.",
+                "This run has no plan to sign: it ended in no-go.",
                 WRONG_DECISION_KIND,
             )
         with record.lock:
@@ -628,7 +628,7 @@ class RunService:
         if not isinstance(decision, DealView) or card is None:
             raise ApiError(
                 409,
-                "This run has no plan to reject: it ended in no deal.",
+                "This run has no plan to reject: it ended in no-go.",
                 WRONG_DECISION_KIND,
             )
         with record.lock:
@@ -658,7 +658,7 @@ class RunService:
         """Records that a person has the case. No approval or request is created."""
         record = self._record(run_id)
         decision = record.view.decision
-        if not isinstance(decision, NoDealView):
+        if not isinstance(decision, NoGoView):
             raise ApiError(
                 409,
                 "This run has a plan: approve or reject it instead.",

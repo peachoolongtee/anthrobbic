@@ -57,8 +57,8 @@ from app.negotiation.contracts import (
     Decision,
     Domain,
     FrozenModel,
-    NoDeal,
-    NoDealReason,
+    NoGo,
+    NoGoReason,
     Package,
     PublicReason,
     Response,
@@ -81,7 +81,7 @@ NOTES_SEED: Final = 0
 UNGUARDED_ARM: Final = "unguarded_baseline"
 
 type Mode = Literal["off", "recorded", "live"]
-type _Path = Literal["consensus", "fallback", "no_deal"]
+type _Path = Literal["consensus", "fallback", "no_go"]
 _MODES: Final[tuple[Mode, ...]] = ("off", "recorded", "live")
 _DOMAIN_ORDER: Final = tuple(Domain)
 _CREDENTIAL_VARIABLES: Final = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
@@ -451,9 +451,9 @@ def _fallback_choice(scenario: Scenario) -> str | None:
     return decision.package.terms_hash if isinstance(decision, Deal) else None
 
 
-def _system_fault(reason: str) -> NoDeal:
+def _system_fault(reason: str) -> NoGo:
     fields: dict[str, Any] = {
-        "reason_type": NoDealReason.SYSTEM_FAULT,
+        "reason_type": NoGoReason.SYSTEM_FAULT,
         "binding_rule_ids": (),
         "eliminations": (),
         "packages_considered": 0,
@@ -462,9 +462,9 @@ def _system_fault(reason: str) -> NoDeal:
         "reason": reason,
     }
     # The safety core is adding this field, possibly with no default.
-    if "binding_violations" in NoDeal.model_fields:
+    if "binding_violations" in NoGo.model_fields:
         fields["binding_violations"] = ()
-    return NoDeal(**fields)
+    return NoGo(**fields)
 
 
 class _Negotiation:
@@ -502,7 +502,7 @@ class _Negotiation:
                     decision.package.terms_hash if isinstance(decision, Deal) else None
                 ),
                 "reason_type": (
-                    decision.reason_type.value if isinstance(decision, NoDeal) else None
+                    decision.reason_type.value if isinstance(decision, NoGo) else None
                 ),
                 "turns_used": self.turns_used,
                 "model_calls": self.model_calls,
@@ -544,8 +544,8 @@ class _Negotiation:
         try:
             decision = fallback.decide(self.scenario)
             if (
-                isinstance(decision, NoDeal)
-                and decision.reason_type is NoDealReason.SYSTEM_FAULT
+                isinstance(decision, NoGo)
+                and decision.reason_type is NoGoReason.SYSTEM_FAULT
                 and not self._over_bound()
             ):
                 self.trace.fault(
@@ -558,7 +558,7 @@ class _Negotiation:
             self.trace.fault(_fault_for(exc, None, None))
             decision = _system_fault("the fallback itself failed")
         return self.result(
-            decision, "no_deal" if isinstance(decision, NoDeal) else "fallback"
+            decision, "no_go" if isinstance(decision, NoGo) else "fallback"
         )
 
     def negotiate(self) -> NegotiationResult:

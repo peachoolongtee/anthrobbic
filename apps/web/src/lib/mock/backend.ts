@@ -15,7 +15,7 @@ import type {
   Fault,
   FinalDecision,
   LogEntry,
-  NoDeal,
+  NoGo,
   RemovedPackage,
   Run,
   RunLog,
@@ -208,15 +208,15 @@ function build(
   }
 
   const faults: Fault[] = [];
-  let noDeal: NoDeal | null = null;
+  let noGo: NoGo | null = null;
 
   if (sc.systemFault) {
     faults.push({
       kind: "missing_data",
       message: "Fuel on board is unknown for this flight, so the fuel rule cannot be checked.",
     });
-    noDeal = {
-      kind: "NO_DEAL",
+    noGo = {
+      kind: "NO_GO",
       reason_type: "SYSTEM_FAULT",
       binding_rules: [
         rule("PLT-FUEL-POLICY", "pilot", "Fuel left at landing", "policy", null, 45, "min", "at_least", SRC_FUEL, "Cannot check fuel left at landing: fuel on board is unknown", "missing_data"),
@@ -228,8 +228,8 @@ function build(
       reason: "The data needed to check the plans is missing. No plan was judged illegal.",
     };
   } else if (openRunways.length === 0) {
-    noDeal = {
-      kind: "NO_DEAL",
+    noGo = {
+      kind: "NO_GO",
       reason_type: "NOTHING_LEGAL",
       binding_rules: [UNSAFE["ATC-RWY-CLOSED"].rule],
       packages_considered: 24,
@@ -242,8 +242,8 @@ function build(
       reason: "Every runway is closed. All 24 plans use a closed runway.",
     };
   } else if (openGates.length === 0) {
-    noDeal = {
-      kind: "NO_DEAL",
+    noGo = {
+      kind: "NO_GO",
       reason_type: "NOTHING_LEGAL",
       binding_rules: [UNSAFE["GND-GATE-OVERLAP"].rule],
       packages_considered: 24,
@@ -258,12 +258,12 @@ function build(
   }
 
   const modelOff = mode === "off";
-  const timedOut = !modelOff && sc.fallbackFault && !noDeal;
+  const timedOut = !modelOff && sc.fallbackFault && !noGo;
   let path: Run["path"] = "consensus";
-  if (noDeal) path = "no_deal";
+  if (noGo) path = "no_go";
   else if (modelOff || timedOut) path = "fallback";
 
-  if (!noDeal && modelOff) {
+  if (!noGo && modelOff) {
     faults.push({
       kind: "model_off",
       message: "The model is switched off, so the agents did not negotiate. The rule-based fallback chose the plan.",
@@ -305,7 +305,7 @@ function build(
       });
     }
   }
-  if (noDeal && sc.systemFault) turns.length = 0;
+  if (noGo && sc.systemFault) turns.length = 0;
 
   const rwy = openRunways[0] ?? "27L";
   const gate = openGates.includes("B12") ? "B12" : (openGates[0] ?? "B12");
@@ -314,8 +314,8 @@ function build(
 
   let decision: Run["decision"];
   let card: Card | null = null;
-  if (noDeal) {
-    decision = noDeal;
+  if (noGo) {
+    decision = noGo;
   } else {
     decision = {
       kind: "DEAL",
@@ -423,7 +423,7 @@ function logFor(s: StoredRun): LogEntry[] {
     ...r.turns.flatMap((t): [string, string][] =>
       t.responses.map((x) => ["response", `Turn ${t.turn}: ${x.domain} accepted ${x.acceptable_count} plans`]),
     ),
-    ["decision", r.path === "no_deal" ? "No agreement, handed to the duty manager" : `Chose by ${r.path}`],
+    ["decision", r.path === "no_go" ? "No-go, handed to the duty manager" : `Chose by ${r.path}`],
   ];
   const base = entries.map(([kind, summary], i) => ({
     seq: i + 1,
@@ -555,7 +555,7 @@ export const mockBackend = {
   async reject(runId: string, body: { decided_by: string; reason?: string }): Promise<DecisionResult> {
     await wait(250);
     const s = need(runId);
-    if (s.run.decision.kind !== "DEAL") throw new Error("This run has no plan to reject: it ended in no deal.");
+    if (s.run.decision.kind !== "DEAL") throw new Error("This run has no plan to reject: it ended in no-go.");
     if (s.final) return { status: "REFUSED_ALREADY_DECIDED", final_decision: s.final, log_head: recordRefused(s, runId, "reject") };
     s.final = "REJECTED";
     return {
@@ -569,7 +569,7 @@ export const mockBackend = {
     await wait(250);
     const s = need(runId);
     const decision = s.run.decision;
-    if (decision.kind !== "NO_DEAL") throw new Error("This run has a plan: approve or reject it instead.");
+    if (decision.kind !== "NO_GO") throw new Error("This run has a plan: approve or reject it instead.");
     if (s.final) return { status: "REFUSED_ALREADY_DECIDED", final_decision: s.final, log_head: recordRefused(s, runId, "take_over") };
     s.final = "TAKEN_OVER";
     return {

@@ -52,8 +52,8 @@ from app.negotiation.contracts import (
     FrozenModel,
     Gate,
     GateOccupancy,
-    NoDeal,
-    NoDealReason,
+    NoGo,
+    NoGoReason,
     OtherArrival,
     Package,
     Provenance,
@@ -94,7 +94,7 @@ SPLIT_FROZEN = "frozen"
 
 PATH_CONSENSUS = "consensus"
 PATH_FALLBACK = "fallback"
-PATH_NO_DEAL = "no_deal"
+PATH_NO_GO = "no_go"
 PATH_ERROR = "error"
 
 # The plan's budget: 3 agents over 2 turns, 10 tune rows run once, 20 frozen rows
@@ -124,7 +124,7 @@ UNRELATED_OFFSET_MIN = 600
 DEFAULT_GENERATOR_ROWS = 500
 
 # The synthetic parameters that drive what binds, per Slice 1's findings. Each is
-# moved alone from its default, on the same rows, to show how much of the NO_DEAL
+# moved alone from its default, on the same rows, to show how much of the NO_GO
 # rate comes from our generator.
 GENERATOR_VARIANTS: tuple[tuple[str, Any], ...] = (
     ("p_next_leg_hard", 0.0),
@@ -1194,7 +1194,7 @@ class CaseResult:
         )
 
 
-def _chosen(decision: Deal | NoDeal) -> Package | None:
+def _chosen(decision: Deal | NoGo) -> Package | None:
     return decision.package if isinstance(decision, Deal) else None
 
 
@@ -1257,7 +1257,7 @@ class ExpectedControl:
     control_id: str
     scenario: Scenario
     expected_package: Package | None = None
-    expected_reason: NoDealReason | None = None
+    expected_reason: NoGoReason | None = None
     expected_binding_rule: str | None = None
 
 
@@ -1304,19 +1304,19 @@ def expected_controls() -> tuple[ExpectedControl, ...]:
         ExpectedControl(
             "negative_all_runways_closed",
             control_scenario(runways=all_closed),
-            expected_reason=NoDealReason.NOTHING_LEGAL,
+            expected_reason=NoGoReason.NOTHING_LEGAL,
             expected_binding_rule="ATC-RWY-CLOSED",
         ),
         ExpectedControl(
             "negative_fuel_unknown_is_fault",
             control_scenario(fuel_on_board_kg=None),
-            expected_reason=NoDealReason.SYSTEM_FAULT,
+            expected_reason=NoGoReason.SYSTEM_FAULT,
             expected_binding_rule="PLT-FUEL-POLICY",
         ),
         ExpectedControl(
             "negative_gate_map_unknown_is_fault",
             control_scenario(gates=None),
-            expected_reason=NoDealReason.SYSTEM_FAULT,
+            expected_reason=NoGoReason.SYSTEM_FAULT,
         ),
     )
 
@@ -1326,7 +1326,7 @@ def control_matches(control: ExpectedControl, decision: Any) -> bool:
         return isinstance(decision, Deal) and (
             decision.package == control.expected_package
         )
-    if not isinstance(decision, NoDeal):
+    if not isinstance(decision, NoGo):
         return False
     if decision.reason_type is not control.expected_reason:
         return False
@@ -1384,14 +1384,14 @@ def _close_runways(scenario: Scenario, closing: set[str]) -> Scenario:
 
 def input_sensitivity(
     scenario: Scenario,
-    decider: Callable[[Scenario], Deal | NoDeal] = decide,
+    decider: Callable[[Scenario], Deal | NoGo] = decide,
 ) -> tuple[PairResult, ...]:
     """Paired perturbations: a real change must move the deal, or be shown not to
     matter, and an unrelated one must not. `decider` is injectable so that a test
     can prove a state-blind decider is caught."""
     base = decider(scenario)
     if not isinstance(base, Deal):
-        reason = f"no deal to perturb ({base.reason_type.value})"
+        reason = f"no-go to perturb ({base.reason_type.value})"
         return tuple(
             PairResult(pair, PairStatus.NOT_REACHED, reason)
             for pair in SENSITIVITY_PAIRS
@@ -1437,15 +1437,15 @@ def input_sensitivity(
 
     after = decider(_close_runways(scenario, {r.runway_id for r in runways}))
     named = (
-        isinstance(after, NoDeal)
-        and after.reason_type is NoDealReason.NOTHING_LEGAL
+        isinstance(after, NoGo)
+        and after.reason_type is NoGoReason.NOTHING_LEGAL
         and "ATC-RWY-CLOSED" in {e.rule_id for e in after.eliminations}
     )
     results.append(
         PairResult(
             "close_all_runways",
             PairStatus.CHANGED if named else PairStatus.FAILED,
-            "with every runway closed the result must be NO_DEAL naming the closure",
+            "with every runway closed the result must be NO_GO naming the closure",
         )
     )
 
@@ -1497,7 +1497,7 @@ def input_sensitivity(
     return tuple(results)
 
 
-def _must_not_change(pair: str, chosen: Package, after: Deal | NoDeal) -> PairResult:
+def _must_not_change(pair: str, chosen: Package, after: Deal | NoGo) -> PairResult:
     if _chosen(after) == chosen:
         return PairResult(
             pair,
@@ -1661,8 +1661,8 @@ def pick_dominates(
     )
 
 
-def _as_decision(decision: Any) -> Deal | NoDeal:
-    if isinstance(decision, Deal | NoDeal):
+def _as_decision(decision: Any) -> Deal | NoGo:
+    if isinstance(decision, Deal | NoGo):
         return decision
     raise TypeError(f"unexpected decision type {type(decision).__name__}")
 
@@ -1705,7 +1705,7 @@ def _generator_outcomes(
             row, seed=0, path=config.data_path, params=params
         )
         decision = decide(scenario)
-        if isinstance(decision, NoDeal):
+        if isinstance(decision, NoGo):
             found.append(
                 GeneratorOutcome(
                     label=label,
@@ -1775,7 +1775,7 @@ def _evaluate_row(
     else:
         decision = authority
         via = "decide_direct"
-        path = PATH_FALLBACK if isinstance(decision, Deal) else PATH_NO_DEAL
+        path = PATH_FALLBACK if isinstance(decision, Deal) else PATH_NO_GO
         faults = ()
         turns = None
         calls = 0
@@ -1837,7 +1837,7 @@ def _evaluate_row(
         path=path,
         kind=decision.kind,
         reason_type=(
-            decision.reason_type.value if isinstance(decision, NoDeal) else None
+            decision.reason_type.value if isinstance(decision, NoGo) else None
         ),
         faults=faults,
         turns_used=turns,
@@ -1857,7 +1857,7 @@ def _evaluate_row(
         eliminated=dict(eliminated),
         sole_binder=dict(sole_binder),
         binding_rule_ids=(
-            decision.binding_rule_ids if isinstance(decision, NoDeal) else ()
+            decision.binding_rule_ids if isinstance(decision, NoGo) else ()
         ),
         baselines=tuple(baselines),
         weight_changes=_weight_changes(scenario, legal, _chosen(authority)),
@@ -1893,16 +1893,14 @@ def _optional_float(value: Any) -> float | None:
     return None if value is None else float(value)
 
 
-def _seed_outcome(
-    seed: int, scenario: Scenario, decision: Deal | NoDeal
-) -> SeedOutcome:
+def _seed_outcome(seed: int, scenario: Scenario, decision: Deal | NoGo) -> SeedOutcome:
     chosen = _chosen(decision)
     earliest = scenario.earliest_arrival_min.value
     return SeedOutcome(
         seed=seed,
         kind=decision.kind,
         reason_type=(
-            decision.reason_type.value if isinstance(decision, NoDeal) else None
+            decision.reason_type.value if isinstance(decision, NoGo) else None
         ),
         package_hash=chosen.terms_hash if chosen is not None else None,
         delay_min=(
@@ -2090,7 +2088,7 @@ def _llm_row(key: str, cause: str, scenario: Scenario, done: Any) -> LlmRow:
         reached=True,
         path=str(done.path),
         reason_type=(
-            decision.reason_type.value if isinstance(decision, NoDeal) else None
+            decision.reason_type.value if isinstance(decision, NoGo) else None
         ),
         faults=_fault_texts(done.faults),
         turns_used=done.turns_used,
@@ -2205,7 +2203,7 @@ def score_llm_group(rows: Sequence[LlmRow]) -> dict[str, Any]:
             sum(r.path == PATH_CONSENSUS for r in answered), len(answered)
         ),
         "fallback": share(sum(r.path == PATH_FALLBACK for r in reached)),
-        "no_deal": share(sum(r.path == PATH_NO_DEAL for r in reached)),
+        "no_go": share(sum(r.path == PATH_NO_GO for r in reached)),
         "error": share(sum(r.path == PATH_ERROR for r in reached)),
         "final_rule_violation": share(sum(bool(r.final_violations) for r in reached)),
         "final_harm": share(sum(r.harmful for r in reached)),
@@ -2579,9 +2577,9 @@ def rules_only_panel(
             "usefulness beside safety",
             empty_reason=empty_reason,
         )
-        for reason in NoDealReason:
+        for reason in NoGoReason:
             builder.rate(
-                f"NO_DEAL {reason.value} rate, {label}",
+                f"NO_GO {reason.value} rate, {label}",
                 sum(r.reason_type == reason.value for r in rows),
                 total,
                 "usefulness beside safety",
@@ -2885,7 +2883,7 @@ def rules_only_panel(
         empty_reason=empty_reason,
     )
     builder.rate(
-        "Outcome flips between deal and NO_DEAL across synthetic seeds",
+        "Outcome flips between deal and NO_GO across synthetic seeds",
         sum(len({s.kind for s in r.seeds}) > 1 for r in multi),
         len(multi),
         "several synthetic seeds per row",
@@ -2902,7 +2900,7 @@ def rules_only_panel(
             len(ok),
             len(reached),
             "deal must change, or be shown unaffected with a reason",
-            note=f"{len(outcomes) - len(reached)} NOT_REACHED, no deal to perturb"
+            note=f"{len(outcomes) - len(reached)} NOT_REACHED, no-go to perturb"
             if len(outcomes) != len(reached)
             else "",
             empty_reason=empty_reason,
@@ -2918,20 +2916,20 @@ def rules_only_panel(
 def generator_sensitivity_panel(
     results: Sequence[RowResult], meta: RunMeta, reason: str
 ) -> Panel:
-    """How the NO_DEAL rate moves with the synthetic parameters, on the same rows.
+    """How the NO_GO rate moves with the synthetic parameters, on the same rows.
 
     If a rate moves a lot here, it describes our generator more than the world.
     """
     builder = PanelBuilder(
         EvidenceClass.RULES_ONLY,
-        "NO_DEAL rate as synthetic generator parameters move, same rows",
+        "NO_GO rate as synthetic generator parameters move, same rows",
         meta,
     )
     done = [r for r in results if r.error is None and r.generator]
     labels = list(dict.fromkeys(g.label for r in done for g in r.generator))
     if not labels:
         builder.not_reached(
-            "NO_DEAL rate by generator parameter", "default parameters", reason
+            "NO_GO rate by generator parameter", "default parameters", reason
         )
         return builder.build(sample_size=0)
     groups = [
@@ -2945,17 +2943,17 @@ def generator_sensitivity_panel(
         }
         default = outcomes.get(GENERATOR_DEFAULT_LABEL, [])
         default_rate = (
-            sum(g.kind == "NO_DEAL" for g in default) / len(default) if default else 0.0
+            sum(g.kind == "NO_GO" for g in default) / len(default) if default else 0.0
         )
         for label, found in outcomes.items():
-            no_deals = [g for g in found if g.kind == "NO_DEAL"]
-            binding = Counter(rule for g in no_deals for rule in g.binding_rule_ids)
+            no_gos = [g for g in found if g.kind == "NO_GO"]
+            binding = Counter(rule for g in no_gos for rule in g.binding_rule_ids)
             top = binding.most_common(1)
             top_text = f"most binding: {top[0][0]} in {top[0][1]}" if top else "none"
-            move = (len(no_deals) / len(found) - default_rate if found else 0.0) * 100
+            move = (len(no_gos) / len(found) - default_rate if found else 0.0) * 100
             builder.rate(
-                f"NO_DEAL rate, {cause}, {label}",
-                len(no_deals),
+                f"NO_GO rate, {cause}, {label}",
+                len(no_gos),
                 len(found),
                 "default parameters",
                 note=f"{move:+.1f} points against default; {top_text}",
@@ -3015,11 +3013,11 @@ def llm_panel(
             n,
         )
         builder.rate(
-            f"NO_DEAL rate, {label}", sum(r.path == PATH_NO_DEAL for r in group), n
+            f"NO_GO rate, {label}", sum(r.path == PATH_NO_GO for r in group), n
         )
-        for reason in NoDealReason:
+        for reason in NoGoReason:
             builder.rate(
-                f"NO_DEAL {reason.value} rate, {label}",
+                f"NO_GO {reason.value} rate, {label}",
                 sum(r.reason_type == reason.value for r in group),
                 n,
             )
@@ -3205,7 +3203,7 @@ def frozen_score_panel(
             ("model_answered", "rows the agents' path actually ran on"),
             ("consensus", "rows a model answered"),
             ("fallback", "reported as measured"),
-            ("no_deal", "reported as measured"),
+            ("no_go", "reported as measured"),
             ("final_rule_violation", "must be zero: the gate"),
             ("final_harm", "harm.py, own logic"),
         ):
@@ -3248,7 +3246,7 @@ def limits_text(
         "Safety rests on the gate, not on the sample: no package reaches a person "
         "without passing rules/.",
         "The rules are a subset of real ATC procedure, and binding counts partly "
-        "describe our generator: see how NO_DEAL moves with its parameters above.",
+        "describe our generator: see how NO_GO moves with its parameters above.",
         "Converting wake separation from miles to minutes depends on an assumed "
         "approach speed.",
         "Real ARRIVAL_DELAY is context only and shows no saving: a scenario's "
@@ -3362,8 +3360,8 @@ COMPARISON_MEASURES = (
     "Deal rate, all rows",
     "Deal rate, weather",
     "Deal rate, late_aircraft",
-    "NO_DEAL NOTHING_LEGAL rate, all rows",
-    "NO_DEAL SYSTEM_FAULT rate, all rows",
+    "NO_GO NOTHING_LEGAL rate, all rows",
+    "NO_GO SYSTEM_FAULT rate, all rows",
     "Pick is no worse than every legal package on every cost component",
     "Chosen package changes under at least one alternate weight",
     "Chosen package has zero soft cost",
@@ -3375,7 +3373,7 @@ COMPARISON_MEASURES = (
     "harm.py versus rules: rules_only",
     "first_come_first_served: packages breaking a rule",
     "Chosen package changes across synthetic seeds",
-    "Outcome flips between deal and NO_DEAL across synthetic seeds",
+    "Outcome flips between deal and NO_GO across synthetic seeds",
     "Delay past the scenario's earliest arrival, fallback",
     "Delay past the scenario's earliest arrival, fallback minus human_heuristic, "
     "paired on the same window",

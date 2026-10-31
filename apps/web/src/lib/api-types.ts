@@ -7,7 +7,7 @@
 export type Provenance = "real" | "derived" | "synthetic";
 export type Domain = "atc" | "pilot" | "ground";
 export type RunMode = "off" | "recorded" | "live";
-export type RunPath = "consensus" | "fallback" | "no_deal";
+export type RunPath = "consensus" | "fallback" | "no_go";
 export type Cause = "weather" | "late_aircraft";
 /** The basis of a rule's limit, from rule_values.py and card.py. */
 export type RuleStatus =
@@ -18,7 +18,7 @@ export type RuleStatus =
   | "assumption"
   | "scenario_defined"
   | "unknown";
-export type NoDealReason = "NOTHING_LEGAL" | "SYSTEM_FAULT";
+export type NoGoReason = "NOTHING_LEGAL" | "SYSTEM_FAULT";
 
 export interface NextLeg {
   flight_id: string;
@@ -117,9 +117,9 @@ export interface Deal {
   packages_legal: number;
 }
 
-export interface NoDeal {
-  kind: "NO_DEAL";
-  reason_type: NoDealReason;
+export interface NoGo {
+  kind: "NO_GO";
+  reason_type: NoGoReason;
   /** Rules that blocked every plan, with observed value and limit. */
   binding_rules: RuleResult[];
   packages_considered: number;
@@ -130,7 +130,7 @@ export interface NoDeal {
   reason: string;
 }
 
-export type Decision = Deal | NoDeal;
+export type Decision = Deal | NoGo;
 
 export interface Fact {
   key: string;

@@ -146,7 +146,7 @@ def compute_cost(
 class WeightSensitivity(FrozenModel):
     """Whether different weights would change which package the fallback picks.
 
-    A package is None when the fallback returns `NoDeal`, which no weights can
+    A package is None when the fallback returns `NoGo`, which no weights can
     change: weights only rank packages that already pass every rule.
     """
 

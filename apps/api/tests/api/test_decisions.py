@@ -28,11 +28,11 @@ MANAGER = "Duty manager (demo, not authenticated)"
 PRIVATE_TEXT = "Free text that must never be shown as a fact"
 
 
-def _no_deal_run(client: TestClient) -> dict[str, Any]:
+def _no_go_run(client: TestClient) -> dict[str, Any]:
     base = _deal_run(client)
     runways = [r["id"] for r in base["airport"]["runways"]]
     run = _post_run(client, base["scenario_id"], closed_runways=runways)
-    assert run["decision"]["kind"] == "NO_DEAL"
+    assert run["decision"]["kind"] == "NO_GO"
     return run
 
 
@@ -96,8 +96,8 @@ def test_reject_needs_no_reason_and_does_not_re_run_the_rules(
     assert _reject(client, run).json()["status"] == "REJECTED"
 
 
-def test_take_over_logs_the_type_of_no_deal(client: TestClient, logs: Path) -> None:
-    run = _no_deal_run(client)
+def test_take_over_logs_the_type_of_no_go(client: TestClient, logs: Path) -> None:
+    run = _no_go_run(client)
     response = _take_over(client, run, note=PRIVATE_TEXT)
     assert response.status_code == 200
     body = response.json()
@@ -117,15 +117,15 @@ def test_system_fault_stays_distinct_when_a_case_is_taken_over(
     client: TestClient, logs: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from app.api import runs as runs_module
-    from app.negotiation.contracts import NoDeal, NoDealReason
+    from app.negotiation.contracts import NoGo, NoGoReason
 
     row = _scenarios(client, limit=1)[0]
     real = runs_module.run_negotiation
 
     def faulted(*args: Any, **kwargs: Any) -> Any:
         result = real(*args, **kwargs)
-        fault = NoDeal(
-            reason_type=NoDealReason.SYSTEM_FAULT,
+        fault = NoGo(
+            reason_type=NoGoReason.SYSTEM_FAULT,
             binding_rule_ids=(),
             eliminations=(),
             packages_considered=0,
@@ -133,7 +133,7 @@ def test_system_fault_stays_distinct_when_a_case_is_taken_over(
             nearest_violations=(),
             reason="injected by this test",
         )
-        return result.model_copy(update={"decision": fault, "path": "no_deal"})
+        return result.model_copy(update={"decision": fault, "path": "no_go"})
 
     monkeypatch.setattr(runs_module, "run_negotiation", faulted)
     run = _post_run(client, row["scenario_id"])
@@ -217,7 +217,7 @@ def test_double_decisions_are_refused(client: TestClient) -> None:
     assert again["status"] == "REFUSED_ALREADY_DECIDED"
     assert again["final_decision"] == "REJECTED"
 
-    case = _no_deal_run(client)
+    case = _no_go_run(client)
     assert _take_over(client, case).json()["status"] == "TAKEN_OVER"
     second = _take_over(client, case).json()
     assert second["status"] == "REFUSED_ALREADY_DECIDED"
@@ -236,7 +236,7 @@ def test_the_wrong_decision_for_the_run_is_a_typed_error_with_no_log_entry(
     assert response.json()["code"] == "WRONG_DECISION_KIND"
     assert _log(client, deal) == before
 
-    case = _no_deal_run(client)
+    case = _no_go_run(client)
     before = _log(client, case)
     response = _reject(client, case)
     assert response.status_code == 409
@@ -380,7 +380,7 @@ def test_each_decision_verifies_and_tampering_with_it_is_detected(
         run = _deal_run(client)
         _reject(client, run)
     else:
-        run = _no_deal_run(client)
+        run = _no_go_run(client)
         _take_over(client, run)
     log = _log(client, run)
     assert log["verify"]["valid"] is True

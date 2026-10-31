@@ -55,7 +55,7 @@ export const RULE_STATUS_LABEL: Record<RuleStatus, { name: string; detail: strin
 export const PATH_LABEL: Record<RunPath, string> = {
   consensus: "Agents agreed",
   fallback: "Rule-based fallback",
-  no_deal: "No agreement",
+  no_go: "No-go",
 };
 
 export const FAULT_LABEL: Record<FaultKind, string> = {

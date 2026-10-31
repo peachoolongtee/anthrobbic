@@ -39,7 +39,7 @@ export function SignoffPanel({
       <CardContent>
         {run === null ? (
           <p className="text-sm text-muted-foreground">Pick a flight to see its recovery plan.</p>
-        ) : run.decision.kind === "NO_DEAL" || !run.card ? (
+        ) : run.decision.kind === "NO_GO" || !run.card ? (
           <div className="space-y-3">
             <p className="text-sm">
               <strong>Nothing to approve.</strong> No recovery plan passed the rules, so there is nothing to sign.

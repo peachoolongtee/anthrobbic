@@ -97,7 +97,7 @@ export const api = {
     return post<DecisionResult>(`/runs/${encodeURIComponent(runId)}/reject`, body);
   },
 
-  /** Records that the duty manager has a no-deal case. The note is stored as unverified. */
+  /** Records that the duty manager has a no-go case. The note is stored as unverified. */
   takeOver(runId: string, body: { decided_by: string; note?: string }): Promise<DecisionResult> {
     if (IS_MOCK) return mockBackend.takeOver(runId, body);
     return post<DecisionResult>(`/runs/${encodeURIComponent(runId)}/take-over`, body);
