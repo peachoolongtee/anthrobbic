@@ -2,7 +2,6 @@
 
 import ast
 import json
-import shutil
 import threading
 from pathlib import Path
 from typing import Any
@@ -12,9 +11,17 @@ from fastapi.testclient import TestClient
 
 from app import api as api_package
 from app.negotiation import dot, protocol
+from app.negotiation import signoff as signoff_module
+from app.negotiation.options import PackageBoundError
 from app.negotiation.protocol import run_unguarded
 from app.negotiation.scenario import build_scenario
-from tests.api.test_routes import _deal_run, _post_run, _scenarios, _sign
+from tests.api.test_routes import (
+    _deal_run,
+    _post_run,
+    _scenarios,
+    _sign,
+    _signoff_body,
+)
 from tests.negotiation.test_agents import FakeBlock, FakeMessage
 
 MANAGER = "Duty manager (demo, not authenticated)"
@@ -281,16 +288,82 @@ def test_racing_decisions_leave_exactly_one_final_decision(client: TestClient) -
 
 def test_a_failed_log_write_is_not_a_decision(client: TestClient, logs: Path) -> None:
     run = _deal_run(client)
-    shutil.rmtree(logs)
+    aside = logs.parent / "logs-aside"
+    logs.rename(aside)
     logs.write_text("a file where the directory was")
     failing = TestClient(client.app, raise_server_exceptions=False)
     response = _reject(failing, run)
     assert response.status_code == 503
     assert "nothing was issued" in response.json()["detail"]
     logs.unlink()
-    logs.mkdir()
-    (logs / f"{run['run_id']}.jsonl").write_text("")
+    aside.rename(logs)
     assert _reject(failing, run).json()["status"] == "REJECTED"
+    assert _log(client, run)["verify"]["valid"] is True
+
+
+def test_a_log_edited_on_disk_refuses_decisions_and_issues_nothing(
+    client: TestClient, logs: Path
+) -> None:
+    run = _deal_run(client)
+    path = logs / f"{run['run_id']}.jsonl"
+    original = path.read_text()
+    path.write_text(original + original.splitlines()[0] + "\n")
+
+    failing = TestClient(client.app, raise_server_exceptions=False)
+    for response in (
+        _reject(failing, run),
+        failing.post(f"/runs/{run['run_id']}/signoff", json=_signoff_body(run)),
+    ):
+        assert response.status_code == 409
+        assert response.json()["code"] == "LOG_INTEGRITY"
+        assert "nothing was issued" in response.json()["detail"]
+
+    # Neither attempt counted as the run's decision.
+    path.write_text(original)
+    assert _sign(failing, run)["status"] == "APPROVED"
+
+
+def test_a_package_the_scenario_cannot_show_it_offered_is_not_eligible(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = _deal_run(client)
+
+    def over_bound(_: Any) -> None:
+        raise PackageBoundError("over the bound")
+
+    monkeypatch.setattr(signoff_module, "enumerate_packages", over_bound)
+    result = _sign(client, run)
+    assert result["status"] == "REFUSED_NOT_ELIGIBLE"
+    assert result["airline_decisions"] == []
+    assert result["requests"] == []
+    # A refusal is not the run's decision.
+    assert _reject(client, run).json()["status"] == "REJECTED"
+
+
+def test_how_a_plan_was_reached_comes_from_the_result_and_the_client_cannot_set_it(
+    client: TestClient,
+) -> None:
+    run = _deal_run(client)
+    assert run["card"]["how_reached"] == "fallback"
+    faulted = _post_run(client, run["scenario_id"], "recorded")
+    assert faulted["card"]["how_reached"] == "fallback_after_fault"
+    # It is in the card hash, so the two plans' cards differ.
+    assert faulted["card"]["card_hash"] != run["card"]["card_hash"]
+
+    response = client.post(
+        f"/runs/{run['run_id']}/signoff",
+        json={**_signoff_body(run), "reached": "consensus"},
+    )
+    assert response.status_code == 422
+
+
+def test_a_faulted_fallback_signs_off_against_the_card_it_showed(
+    client: TestClient,
+) -> None:
+    base = _deal_run(client)
+    run = _post_run(client, base["scenario_id"], "recorded")
+    assert run["card"]["how_reached"] == "fallback_after_fault"
+    assert _sign(client, run)["status"] == "APPROVED"
 
 
 # --- the log, from the file ----------------------------------------------------

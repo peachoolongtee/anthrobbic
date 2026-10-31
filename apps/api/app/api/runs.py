@@ -44,7 +44,7 @@ from app.api.wire import (
 )
 from app.config import Settings
 from app.negotiation.agents.base import ModelClient
-from app.negotiation.card import decision_card
+from app.negotiation.card import Reached, decision_card, reached_from_result
 from app.negotiation.contracts import (
     ArrivalSlot,
     Deal,
@@ -61,7 +61,6 @@ from app.negotiation.contracts import (
 from app.negotiation.log import (
     EvidenceLog,
     LogEntry,
-    VerifyReason,
     VerifyResult,
     load_entries,
     verify_entries,
@@ -336,6 +335,8 @@ class RunRecord:
     # None for a no-deal run. Only ever a package from `run_negotiation`: sign-off
     # takes it from here, never from the client, and no unguarded result reaches it.
     package: Package | None
+    # How the plan was chosen, from the protocol result. Never from the client.
+    reached: Reached | None
     anchor: str
     # Guards the state, every decision and its log entry as one step.
     lock: threading.Lock = field(default_factory=threading.Lock)
@@ -344,13 +345,11 @@ class RunRecord:
     def stored(self) -> tuple[tuple[LogEntry, ...], VerifyResult]:
         """The log as it is on disk, checked against the anchor. A file that cannot
         even be parsed is invalid, with the entries this process remembers."""
+        result = self.log.verify(self.anchor)
         try:
-            entries = load_entries(self.log_path)
+            return load_entries(self.log_path), result
         except ValueError:
-            return self.log.entries, VerifyResult(
-                False, None, VerifyReason.MALFORMED_ENTRY
-            )
-        return entries, verify_entries(entries, self.anchor)
+            return self.log.entries, result
 
 
 class RunService:
@@ -458,13 +457,16 @@ class RunService:
         version = state_version(scenario)
         trigger = _trigger(result)
         package: Package | None = None
+        reached: Reached | None = None
         card: CardView | None = None
         if isinstance(decision, Deal):
             package = decision.package
+            reached = reached_from_result(result.path, result.faults)
             built = decision_card(
                 scenario,
                 decision,
                 violations=check_package(scenario, package),
+                how_reached=reached,
                 reason_codes=_reason_codes(result, trigger),
                 state_version=version,
             )
@@ -509,6 +511,7 @@ class RunService:
             log_path=log_path,
             scenario=scenario,
             package=package,
+            reached=reached,
             anchor=log.head,
         )
         with self._lock:
@@ -541,7 +544,8 @@ class RunService:
     def sign_off(self, run_id: str, request: SignOffRequest) -> SignoffResult:
         record = self._record(run_id)
         package = record.package
-        if package is None:
+        reached = record.reached
+        if package is None or reached is None:
             raise ApiError(
                 409,
                 "This run has no plan to sign: it ended in no deal.",
@@ -563,6 +567,7 @@ class RunService:
                 record.scenario,
                 record.log,
                 self._used_tokens,
+                reached=reached,
             )
             if outcome.status is SignOffStatus.APPROVED:
                 record.final = "APPROVED"

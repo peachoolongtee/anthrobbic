@@ -6,7 +6,7 @@ so an as-flown outcome column cannot ride along. Mirrors
 from typing import Final, Literal
 
 from app.negotiation.agents.base import FaultKind
-from app.negotiation.card import CostLine, ProvenanceLine, RuleStatus
+from app.negotiation.card import CostLine, ProvenanceLine, Reached, RuleStatus
 from app.negotiation.contracts import Domain, FrozenModel, NoDealReason, Provenance
 from app.negotiation.dot import Cause
 from app.negotiation.protocol import Mode
@@ -134,6 +134,7 @@ class CardView(FrozenModel):
     card_hash: str
     field_hashes: dict[str, str]
     package_name: str
+    how_reached: Reached
     action: str
     action_facts: tuple[Fact, ...]
     what_to_do: tuple[str, ...]

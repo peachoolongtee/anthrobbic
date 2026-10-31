@@ -257,6 +257,7 @@ def card_view(card: Card, package: Package, scenario: Scenario) -> CardView:
         card_hash=card.card_hash,
         field_hashes=dict(card.field_hashes),
         package_name=card.package_name,
+        how_reached=card.how_reached,
         action=card.headline,
         action_facts=(*airline, *requested),
         what_to_do=card.what_to_do,

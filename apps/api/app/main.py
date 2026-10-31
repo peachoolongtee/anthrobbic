@@ -8,6 +8,7 @@ from app.api.routes import router
 from app.api.runs import ApiError, RunService
 from app.config import Settings, get_settings
 from app.negotiation.dot import DotError
+from app.negotiation.log import LogIntegrityError
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,19 @@ def create_app(
         if error.code is not None:
             content["code"] = error.code
         return JSONResponse(status_code=error.status, content=content)
+
+    @application.exception_handler(LogIntegrityError)
+    def log_integrity_error(_: Request, error: LogIntegrityError) -> JSONResponse:
+        # The log refuses to extend a file that no longer verifies.
+        logger.error("evidence log refused an append: %s", type(error).__name__)
+        return JSONResponse(
+            status_code=409,
+            content={
+                "code": "LOG_INTEGRITY",
+                "detail": "This run's evidence log no longer checks out, so nothing "
+                "was issued or recorded. Make a new recovery plan.",
+            },
+        )
 
     @application.exception_handler(OSError)
     def file_error(_: Request, error: OSError) -> JSONResponse:
