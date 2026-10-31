@@ -91,11 +91,11 @@ export function PlanSummary({
         <div className="flex flex-wrap gap-1.5">
           <Pill ok={run.path === "consensus"}>{PATH_LABEL[run.path]}</Pill>
           <Pill ok={run.decision.kind === "DEAL"}>
-            {run.decision.kind === "DEAL" ? "All rules pass" : "No recovery plan passes"}
+            {run.decision.kind === "DEAL" ? "Passes the rules checked" : "No-go: no recovery plan passes"}
           </Pill>
           {run.turns.length > 0 && (
             <span className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
-              {run.turns.length} of 2 turns
+              {run.turns.length} {run.turns.length === 1 ? "turn" : "turns"}
             </span>
           )}
         </div>
@@ -135,7 +135,7 @@ export function PlanSummary({
       {run && (
         <Button variant="ghost" size="sm" onClick={onDetails} className="-ml-2 text-muted-foreground">
           <ScrollText aria-hidden />
-          {deal ? `Why, risks and ${deal.packages_legal} of ${deal.packages_considered} recovery plans` : "Why no recovery plan passed"}
+          {deal ? `Why, risks and ${deal.packages_legal} of ${deal.packages_considered} recovery plans` : "Why this is a no-go"}
         </Button>
       )}
     </section>

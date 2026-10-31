@@ -44,11 +44,12 @@ export function AppNav() {
       </nav>
       {IS_MOCK && (
         <span
-          title="No backend and no model. Run outcomes are invented; 2015 figures are real."
+          title="No backend and no model. The flights are 2015 US DOT rows, but delay minutes, plans, runs and results are invented. Only the 2015 counts on the overview are counted from the records."
           className="inline-flex items-center gap-1 rounded-md bg-warning-soft px-2 py-0.5 text-xs font-semibold text-warning"
         >
           <FlaskConical aria-hidden className="size-3.5" />
           <span className="max-sm:sr-only">Sample data</span>
+          <span className="max-xl:sr-only font-normal">: delays, plans and results are invented</span>
         </span>
       )}
     </div>

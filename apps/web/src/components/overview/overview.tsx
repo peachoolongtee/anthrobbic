@@ -3,30 +3,16 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, CircleAlert, CircleCheck, CircleDashed, CloudLightning, PlaneLanding } from "lucide-react";
+import { ArrowUpRight, CloudLightning, PlaneLanding } from "lucide-react";
 import { api } from "@/lib/api";
-import type { Run, ScenarioSummary } from "@/lib/api-types";
+import type { ScenarioSummary } from "@/lib/api-types";
 import { AIRPORTS, routeCodes } from "@/lib/airports";
+import { CAUSE_LABEL } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import stats from "@/lib/flight-stats.json";
 import { AppNav } from "@/components/app-nav";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OrbitingGlobe, type GlobeRoute } from "@/components/landing/orbiting-globe";
-
-type Outcome = "agreed" | "fallback" | "none" | "error";
-
-interface Row {
-  flight: ScenarioSummary;
-  run: Run | null;
-  outcome: Outcome;
-}
-
-const OUTCOME: Record<Outcome, { label: string; dot: string; text: string; Icon: typeof CircleCheck }> = {
-  agreed: { label: "Agents agreed", dot: "bg-success", text: "text-success", Icon: CircleCheck },
-  fallback: { label: "Fallback", dot: "bg-warning", text: "text-warning", Icon: CircleAlert },
-  none: { label: "No recovery plan", dot: "bg-destructive", text: "text-destructive", Icon: CircleAlert },
-  error: { label: "Failed", dot: "bg-muted-foreground", text: "text-muted-foreground", Icon: CircleDashed },
-};
 
 const CAUSE_ICON = { weather: CloudLightning, late_aircraft: PlaneLanding } as const;
 
@@ -39,11 +25,6 @@ const CAUSES: { key: keyof typeof stats.causeMinutes; label: string }[] = [
 ];
 
 const fmt = new Intl.NumberFormat("en-US");
-
-function outcomeOf(run: Run): Outcome {
-  if (run.decision.kind === "NO_GO") return "none";
-  return run.path === "consensus" ? "agreed" : "fallback";
-}
 
 function flightHref(id: string) {
   return `/dashboard/flights?flight=${encodeURIComponent(id)}`;
@@ -58,7 +39,7 @@ function Panel({
 }: {
   title: string;
   action?: React.ReactNode;
-  source?: "real" | "runs";
+  source?: "real" | "demo";
   className?: string;
   children: React.ReactNode;
 }) {
@@ -71,13 +52,13 @@ function Panel({
         <h2 className="font-display text-lg font-medium">{title}</h2>
         {source && (
           <span
-            title={source === "real" ? "Counted from the 2015 US DOT records" : "From recorded runs of the demo flights"}
+            title={source === "real" ? "Counted from the US DOT on-time records for 2015" : "From the demo flight list, not from the 2015 counts"}
             className={cn(
               "rounded px-1.5 py-0.5 text-[11px] font-medium",
               source === "real" ? "bg-success-soft text-success" : "bg-info-soft text-info",
             )}
           >
-            {source === "real" ? "2015 DOT" : "Runs"}
+            {source === "real" ? "US DOT 2015" : "Demo flights"}
           </span>
         )}
         <div className="ml-auto">{action}</div>
@@ -87,24 +68,23 @@ function Panel({
   );
 }
 
-/** A ring split by outcome, drawn with stroke dashes on one circle. */
-function Donut({ counts, total }: { counts: [Outcome, number][]; total: number }) {
+/** A ring split into labelled parts, drawn with stroke dashes on one circle. */
+function Donut({ parts, total }: { parts: { label: string; n: number; stroke: string }[]; total: number }) {
   const r = 64;
   const c = 2 * Math.PI * r;
   // Each segment starts where the ones before it end.
-  const segments = counts.map(([o, n], i) => ({
-    o,
-    n,
-    len: total ? (n / total) * c : 0,
-    start: counts.slice(0, i).reduce((sum, [, m]) => sum + (total ? (m / total) * c : 0), 0),
+  const segments = parts.map((p, i) => ({
+    ...p,
+    len: total ? (p.n / total) * c : 0,
+    start: parts.slice(0, i).reduce((sum, q) => sum + (total ? (q.n / total) * c : 0), 0),
   }));
   return (
-    <svg viewBox="0 0 160 160" className="size-44" role="img" aria-label={counts.map(([o, n]) => `${OUTCOME[o].label} ${n}`).join(", ")}>
+    <svg viewBox="0 0 160 160" className="size-44" role="img" aria-label={parts.map((p) => `${p.label} ${p.n}`).join(", ")}>
       <circle cx="80" cy="80" r={r} fill="none" strokeWidth="16" className="stroke-muted" />
-      {segments.map(({ o, n, len, start }) =>
+      {segments.map(({ label, n, len, start, stroke }) =>
         n === 0 ? null : (
           <circle
-            key={o}
+            key={label}
             cx="80"
             cy="80"
             r={r}
@@ -113,12 +93,7 @@ function Donut({ counts, total }: { counts: [Outcome, number][]; total: number }
             strokeDasharray={`${Math.max(len - 3, 0)} ${c}`}
             strokeDashoffset={-start}
             transform="rotate(-90 80 80)"
-            className={cn(
-              o === "agreed" && "stroke-success",
-              o === "fallback" && "stroke-warning",
-              o === "none" && "stroke-destructive",
-              o === "error" && "stroke-muted-foreground",
-            )}
+            className={stroke}
           />
         ),
       )}
@@ -150,7 +125,7 @@ function Bar({ label, value, max, tone = "bg-primary", suffix }: { label: string
 }
 
 export function Overview() {
-  const [rows, setRows] = useState<Row[] | null>(null);
+  const [flights, setFlights] = useState<ScenarioSummary[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const router = useRouter();
@@ -158,20 +133,10 @@ export function Overview() {
 
   useEffect(() => {
     let live = true;
-    // Recorded mode only: the overview must never spend live model calls.
+    // The flight list only. The overview starts no runs, so it spends no model calls and writes no logs.
     api
       .listScenarios({ limit: 12 })
-      .then((flights) =>
-        Promise.all(
-          flights.map((flight) =>
-            api
-              .createRun({ scenario_id: flight.scenario_id, mode: "recorded", overrides: {} })
-              .then((run): Row => ({ flight, run, outcome: outcomeOf(run) }))
-              .catch((): Row => ({ flight, run: null, outcome: "error" })),
-          ),
-        ),
-      )
-      .then((r) => live && setRows(r))
+      .then((list) => live && setFlights(list))
       .catch(() => live && setFailed(true));
     return () => {
       live = false;
@@ -180,38 +145,27 @@ export function Overview() {
 
   const routes = useMemo<GlobeRoute[]>(
     () =>
-      (rows ?? []).flatMap(({ flight }) => {
+      (flights ?? []).flatMap((flight) => {
         const codes = routeCodes(flight.route);
         const from = codes && AIRPORTS[codes[0]];
         const to = codes && AIRPORTS[codes[1]];
         return from && to ? [{ id: flight.scenario_id, from, to }] : [];
       }),
-    [rows],
+    [flights],
   );
 
-  const counts = useMemo(() => {
-    const c: Record<Outcome, number> = { agreed: 0, fallback: 0, none: 0, error: 0 };
-    rows?.forEach((r) => c[r.outcome]++);
-    return (Object.entries(c) as [Outcome, number][]).filter(([o, n]) => o !== "error" || n > 0);
-  }, [rows]);
+  const byCause = useMemo(
+    () => [
+      { label: CAUSE_LABEL.weather, n: flights?.filter((f) => f.cause === "weather").length ?? 0, stroke: "stroke-info", dot: "bg-info" },
+      { label: CAUSE_LABEL.late_aircraft, n: flights?.filter((f) => f.cause === "late_aircraft").length ?? 0, stroke: "stroke-primary", dot: "bg-primary" },
+    ],
+    [flights],
+  );
 
-  const removedByRule = useMemo(() => {
-    const m = new Map<string, { label: string; count: number }>();
-    rows?.forEach(({ run }) =>
-      run?.removed_packages.forEach((p) =>
-        p.violations.forEach((v) => {
-          const cur = m.get(v.rule_id) ?? { label: v.label ?? v.rule_id, count: 0 };
-          cur.count++;
-          m.set(v.rule_id, cur);
-        }),
-      ),
-    );
-    return [...m.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 5);
-  }, [rows]);
-
-  const sorted = rows ? [...rows].sort((a, b) => a.flight.scheduled_arrival.localeCompare(b.flight.scheduled_arrival)) : null;
+  const sorted = flights ? [...flights].sort((a, b) => a.scheduled_arrival.localeCompare(b.scheduled_arrival)) : null;
   const causeMax = Math.max(...CAUSES.map((c) => stats.causeMinutes[c.key]));
   const destMax = stats.topDestinations[0]?.count ?? 0;
+  const routeMax = stats.topRoutes[0]?.count ?? 0;
   const pct = (n: number) => `${Math.round((n / stats.eligible) * 100)}%`;
 
   return (
@@ -222,11 +176,11 @@ export function Overview() {
 
       <main className="mx-auto grid max-w-[100rem] gap-4 p-4 sm:p-6 lg:grid-cols-12">
         {/* Centre stage: the globe across the full width. Clicking it opens the flights page. */}
-        <section aria-label="Delayed arrivals on the globe" className="relative lg:col-span-12">
+        <section aria-label="Demo flights on the globe" className="relative lg:col-span-12">
           <div className="pointer-events-none absolute top-1 left-1 z-10">
-            <h1 className="font-display text-2xl font-medium">Delayed arrivals</h1>
+            <h1 className="font-display text-2xl font-medium">Demo flights</h1>
             <p className="text-sm text-muted-foreground tabular-nums">
-              {rows ? `${rows.length} flights, ${rows.reduce((n, r) => n + r.flight.delay_minutes, 0)} min late in all` : "\u00a0"}
+              {flights ? `${flights.length} flights, ${flights.reduce((n, f) => n + f.delay_minutes, 0)} min of delay in all` : "\u00a0"}
             </p>
           </div>
           <div
@@ -246,6 +200,9 @@ export function Overview() {
               className="h-[24rem] sm:h-[32rem] lg:h-[min(66vh,44rem)]"
             />
           </div>
+          <p className="pointer-events-none absolute right-1 bottom-2 z-10 max-w-48 text-right text-[11px] text-muted-foreground sm:max-w-none">
+            Illustration. The planes circle the routes for show; they are not live positions.
+          </p>
           <div className="absolute inset-x-0 bottom-2 z-10 flex justify-center">
             <Link
               href="/dashboard/flights"
@@ -257,96 +214,89 @@ export function Overview() {
           </div>
         </section>
 
-        {/* Every delayed arrival, in order. Pointing at one lights it on the globe. */}
-        <Panel title="Arrivals" source="runs" className="lg:col-span-12">
-          <ol className="-mx-2 grid gap-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6" onMouseLeave={() => setActiveId(null)}>
-            {!sorted && Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="mx-2 h-16" />)}
-            {sorted?.map(({ flight, outcome }) => {
-              const Icon = CAUSE_ICON[flight.cause];
-              const o = OUTCOME[outcome];
-              return (
-                <li key={flight.scenario_id}>
-                  <Link
-                    href={flightHref(flight.scenario_id)}
-                    onMouseEnter={() => setActiveId(flight.scenario_id)}
-                    onFocus={() => setActiveId(flight.scenario_id)}
-                    onBlur={() => setActiveId(null)}
-                    className={cn(
-                      "grid grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-x-3 rounded-xl px-2 py-2 outline-none transition-colors hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring",
-                      activeId === flight.scenario_id && "bg-accent/60",
-                    )}
-                  >
-                    <span className="row-span-2 grid size-12 place-items-center rounded-full bg-secondary font-display text-xs font-semibold tabular-nums">
-                      {flight.scheduled_arrival}
-                    </span>
-                    <span className="font-display text-base font-medium whitespace-nowrap">
-                      {flight.route.replace(" to ", " → ")}
-                    </span>
-                    <span className="justify-self-end font-display font-semibold text-beacon tabular-nums">+{flight.delay_minutes}</span>
-                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
-                      {flight.flight_id}
-                      <Icon aria-hidden className="size-3.5" />
-                    </span>
-                    <span className={cn("inline-flex items-center gap-1 justify-self-end text-xs whitespace-nowrap", o.text)}>
-                      <o.Icon aria-hidden className="size-3.5" />
-                      {o.label}
-                    </span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ol>
-        </Panel>
-
-        {/* Outcome mix across the demo flights */}
-        <Panel title="Outcomes" source="runs" className="lg:col-span-4">
+        {/* The demo flights, in order. Pointing at one lights it on the globe. */}
+        <Panel title="Arrivals" source="demo" className="lg:col-span-12">
           {failed ? (
             <p className="text-sm text-muted-foreground">The planning service did not answer.</p>
-          ) : !rows ? (
+          ) : sorted && sorted.length === 0 ? (
+            <p className="text-sm text-muted-foreground">There are no demo flights.</p>
+          ) : (
+            <ol className="-mx-2 grid gap-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6" onMouseLeave={() => setActiveId(null)}>
+              {!sorted && Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="mx-2 h-16" />)}
+              {sorted?.map((flight) => {
+                const Icon = CAUSE_ICON[flight.cause];
+                return (
+                  <li key={flight.scenario_id}>
+                    <Link
+                      href={flightHref(flight.scenario_id)}
+                      onMouseEnter={() => setActiveId(flight.scenario_id)}
+                      onFocus={() => setActiveId(flight.scenario_id)}
+                      onBlur={() => setActiveId(null)}
+                      className={cn(
+                        "grid grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-x-3 rounded-xl px-2 py-2 outline-none transition-colors hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring",
+                        activeId === flight.scenario_id && "bg-accent/60",
+                      )}
+                    >
+                      <span className="row-span-2 grid size-12 place-items-center rounded-full bg-secondary font-display text-xs font-semibold tabular-nums">
+                        {flight.scheduled_arrival}
+                      </span>
+                      <span className="font-display text-base font-medium whitespace-nowrap">
+                        {flight.route.replace(" to ", " → ")}
+                      </span>
+                      <span className="justify-self-end font-display font-semibold text-beacon tabular-nums">
+                        +{flight.delay_minutes}
+                        <span className="sr-only"> minutes of delay</span>
+                      </span>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">{flight.flight_id}</span>
+                      <span className="inline-flex items-center gap-1 justify-self-end text-xs text-muted-foreground whitespace-nowrap">
+                        <Icon aria-hidden className="size-3.5" />
+                        {CAUSE_LABEL[flight.cause]}
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </Panel>
+
+        {/* The demo flights split by cause of delay */}
+        <Panel title="Demo flights by cause" source="demo" className="lg:col-span-4">
+          {failed ? (
+            <p className="text-sm text-muted-foreground">The planning service did not answer.</p>
+          ) : !flights ? (
             <Skeleton className="mx-auto size-44 rounded-full" />
+          ) : flights.length === 0 ? (
+            <p className="text-sm text-muted-foreground">There are no demo flights.</p>
           ) : (
             <div className="flex flex-1 flex-col items-center gap-4">
-              <Donut counts={counts} total={rows.length} />
+              <Donut parts={byCause} total={flights.length} />
               <ul className="grid w-full gap-1.5">
-                {counts.map(([o, n]) => (
-                  <li key={o} className="flex items-center gap-2 rounded-xl border border-border bg-background/40 px-3 py-2 text-sm">
-                    <span aria-hidden className={cn("size-2.5 rounded-full", OUTCOME[o].dot)} />
-                    <span className="truncate text-muted-foreground">{OUTCOME[o].label}</span>
-                    <span className="ml-auto font-display text-base font-semibold tabular-nums">{n}</span>
+                {byCause.map((c) => (
+                  <li key={c.label} className="flex items-center gap-2 rounded-xl border border-border bg-background/40 px-3 py-2 text-sm">
+                    <span aria-hidden className={cn("size-2.5 rounded-full", c.dot)} />
+                    <span className="truncate text-muted-foreground">{c.label}</span>
+                    <span className="ml-auto font-display text-base font-semibold tabular-nums">{c.n}</span>
                   </li>
                 ))}
-                <li className="flex items-center gap-2 rounded-xl border border-border bg-background/40 px-3 py-2 text-sm">
-                  <span aria-hidden className="size-2.5 rounded-full bg-primary" />
-                  <span className="truncate text-muted-foreground">Turns, max</span>
-                  <span className="ml-auto font-display text-base font-semibold tabular-nums">
-                    {Math.max(0, ...rows.map((r) => r.run?.turns.length ?? 0))}
-                  </span>
-                </li>
               </ul>
             </div>
           )}
         </Panel>
 
-        {/* Runs: what the safety rules removed */}
-        <Panel title="Rules that removed recovery plans" source="runs" className="lg:col-span-4">
-          {!rows ? (
-            <Skeleton className="h-32 w-full" />
-          ) : removedByRule.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No recovery plan broke a rule.</p>
-          ) : (
-            <ul className="space-y-4">
-              {removedByRule.map(([id, r]) => (
-                <li key={id}>
-                  <Bar label={r.label} value={r.count} max={removedByRule[0][1].count} tone="bg-destructive/80" />
-                  <span className="mt-1 block font-mono text-[11px] text-muted-foreground">{id}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+        {/* Real: where delays are */}
+        <Panel title="Routes with most delayed arrivals" source="real" className="lg:col-span-4">
+          <ul className="space-y-4">
+            {stats.topRoutes.map((r, i) => (
+              <li key={r.key}>
+                <Bar label={r.key.replace("-", " → ")} value={r.count} max={routeMax} tone={i === 0 ? "bg-beacon" : "bg-primary/70"} />
+              </li>
+            ))}
+          </ul>
+          <p className="mt-auto pt-4 text-xs text-muted-foreground">Delayed arrivals per route, US DOT 2015</p>
         </Panel>
 
-        {/* Real: where delays land */}
-        <Panel title="Busiest airports" source="real" className="lg:col-span-4">
+        <Panel title="Airports with most delayed arrivals" source="real" className="lg:col-span-4">
           <ul className="space-y-4">
             {stats.topDestinations.map((d, i) => (
               <li key={d.key}>
@@ -354,25 +304,30 @@ export function Overview() {
               </li>
             ))}
           </ul>
-          <p className="mt-auto pt-4 text-xs text-muted-foreground">Delayed arrivals per airport</p>
+          <p className="mt-auto pt-4 text-xs text-muted-foreground">Delayed arrivals per destination airport, US DOT 2015</p>
         </Panel>
 
         {/* Real: the dataset in four numbers, and delay hours by cause */}
-        <Panel title="2015 records" source="real" className="lg:col-span-12">
+        <Panel title="US DOT 2015 delayed arrivals" source="real" className="lg:col-span-12">
           <div className="grid gap-4 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-            <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {[
-                { label: "Delayed arrivals", value: fmt.format(stats.eligible) },
-                { label: "Avg arrival delay", value: `${stats.avgEligibleArrivalDelay}m` },
-                { label: "Late aircraft 20m+", value: pct(stats.eligibleLateAircraft) },
-                { label: "Weather 15m+", value: pct(stats.eligibleWeather) },
-              ].map((t) => (
-                <div key={t.label} className="flex flex-col justify-between rounded-xl border border-border bg-background/40 p-3">
-                  <dt className="text-xs text-muted-foreground">{t.label}</dt>
-                  <dd className="mt-6 font-display text-2xl font-semibold tabular-nums">{t.value}</dd>
-                </div>
-              ))}
-            </dl>
+            <div className="space-y-2">
+              <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {[
+                  { label: "Delayed arrivals", value: fmt.format(stats.eligible) },
+                  { label: "Average arrival delay", value: `${stats.avgEligibleArrivalDelay} min` },
+                  { label: "Late aircraft over 20 min", value: pct(stats.eligibleLateAircraft) },
+                  { label: "Weather over 15 min", value: pct(stats.eligibleWeather) },
+                ].map((t) => (
+                  <div key={t.label} className="flex flex-col justify-between rounded-xl border border-border bg-background/40 p-3">
+                    <dt className="text-xs text-muted-foreground">{t.label}</dt>
+                    <dd className="mt-6 font-display text-2xl font-semibold tabular-nums">{t.value}</dd>
+                  </div>
+                ))}
+              </dl>
+              <p className="text-xs text-muted-foreground">
+                The two shares are of these arrivals. A flight can be in both, so they add up to more than 100%.
+              </p>
+            </div>
             <ul className="space-y-3">
               {CAUSES.slice(0, 3).map((c) => (
                 <li key={c.key}>
@@ -385,13 +340,15 @@ export function Overview() {
                   />
                 </li>
               ))}
+              <li className="text-xs text-muted-foreground">Hours of delay by cause, added up over these arrivals</li>
             </ul>
           </div>
         </Panel>
 
         <p className="text-xs text-muted-foreground lg:col-span-12">
-          2015 DOT: {fmt.format(stats.rows)} delayed arrivals that meet the challenge rule (weather over 15 min or late
-          aircraft over 20 min). Runs: recorded runs of the demo flights.
+          Source: US DOT on-time records, 2015, the organiser file flights.csv. {fmt.format(stats.eligible)} flown
+          arrivals with weather delay over 15 min or late-aircraft delay over 20 min, October left out. Counted from the
+          file, not estimated. Demo flights: the sample list shown on the Flights page, not a count from this file.
         </p>
       </main>
     </div>

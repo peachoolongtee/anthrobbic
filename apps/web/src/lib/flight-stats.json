@@ -1,5 +1,7 @@
 {
-  "source": "2015 US DOT on-time records (flights.csv)",
+  "source": "US DOT on-time records, 2015, organiser file data/flights.csv",
+  "year": 2015,
+  "rule": "WEATHER_DELAY over 15 min or LATE_AIRCRAFT_DELAY over 20 min, flown, October left out",
   "months": [
     1,
     2,
@@ -14,6 +16,7 @@
     12
   ],
   "rows": 358774,
+  "skipped": 0,
   "eligible": 358774,
   "eligibleWeather": 42012,
   "eligibleLateAircraft": 326249,
