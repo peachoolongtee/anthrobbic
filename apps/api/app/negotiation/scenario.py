@@ -92,7 +92,11 @@ FIELD_NOTES: Final[dict[str, str]] = {
     "hold_burn_kg_per_min": "synthetic",
     "alternate_fuel_kg": "synthetic",
     "destination_forecast": "synthetic",
-    "runways": "synthetic: count scales with the real arrivals that day",
+    "runways": (
+        "synthetic: count scales with the real arrivals that day; consecutive "
+        "pairs are close parallels (one shared parallel_group) with a seeded "
+        "probability"
+    ),
     "taxiways": "synthetic",
     "gates": "synthetic",
     "other_arrivals": (
@@ -222,6 +226,9 @@ class GeneratorParams:
         (900, 4),
     )
     max_runways: int = 5
+    # Chance each consecutive runway pair (R1+R2, R3+R4) is closely spaced, so
+    # the pair counts as one runway for wake separation and throughput.
+    p_close_parallel_pair: float = 0.4
     p_runway_closed: tuple[float, float] = (0.25, 0.03)  # weather, late-aircraft
     p_taxiway_closed: tuple[float, float] = (0.15, 0.05)
 
@@ -326,6 +333,19 @@ def _runway_count(daily: int, params: GeneratorParams) -> int:
         if daily < bound:
             return count
     return params.max_runways
+
+
+def _parallel_groups(
+    rng: random.Random, runway_ids: Sequence[str], p: GeneratorParams
+) -> dict[str, str]:
+    """Group consecutive runway pairs that are closely spaced parallels."""
+    groups: dict[str, str] = {}
+    for i in range(0, len(runway_ids) - 1, 2):
+        if rng.random() < p.p_close_parallel_pair:
+            name = f"PG{i // 2 + 1}"
+            groups[runway_ids[i]] = name
+            groups[runway_ids[i + 1]] = name
+    return groups
 
 
 def _aircraft_size(row: DotRow, seed: int, params: GeneratorParams) -> AircraftSize:
@@ -517,6 +537,7 @@ def build_scenario(
     }
     if len(closed_runways) == len(runway_ids):  # keep the airport open
         closed_runways.discard(runway_ids[-1])
+    parallel_groups = _parallel_groups(_rng(key, "runway-groups"), runway_ids, p)
     gates = _gates(rng_airport, daily, size, p)
     taxiway_ids = sorted({g.taxiway_id for g in gates})
     closed_taxiways = {
@@ -641,7 +662,14 @@ def build_scenario(
         alternate_fuel_kg=_sourced(alternate, SYNTHETIC),
         destination_forecast=_sourced(forecast, SYNTHETIC),
         runways=_sourced(
-            tuple(Runway(runway_id=r, closed=r in closed_runways) for r in runway_ids),
+            tuple(
+                Runway(
+                    runway_id=r,
+                    closed=r in closed_runways,
+                    parallel_group=parallel_groups.get(r),
+                )
+                for r in runway_ids
+            ),
             SYNTHETIC,
         ),
         taxiways=_sourced(

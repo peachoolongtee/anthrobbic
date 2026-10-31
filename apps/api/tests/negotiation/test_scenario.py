@@ -22,6 +22,7 @@ from app.negotiation.scenario import (
     FIELD_NOTES,
     AsFlownOutcome,
     EarliestBasis,
+    GeneratorParams,
     build_scenario,
     earliest_basis,
     next_leg_of,
@@ -486,3 +487,45 @@ def test_generated_values_are_always_usable_by_the_rules(
             own = row.flight_id
             assert own not in {a.flight_id for a in s.other_arrivals.value or ()}
             assert own not in {o.flight_id for o in s.gate_occupancies.value or ()}
+
+
+def test_runway_parallel_groups_are_synthetic_pairs(
+    rows: dict[str, DotRow], csv_file: Path
+) -> None:
+    four = GeneratorParams(runway_tiers=((100_000, 4),), p_close_parallel_pair=1.0)
+    runways = build_scenario(rows["NK301"], 1, csv_file, four).runways
+    assert runways.provenance is SYNTHETIC
+    assert runways.value is not None
+    assert [r.parallel_group for r in runways.value] == ["PG1", "PG1", "PG2", "PG2"]
+
+    none = GeneratorParams(runway_tiers=((100_000, 4),), p_close_parallel_pair=0.0)
+    ungrouped = build_scenario(rows["NK301"], 1, csv_file, none).runways.value
+    assert ungrouped is not None
+    assert all(r.parallel_group is None for r in ungrouped)
+
+    # An odd runway out stays independent, and one runway is never grouped.
+    three = GeneratorParams(runway_tiers=((100_000, 3),), p_close_parallel_pair=1.0)
+    odd = build_scenario(rows["NK301"], 1, csv_file, three).runways.value
+    assert odd is not None
+    assert [r.parallel_group for r in odd] == ["PG1", "PG1", None]
+    single = build_scenario(rows["NK301"], 1, csv_file).runways.value
+    assert single is not None and len(single) == 1
+    assert single[0].parallel_group is None
+    assert "parallel_group" in FIELD_NOTES["runways"]
+
+
+def test_parallel_groups_are_seeded_and_mixed_by_default(
+    rows: dict[str, DotRow], csv_file: Path
+) -> None:
+    big = GeneratorParams(runway_tiers=((100_000, 4),))
+    seen = {
+        tuple(
+            r.parallel_group
+            for r in build_scenario(rows["NK301"], seed, csv_file, big).runways.value
+            or ()
+        )
+        for seed in range(40)
+    }
+    assert len(seen) > 1  # some seeds group, some do not
+    again = build_scenario(rows["NK301"], 3, csv_file, big).model_dump_json()
+    assert build_scenario(rows["NK301"], 3, csv_file, big).model_dump_json() == again
