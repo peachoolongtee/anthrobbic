@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from app.negotiation import rule_values as rv
-from app.negotiation.contracts import AircraftSize, FlightRules, WakeCategory
+from app.negotiation.contracts import AircraftSize, WakeCategory
 from app.negotiation.rule_values import RULE_VALUES, Status
 
 NEGOTIATION = Path(__file__).resolve().parents[2] / "app" / "negotiation"
@@ -19,9 +19,10 @@ def test_every_entry_is_complete() -> None:
         assert isinstance(entry.status, Status)
 
 
-def test_statuses_cover_the_five_kinds() -> None:
+def test_statuses_cover_the_six_kinds() -> None:
     assert {s.value for s in Status} == {
         "confirmed",
+        "organiser_workbook",
         "secondary",
         "unverified",
         "assumption",
@@ -36,13 +37,41 @@ def test_table_is_read_only() -> None:
         RULE_VALUES[rv.GATE_BUFFER_MIN].value = 1  # type: ignore[misc]
 
 
-def test_fuel_reserve_is_labelled_as_policy() -> None:
+WORKBOOK_FUEL_AND_CREW = {
+    rv.FUEL_RESERVE_MIN: 30,  # minutes of holding fuel
+    rv.FUEL_CONTINGENCY_PCT: 5,  # percent of trip fuel
+    rv.FUEL_SPARE_ON_ARRIVAL_MIN: 45,  # minutes of holding fuel
+    rv.HOLD_BURN_NARROW_KG_PER_H: 2400,
+    rv.HOLD_BURN_WIDE_KG_PER_H: 6500,
+    rv.CREW_MAX_DUTY_MIN: 13 * 60,
+    rv.GROUND_SHIFT_MIN: 8 * 60,
+    rv.GROUND_OVERTIME_PCT: 150,
+    rv.GATE_CHANGE_NOTICE_MIN: 20,
+}
+
+
+def test_fuel_and_crew_limits_are_the_workbooks() -> None:
+    for key, value in WORKBOOK_FUEL_AND_CREW.items():
+        entry = rv.rule_value(key)
+        assert entry.value == value, key
+        assert entry.status is Status.WORKBOOK, key
+        assert "Challenge workbook" in entry.source
+        assert "not a regulation" in entry.source
+        assert "policy" not in entry.source.lower().replace("synthetic planning", "")
+
+
+def test_fuel_reserve_is_no_longer_called_our_policy() -> None:
     entry = rv.rule_value(rv.FUEL_RESERVE_MIN)
-    assert entry.value == 45
-    assert entry.status is Status.POLICY
-    assert "our demo policy" in entry.source
-    assert "14 CFR 121.639" in entry.source
-    assert "FAA InFO 08004" in entry.source
+    assert entry.unit == "minutes of holding fuel"
+    assert "our demo policy" not in entry.source
+    assert "121.639" not in entry.source
+
+
+def test_hold_burn_per_minute_is_rounded_up_from_the_workbook_hourly_figure() -> None:
+    # 2,400 kg/h is exactly 40 kg/min; 6,500 kg/h is 108.33, so 109.
+    assert rv.hold_burn_kg_per_min(AircraftSize.NARROW_BODY) == 40
+    assert rv.hold_burn_kg_per_min(AircraftSize.REGIONAL) == 40
+    assert rv.hold_burn_kg_per_min(AircraftSize.WIDE_BODY) == 109
 
 
 def test_alternate_minimums_are_policy_shaped_on_121_619() -> None:
@@ -57,19 +86,17 @@ def test_alternate_minimums_are_policy_shaped_on_121_619() -> None:
 
 
 def test_planning_values() -> None:
-    ifr = rv.runway_hourly_arrivals(FlightRules.IFR)
-    vfr = rv.runway_hourly_arrivals(FlightRules.VFR)
-    assert (ifr.value, vfr.value) == (30, 40)
-    for entry in (ifr, vfr):
-        assert entry.status is Status.ASSUMPTION
-        assert entry.source == "FAA rule-of-thumb slides, 2006"
-    assert rv.turnaround(AircraftSize.NARROW_BODY).value == 25
-    assert rv.turnaround(AircraftSize.WIDE_BODY).value == 60
-    for size in (AircraftSize.NARROW_BODY, AircraftSize.WIDE_BODY):
-        assert rv.turnaround(size).status is Status.SECONDARY
-        assert "EUROCONTROL" in rv.turnaround(size).source
-    regional = rv.turnaround(AircraftSize.REGIONAL)
-    assert (regional.value, regional.status) == (20, Status.ASSUMPTION)
+    # Per-airport limits are built from the workbook table, not stored here.
+    cap = rv.airport_ops_per_hour(36)
+    stay = rv.airport_min_turnaround(35)
+    for entry in (cap, stay):
+        assert entry.status is Status.WORKBOOK
+        assert "Challenge workbook" in entry.source
+    assert cap.value == 36 and stay.value == 35
+    assert "read as an airport total" in cap.source
+    # The old per-runway and per-size figures are gone.
+    assert not any(k.startswith("runway_hourly_arrivals") for k in RULE_VALUES)
+    assert not any(k.startswith("turnaround_min") for k in RULE_VALUES)
     for key, value in (
         (rv.APPROACH_GROUND_SPEED_KT, 130),
         (rv.APPROACH_GROUND_SPEED_SMALL_KT, 100),
@@ -79,21 +106,21 @@ def test_planning_values() -> None:
         assert rv.rule_value(key).status is Status.ASSUMPTION
 
 
-def test_wake_values_are_secondary_and_state_the_simplification() -> None:
+def test_wake_values_are_the_workbooks_and_keep_the_faa_citation() -> None:
     for leader in WakeCategory:
         for follower in WakeCategory:
             entry = rv.wake_separation(leader, follower)
-            assert entry.status is Status.SECONDARY
+            assert entry.status is Status.WORKBOOK
             assert entry.unit == "nautical miles"
+            assert "Challenge workbook" in entry.source
+            assert "wake_separation" in entry.source
+            # The FAA citation stays beside the workbook source.
             assert "7110.65BB" in entry.source
             assert "RECAT" in entry.source
             assert "en route" in entry.source
             assert "simplification" in entry.source
-
-
-def test_every_aircraft_size_has_a_turnaround() -> None:
-    for size in AircraftSize:
-        assert rv.turnaround(size).value > 0
+    # Super behind super is not a workbook pair, so it takes the 3 NM default.
+    assert rv.wake_separation(WakeCategory.SUPER, WakeCategory.SUPER).value == 3
 
 
 # Files whose numbers must come from rule_values. Only 0 and 1 are allowed as

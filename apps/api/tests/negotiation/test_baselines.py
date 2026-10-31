@@ -121,12 +121,14 @@ def test_metrics_read_in_natural_units() -> None:
     metrics = package_metrics(scenario, package)
     assert metrics.delay_min == 15
     assert metrics.fuel_burn_kg == 15 * 40
-    # 10,000 - 4,000 - 600 = 5,400 landing; 45 x 50 + 1,000 = 3,250 required.
-    assert metrics.fuel_margin_kg == 2_150
+    # 10,000 - 4,000 - 600 = 5,400 landing. Required: 30 min x 40 kg = 1,200 of
+    # holding fuel, 5% of 4,000 trip = 200 contingency, 1,000 alternate: 2,400.
+    assert metrics.fuel_margin_kg == 3_000
     assert metrics.connection_passengers_at_risk == 20
-    # Stay ends 125 + 25 = 150: 10 min past shift end, 5 past the next departure.
-    assert metrics.overtime_min == 10
-    assert metrics.turnaround_delay_min == 5
+    # Stay ends 125 + 35 = 160 (the airport's minimum turnaround): 20 min past
+    # the shift end at 140, 15 past the next departure at 145.
+    assert metrics.overtime_min == 20
+    assert metrics.turnaround_delay_min == 15
     assert metrics.gate_moves == 1
 
 

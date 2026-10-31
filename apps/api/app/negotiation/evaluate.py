@@ -965,6 +965,11 @@ _CONTROL_BASE: dict[str, Any] = {
     "next_leg_turnaround_hard": True,
     "ground_shift_end_min": 300,
     "connections": (Connection(passengers=20, departure_min=150),),
+    # Challenge workbook limits for a small hub; times that bind nothing.
+    "decision_time_min": 50,
+    "crew_report_min": 0,
+    "airport_ops_per_hour": 36,
+    "min_turnaround_min": 35,
 }
 
 
@@ -1018,7 +1023,7 @@ def injected_cases() -> tuple[InjectedCase, ...]:
             runway_id="28L",
             time_min=minute,
         )
-        for minute in range(68, 99)
+        for minute in range(63, 99)
     )
     close_traffic = (
         OtherArrival(
@@ -1120,7 +1125,30 @@ def injected_cases() -> tuple[InjectedCase, ...]:
         InjectedCase(
             "fuel_below_reserve",
             "PLT-FUEL-POLICY",
-            control_scenario(fuel_on_board_kg=7_200),
+            control_scenario(fuel_on_board_kg=6_300),
+            _pkg(),
+        ),
+        InjectedCase(
+            "gate_change_without_notice",
+            "GND-GATE-NOTICE",
+            # A1 is taken all day, so moving to B1 is the cheapest legal-looking
+            # package, but it is decided only 10 minutes before the arrival.
+            control_scenario(
+                decision_time_min=90,
+                gate_occupancies=(
+                    GateOccupancy(
+                        gate_id="A1", flight_id="NEXT", start_min=0, end_min=400
+                    ),
+                ),
+            ),
+            _pkg(gate_id="B1"),
+        ),
+        InjectedCase(
+            "crew_past_maximum_duty",
+            "PLT-CREW-DUTY",
+            # 785 minutes on duty at gate-in, 5 past the 13 hours; every later
+            # slot is worse, so with the rule on there is no legal package.
+            control_scenario(crew_report_min=-675),
             _pkg(),
         ),
         InjectedCase(

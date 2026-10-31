@@ -28,12 +28,16 @@ class CostWeights(FrozenModel):
     fuel_per_kg: int
     per_passenger_at_risk: int
     per_gate_move: int
-    overtime_per_min: int
+    overtime_per_min: int  # one minute past the 8-hour ground shift
     turnaround_delay_per_min: int
     # Charged to ATC for each minute the arrival lands after the earliest slot.
     # The default keeps older call sites that omit it working.
     arrival_delay_per_min: int = 10
 
+
+# An ordinary ground-crew minute, in cost units. Overtime past the 8-hour shift
+# costs the workbook's 1.5 times this (30 units a minute).
+ORDINARY_CREW_MIN_COST = 20
 
 # Demo assumptions, not calibrated against any airline's costs. Ten units a
 # minute means five minutes of delay costs as much as one gate move.
@@ -41,7 +45,9 @@ DEFAULT_WEIGHTS = CostWeights(
     fuel_per_kg=2,
     per_passenger_at_risk=100,
     per_gate_move=50,
-    overtime_per_min=20,
+    overtime_per_min=ORDINARY_CREW_MIN_COST
+    * rv.rule_value(rv.GROUND_OVERTIME_PCT).value
+    // rv.rule_value(rv.PERCENT_BASE).value,
     turnaround_delay_per_min=30,
     arrival_delay_per_min=10,
 )

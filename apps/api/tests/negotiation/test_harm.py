@@ -136,10 +136,12 @@ def test_wake_ignores_another_runway() -> None:
     assert verdict is HarmVerdict.CLEAR
 
 
-# Required: 45 x 50 + 1,000 alternate = 3,250 kg after a 4,000 kg trip.
+# Required, worked by hand: 30 min x 40 kg/min of holding fuel = 1,200, plus 5% of
+# the 4,000 kg trip = 200, plus the 1,000 kg alternate = 2,400 kg left after the
+# trip. So 4,000 + 2,400 = 6,400 kg on board is exactly enough.
 @pytest.mark.parametrize(
     ("on_board", "expected"),
-    [(7_250, HarmVerdict.CLEAR), (7_249, HarmVerdict.HARM)],
+    [(6_400, HarmVerdict.CLEAR), (6_399, HarmVerdict.HARM)],
 )
 def test_fuel_at_and_past_the_limit(on_board: int, expected: HarmVerdict) -> None:
     assert _verdict(HarmCheck.FUEL_MARGIN, fuel_on_board_kg=on_board) is expected
@@ -147,8 +149,8 @@ def test_fuel_at_and_past_the_limit(on_board: int, expected: HarmVerdict) -> Non
 
 def test_fuel_counts_a_hold_at_the_hold_rate() -> None:
     hold = make_package(time_min=105, action=FlightPlanAction.HOLD)  # 5 x 40 = 200
-    enough = _verdict(HarmCheck.FUEL_MARGIN, hold, fuel_on_board_kg=7_450)
-    short = _verdict(HarmCheck.FUEL_MARGIN, hold, fuel_on_board_kg=7_449)
+    enough = _verdict(HarmCheck.FUEL_MARGIN, hold, fuel_on_board_kg=6_600)
+    short = _verdict(HarmCheck.FUEL_MARGIN, hold, fuel_on_board_kg=6_599)
     assert enough is HarmVerdict.CLEAR
     assert short is HarmVerdict.HARM
 
@@ -159,8 +161,9 @@ def test_fuel_drops_the_alternate_only_on_clear_covered_weather() -> None:
             start_min=0, end_min=1_000, ceiling_ft=2_000, visibility_tenth_mi=30
         ),
     )
+    # With no alternate the need is 1,200 + 200 = 1,400 kg after the 4,000 trip.
     verdict = _verdict(
-        HarmCheck.FUEL_MARGIN, fuel_on_board_kg=6_250, destination_forecast=good
+        HarmCheck.FUEL_MARGIN, fuel_on_board_kg=5_400, destination_forecast=good
     )
     assert verdict is HarmVerdict.CLEAR
     # The minute between two closed periods is uncovered, so an alternate is needed.
@@ -172,7 +175,7 @@ def test_fuel_drops_the_alternate_only_on_clear_covered_weather() -> None:
             start_min=101, end_min=1_000, ceiling_ft=2_000, visibility_tenth_mi=30
         ),
     )
-    scenario = make_scenario(fuel_on_board_kg=6_250, destination_forecast=split)
+    scenario = make_scenario(fuel_on_board_kg=5_400, destination_forecast=split)
     report = inspect_package(scenario, make_package())
     assert report.verdict_of(HarmCheck.FUEL_MARGIN) is HarmVerdict.HARM
     assert check_package(scenario, make_package())  # and the rules agree
@@ -180,15 +183,16 @@ def test_fuel_drops_the_alternate_only_on_clear_covered_weather() -> None:
 
 @pytest.mark.parametrize(
     "field",
-    ["fuel_on_board_kg", "trip_fuel_kg", "cruise_burn_kg_per_min"],
+    ["fuel_on_board_kg", "trip_fuel_kg", "hold_burn_kg_per_min"],
 )
 def test_fuel_unknown_input_is_unknown_not_clear(field: str) -> None:
     assert _verdict(HarmCheck.FUEL_MARGIN, **{field: None}) is HarmVerdict.UNKNOWN
 
 
-# No next departure, so the stay is 110-135; buffer 15. Clear at 150, not at 149.
+# No next departure, so the stay is 110-145 (35 min, the airport's minimum
+# turnaround); buffer 15. Clear at 160, not at 159.
 @pytest.mark.parametrize(
-    ("start", "expected"), [(150, HarmVerdict.CLEAR), (149, HarmVerdict.HARM)]
+    ("start", "expected"), [(160, HarmVerdict.CLEAR), (159, HarmVerdict.HARM)]
 )
 def test_gate_after_us_at_and_past_the_buffer(
     start: int, expected: HarmVerdict
@@ -292,12 +296,12 @@ def _on(runway_id: str, minutes: range) -> tuple[OtherArrival, ...]:
     )
 
 
-def test_parallel_runways_in_a_group_share_throughput() -> None:
-    traffic = _on("28R", range(68, 98))  # 30 others, so we are the 31st
+def test_throughput_is_an_airport_total_whatever_the_parallel_groups() -> None:
+    traffic = _on("28R", range(62, 98))  # 36 others, so we are the 37th of 36
     package = make_package()
     alone = inspect_package(_grouped_scenario(traffic, None), package)
     grouped = inspect_package(_grouped_scenario(traffic, "P1"), package)
-    assert alone.verdict_of(HarmCheck.THROUGHPUT) is HarmVerdict.CLEAR
+    assert alone.verdict_of(HarmCheck.THROUGHPUT) is HarmVerdict.HARM
     assert grouped.verdict_of(HarmCheck.THROUGHPUT) is HarmVerdict.HARM
 
 
@@ -306,26 +310,100 @@ GOOD_WEATHER = WeatherPeriod(
 )
 
 
-# IFR cap 30: 29 others fit and 30 do not. VFR cap 40: 39 fit and 40 do not.
+# The cap is the airport's workbook figure: 36 for the baseline small hub, so 35
+# others fit and 36 do not; 90 at a large hub, so 89 fit and 90 do not. Weather and
+# flight rules do not move it.
 @pytest.mark.parametrize(
-    ("others", "forecast", "expected"),
+    ("others", "cap", "forecast", "expected"),
     [
-        (29, None, HarmVerdict.CLEAR),
-        (30, None, HarmVerdict.HARM),
-        (39, (GOOD_WEATHER,), HarmVerdict.CLEAR),
-        (40, (GOOD_WEATHER,), HarmVerdict.HARM),
+        (35, 36, None, HarmVerdict.CLEAR),
+        (36, 36, None, HarmVerdict.HARM),
+        (35, 36, (GOOD_WEATHER,), HarmVerdict.CLEAR),
+        (36, 36, (GOOD_WEATHER,), HarmVerdict.HARM),
+        (89, 90, None, HarmVerdict.CLEAR),
+        (90, 90, None, HarmVerdict.HARM),
     ],
 )
-def test_throughput_cap_follows_the_forecast_at_eta(
-    others: int, forecast: tuple[WeatherPeriod, ...] | None, expected: HarmVerdict
+def test_throughput_cap_is_the_airports_workbook_figure(
+    others: int,
+    cap: int,
+    forecast: tuple[WeatherPeriod, ...] | None,
+    expected: HarmVerdict,
 ) -> None:
     verdict = _verdict(
         HarmCheck.THROUGHPUT,
-        other_arrivals=_on("28L", range(98 - others, 98)),
+        # Many land in the same minute so that they all fit in one hour.
+        other_arrivals=tuple(_arrival(60 + i % 38) for i in range(others)),
+        airport_ops_per_hour=cap,
         destination_forecast=forecast,
         flight_rules=FlightRules.IFR,  # must not decide the cap
     )
     assert verdict is expected
+
+
+def test_throughput_counts_every_runway_toward_the_airport_total() -> None:
+    both = (*_on("28L", range(80, 98)), *_on("28R", range(60, 78)))  # 36 in all
+    assert _verdict(HarmCheck.THROUGHPUT, other_arrivals=both) is HarmVerdict.HARM
+    fewer = both[:-1]
+    assert _verdict(HarmCheck.THROUGHPUT, other_arrivals=fewer) is HarmVerdict.CLEAR
+
+
+def test_unknown_airport_cap_cannot_clear_throughput() -> None:
+    verdict = _verdict(HarmCheck.THROUGHPUT, airport_ops_per_hour=None)
+    assert verdict is HarmVerdict.UNKNOWN
+
+
+# Gate change notice: decided at least 20 minutes before the 100 arrival.
+@pytest.mark.parametrize(
+    ("decided", "expected"), [(80, HarmVerdict.CLEAR), (81, HarmVerdict.HARM)]
+)
+def test_gate_notice_at_and_past_the_limit(decided: int, expected: HarmVerdict) -> None:
+    verdict = _verdict(
+        HarmCheck.GATE_NOTICE, make_package(gate_id="B1"), decision_time_min=decided
+    )
+    assert verdict is expected
+
+
+def test_gate_notice_is_not_needed_for_the_planned_gate() -> None:
+    verdict = _verdict(HarmCheck.GATE_NOTICE, decision_time_min=500)
+    assert verdict is HarmVerdict.CLEAR
+
+
+@pytest.mark.parametrize("field", ["decision_time_min", "planned_gate"])
+def test_gate_notice_unknown_input_is_unknown(field: str) -> None:
+    verdict = _verdict(
+        HarmCheck.GATE_NOTICE, make_package(gate_id="B1"), **{field: None}
+    )
+    assert verdict is HarmVerdict.UNKNOWN
+
+
+# Crew duty: 13 hours = 780 min from report; gate-in is 110, so report -670 is
+# exactly at the limit.
+@pytest.mark.parametrize(
+    ("report", "expected"), [(-670, HarmVerdict.CLEAR), (-671, HarmVerdict.HARM)]
+)
+def test_crew_duty_at_and_past_the_limit(report: int, expected: HarmVerdict) -> None:
+    assert _verdict(HarmCheck.CREW_DUTY, crew_report_min=report) is expected
+
+
+@pytest.mark.parametrize("field", ["crew_report_min", "taxi_in_min"])
+def test_crew_duty_unknown_input_is_unknown(field: str) -> None:
+    assert _verdict(HarmCheck.CREW_DUTY, **{field: None}) is HarmVerdict.UNKNOWN
+
+
+def test_harms_own_copy_of_the_workbook_values_matches_the_table() -> None:
+    """The copy in harm.py stays independent of the rules, so this is the alarm
+    for drift between it and `rule_values`."""
+    assert harm._FINAL_RESERVE_HOLD_MIN == rv.rule_value(rv.FUEL_RESERVE_MIN).value
+    assert (
+        harm._CONTINGENCY_PERCENT_OF_TRIP
+        == rv.rule_value(rv.FUEL_CONTINGENCY_PCT).value
+    )
+    assert (
+        harm._GATE_CHANGE_NOTICE_MIN == rv.rule_value(rv.GATE_CHANGE_NOTICE_MIN).value
+    )
+    assert harm._CREW_MAX_DUTY_MIN == rv.rule_value(rv.CREW_MAX_DUTY_MIN).value
+    assert harm._MINUTES_IN_HOUR == rv.rule_value(rv.MINUTES_PER_HOUR).value
 
 
 def test_throughput_counts_only_the_hour_around_the_arrival() -> None:

@@ -1,8 +1,11 @@
 """Pilot rules. Each is pure and returns every violation.
 
-The fuel reserve is our demo policy, shaped on 14 CFR 121.639 and FAA InFO
-08004. 121.639 is a dispatch and takeoff test and does not bind in flight, so
-this rule is a policy limit and says so in its ID and messages.
+The fuel limit is the challenge workbook's: a final reserve of 30 minutes of
+holding fuel plus a contingency of 5% of trip fuel, and an alternate when the
+destination forecast (tested the way 14 CFR 121.619(a) does, as our policy)
+needs one. The workbook values are synthetic planning limits, not regulations.
+The rule ID keeps "POLICY" for stability. Crew duty is the workbook's 13 hours
+from report time.
 """
 
 from dataclasses import dataclass
@@ -22,6 +25,7 @@ from app.negotiation.contracts import (
 from app.negotiation.rules.shared import is_poor
 
 FUEL_POLICY = "PLT-FUEL-POLICY"
+CREW_DUTY = "PLT-CREW-DUTY"
 
 # Delay can only be absorbed where the aircraft is: on the ground before
 # departure, or in the air after it. DIRECT (no delay) is always possible.
@@ -148,12 +152,17 @@ def alternate_required(scenario: Scenario, package: Package) -> bool:
 
 
 def project_fuel(scenario: Scenario, package: Package) -> FuelProjection | None:
-    """Landing fuel against the policy reserve, or None if an input is unknown."""
+    """Landing fuel against the workbook reserve, or None if an input is unknown.
+
+    Required fuel is the final reserve in minutes of holding fuel, plus the
+    contingency as a share of trip fuel (rounded up), plus the alternate when
+    one is required.
+    """
     delay = delay_min(scenario, package)
     burn = extra_burn_kg(scenario, package)
     on_board = scenario.fuel_on_board_kg.value
     trip = scenario.trip_fuel_kg.value
-    cruise = scenario.cruise_burn_kg_per_min.value
+    hold = scenario.hold_burn_kg_per_min.value
     needs_alternate = alternate_required(scenario, package)
     alternate = scenario.alternate_fuel_kg.value if needs_alternate else 0
     if (
@@ -161,23 +170,26 @@ def project_fuel(scenario: Scenario, package: Package) -> FuelProjection | None:
         or burn is None
         or on_board is None
         or trip is None
-        or cruise is None
+        or hold is None
         or alternate is None
     ):
         return None
     reserve_min = rv.rule_value(rv.FUEL_RESERVE_MIN).value
+    contingency_pct = rv.rule_value(rv.FUEL_CONTINGENCY_PCT).value
+    percent = rv.rule_value(rv.PERCENT_BASE).value
+    contingency = (trip * contingency_pct + percent - 1) // percent  # rounded up
     return FuelProjection(
         delay_min=delay,
         extra_burn_kg=burn,
         landing_fuel_kg=on_board - trip - burn,
-        required_kg=reserve_min * cruise + alternate,
+        required_kg=reserve_min * hold + contingency + alternate,
         alternate_required=needs_alternate,
     )
 
 
 def check_fuel_policy(scenario: Scenario, package: Package) -> tuple[Violation, ...]:
     """Fuel at landing, after any hold and any required alternate, must meet
-    the policy reserve."""
+    the challenge workbook's reserve and contingency."""
     reserve = rv.rule_value(rv.FUEL_RESERVE_MIN)
     source = rv.reference(reserve)
 
@@ -186,12 +198,12 @@ def check_fuel_policy(scenario: Scenario, package: Package) -> tuple[Violation, 
         "earliest_arrival_min": scenario.earliest_arrival_min.value,
         "fuel_on_board_kg": scenario.fuel_on_board_kg.value,
         "trip_fuel_kg": scenario.trip_fuel_kg.value,
-        "cruise_burn_kg_per_min": scenario.cruise_burn_kg_per_min.value,
+        "hold_burn_kg_per_min": scenario.hold_burn_kg_per_min.value,
     }
     if alternate_required(scenario, package):
         needed["alternate_fuel_kg"] = scenario.alternate_fuel_kg.value
-    if package.action is FlightPlanAction.HOLD:
-        needed["hold_burn_kg_per_min"] = scenario.hold_burn_kg_per_min.value
+    if package.action is FlightPlanAction.VECTOR:
+        needed["cruise_burn_kg_per_min"] = scenario.cruise_burn_kg_per_min.value
     missing = [
         Violation.missing_data(FUEL_POLICY, Domain.PILOT, name, source, problem)
         for name, value in needed.items()
@@ -247,9 +259,9 @@ def check_fuel_policy(scenario: Scenario, package: Package) -> tuple[Violation, 
         found.append(
             _violation(
                 f"landing fuel {projection.landing_fuel_kg} kg is below the "
-                f"policy limit of {projection.required_kg} kg "
-                f"({reserve.value} min reserve, {alternate_note}); a demo policy "
-                "limit, not a regulation",
+                f"challenge workbook limit of {projection.required_kg} kg "
+                f"({reserve.value} min of holding fuel plus contingency, "
+                f"{alternate_note}); a synthetic planning limit, not a regulation",
                 source,
                 projection.landing_fuel_kg,
                 projection.required_kg,
@@ -259,16 +271,70 @@ def check_fuel_policy(scenario: Scenario, package: Package) -> tuple[Violation, 
     return tuple(found)
 
 
+def check_crew_duty(scenario: Scenario, package: Package) -> tuple[Violation, ...]:
+    """The flight crew must be on blocks within their maximum duty.
+
+    Duty runs from the (synthetic, schedule-seeded) report time. The crew is
+    off duty at gate-in, the arrival slot plus taxi-in. `observed` is minutes
+    on duty at gate-in and `limit` the maximum.
+    """
+    limit = rv.rule_value(rv.CREW_MAX_DUTY_MIN)
+    source = rv.reference(limit)
+    report = scenario.crew_report_min.value
+    taxi = scenario.taxi_in_min.value
+    missing: list[Violation] = []
+    if report is None:
+        missing.append(
+            Violation.missing_data(CREW_DUTY, Domain.PILOT, "crew report time", source)
+        )
+    if taxi is None or taxi < 0:
+        missing.append(
+            Violation.missing_data(
+                CREW_DUTY,
+                Domain.PILOT,
+                "taxi-in time",
+                source,
+                "unknown" if taxi is None else "invalid",
+            )
+        )
+    if report is None or taxi is None or taxi < 0:
+        return tuple(missing)
+    on_duty = package.slot.time_min + taxi - report
+    if on_duty > limit.value:
+        return (
+            Violation(
+                rule_id=CREW_DUTY,
+                domain=Domain.PILOT,
+                message=f"crew on duty {on_duty} min at gate-in; the workbook "
+                f"maximum is {limit.value} min from report time",
+                source=source,
+                observed=on_duty,
+                limit=limit.value,
+                unit="min",
+            ),
+        )
+    return ()
+
+
 RULES: tuple[Rule, ...] = (
     Rule(
         rule_id=FUEL_POLICY,
         domain=Domain.PILOT,
-        source="demo policy shaped on 14 CFR 121.639 and FAA InFO 08004; "
-        "alternate test from 14 CFR 121.619(a)",
-        description="Policy limit: landing fuel, after any hold and any required "
-        "alternate, covers the final reserve",
+        source="challenge workbook (fuel_and_crew): 30 minutes of holding fuel "
+        "plus 5% of trip fuel; alternate test shaped on 14 CFR 121.619(a)",
+        description="Workbook limit: landing fuel, after any hold and any "
+        "required alternate, covers the final reserve and contingency",
         # Fuel state is private to the pilot; others only learn it is infeasible.
         public_reason=PublicReason.INFEASIBLE_FOR_ANOTHER_DOMAIN,
         check=check_fuel_policy,
+    ),
+    Rule(
+        rule_id=CREW_DUTY,
+        domain=Domain.PILOT,
+        source="challenge workbook (fuel_and_crew): flight crew max duty, 13 hours "
+        "from report time, simplified FAA Part 117",
+        description="Flight crew must be on blocks within their maximum duty",
+        public_reason=PublicReason.INFEASIBLE_FOR_ANOTHER_DOMAIN,
+        check=check_crew_duty,
     ),
 )

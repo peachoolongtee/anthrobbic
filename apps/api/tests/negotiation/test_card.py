@@ -215,34 +215,40 @@ def test_a_package_without_cost_is_refused_and_a_no_go_is_redirected() -> None:
 # ------------------------------------------------------- policy labelling
 
 
-def test_fuel_rule_is_labelled_policy_not_regulation() -> None:
+def test_fuel_rule_is_labelled_a_workbook_limit_not_a_regulation() -> None:
+    # The reserve now comes from the challenge workbook, so it is no longer
+    # described as our policy.
     for card in (good_card(), failing_card()):
         line = lines_by_rule(card)["PLT-FUEL-POLICY"]
         assert line.basis_key == rv.FUEL_RESERVE_MIN
-        assert line.basis_status == rv.Status.POLICY.value
+        assert line.basis_status == rv.Status.WORKBOOK.value
         assert not line.is_regulation
+        assert "Challenge workbook limit" in line.basis_label
         assert "not a regulation" in line.basis_label
-    assert "Our demo policy, not a regulation." in render(good_card())
-    assert "demo policy or assumptions, not regulations" in " ".join(
-        good_card().what_could_go_wrong
-    )
+        assert "policy" not in line.basis_label.lower()
+    assert "Challenge workbook limit" in render(good_card())
+    risks = " ".join(good_card().what_could_go_wrong)
+    assert "challenge workbook: synthetic planning limits, not regulations" in risks
+    # The gate buffer is still our own assumption.
+    assert "demo policy or assumptions, not regulations" in risks
 
 
 def test_each_rules_status_comes_from_rule_values() -> None:
     lines = lines_by_rule(good_card())
     expected = {
         "ATC-WAKE-SEP": rv.rule_value(rv.WAKE_DEFAULT_KEY).status,
-        # The baseline forecast is poor at the ETA, so the IFR cap applies.
-        "ATC-RWY-THROUGHPUT": rv.rule_value(rv.RUNWAY_HOURLY_ARRIVALS_IFR).status,
+        "ATC-RWY-THROUGHPUT": rv.airport_ops_per_hour(36).status,
         "PLT-FUEL-POLICY": rv.rule_value(rv.FUEL_RESERVE_MIN).status,
         "GND-GATE-OVERLAP": rv.rule_value(rv.GATE_BUFFER_MIN).status,
-        "GND-TURNAROUND": rv.turnaround(make_scenario().aircraft_size.value).status,  # type: ignore[arg-type]
+        "GND-TURNAROUND": rv.airport_min_turnaround(35).status,
     }
     for rule_id, status in expected.items():
         assert lines[rule_id].basis_status == status.value
     assert lines["GND-GATE-OVERLAP"].basis_status == "assumption"
     assert not lines["GND-GATE-OVERLAP"].is_regulation
-    assert lines["GND-TURNAROUND"].basis_status == "secondary"
+    for rule_id in ("ATC-WAKE-SEP", "ATC-RWY-THROUGHPUT", "PLT-FUEL-POLICY"):
+        assert lines[rule_id].basis_status == "organiser_workbook"
+    assert lines["GND-TURNAROUND"].basis_status == "organiser_workbook"
     for rule_id in (
         "ATC-RWY-CLOSED",
         "ATC-TWY-CLOSED",
@@ -264,8 +270,9 @@ def test_a_violation_takes_its_status_from_the_value_it_cites() -> None:
         scenario, BASELINE_PACKAGE, compute_cost(scenario, BASELINE_PACKAGE), violations
     )
     line = next(r for r in card.rules if r.status is RuleStatus.FAIL)
-    assert line.basis_key == rv.turnaround_key(make_scenario().aircraft_size.value)  # type: ignore[arg-type]
-    assert line.basis_status == "secondary"
+    assert line.basis_key == rv.AIRPORT_TURNAROUND_KEY
+    assert line.basis_status == "organiser_workbook"
+    assert line.limit == 35
     assert line.unit == "min"
 
 
@@ -303,7 +310,7 @@ def test_free_text_on_a_violation_never_reaches_the_card() -> None:
     assert POISON not in card.model_dump_json()
     line = lines_by_rule(card)["PLT-FUEL-POLICY"]
     assert (line.observed, line.limit, line.unit) == (10, 20, "unit not recognised")
-    assert line.basis_status == "policy"  # not read from the poisoned source
+    assert line.basis_status == "organiser_workbook"  # not from the poisoned text
 
 
 def test_an_unknown_rule_id_is_shown_without_being_echoed() -> None:
@@ -581,21 +588,14 @@ def throughput_basis(**overrides: Any) -> str | None:
 
 
 @pytest.mark.parametrize("flight_rules", [FlightRules.IFR, FlightRules.VFR])
-def test_throughput_basis_follows_the_forecast_not_the_flights_rules(
-    flight_rules: FlightRules,
+@pytest.mark.parametrize("forecast", [FINE, POOR, None])
+def test_throughput_basis_is_the_airports_workbook_cap(
+    flight_rules: FlightRules, forecast: Any
 ) -> None:
+    # Neither the flight's rules nor the forecast moves the cap any more.
     assert (
-        throughput_basis(destination_forecast=FINE, flight_rules=flight_rules)
-        == rv.RUNWAY_HOURLY_ARRIVALS_VFR
-    )
-    assert (
-        throughput_basis(destination_forecast=POOR, flight_rules=flight_rules)
-        == rv.RUNWAY_HOURLY_ARRIVALS_IFR
-    )
-    # An unknown forecast fails to the stricter cap, as the rule does.
-    assert (
-        throughput_basis(destination_forecast=None, flight_rules=flight_rules)
-        == rv.RUNWAY_HOURLY_ARRIVALS_IFR
+        throughput_basis(destination_forecast=forecast, flight_rules=flight_rules)
+        == rv.AIRPORT_OPS_KEY
     )
 
 
@@ -628,8 +628,9 @@ def test_pass_line_basis_matches_the_cap_the_rule_cites_when_it_fails(
     passing = lines_by_rule(
         decision_card(quiet, BASELINE_PACKAGE, compute_cost(quiet, BASELINE_PACKAGE))
     )["ATC-RWY-THROUGHPUT"]
-    assert failing.basis_key == passing.basis_key
-    assert failing.limit == rv.rule_value(passing.basis_key).value  # type: ignore[arg-type]
+    assert failing.basis_key == passing.basis_key == rv.AIRPORT_OPS_KEY
+    assert failing.limit == 36  # the baseline airport's cap
+    assert failing.basis_status == passing.basis_status == "organiser_workbook"
 
 
 def test_a_held_rule_shows_a_requirement_and_a_broken_rule_a_sentence() -> None:
@@ -647,10 +648,10 @@ def test_every_rule_has_a_requirement_and_a_breach_wording() -> None:
     assert set(RULE_BREACHES) == ids
     assert RULE_BREACHES["ATC-WAKE-SEP"] == "Lands too close behind the aircraft ahead"
     assert RULE_BREACHES["ATC-RWY-THROUGHPUT"] == (
-        "Puts too many arrivals on the runway in an hour"
+        "Puts too many arrivals into the airport in an hour"
     )
     assert RULE_BREACHES["PLT-FUEL-POLICY"] == (
-        "Lands with less fuel than the reserve policy allows"
+        "Lands with less fuel than the workbook reserve allows"
     )
     assert (
         RULE_BREACHES["GND-GATE-OVERLAP"] == "Uses a gate that is occupied or blocked"
@@ -783,10 +784,12 @@ def test_how_reached_is_read_from_the_protocol_result() -> None:
         reached_from_result("no_go", [])
 
 
-def test_secondary_limits_are_not_called_a_study() -> None:
+def test_workbook_limits_are_not_called_regulations_or_studies() -> None:
     wake = rv.rule_value(rv.WAKE_DEFAULT_KEY)
-    assert wake.status is rv.Status.SECONDARY
+    assert wake.status is rv.Status.WORKBOOK
     label = STATUS_LABELS[wake.status]
-    assert "study" not in label and "secondary" in label
+    assert label.startswith("Challenge workbook limit")
+    assert "study" not in label and "synthetic" in label
+    assert "not a regulation" in label
     line = lines_by_rule(good_card())["ATC-WAKE-SEP"]
     assert line.basis_label == label

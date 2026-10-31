@@ -95,6 +95,8 @@ _BLOCK_MARGIN_MIN: Final = 2_880
 _TRIGGER_REASONS: Final = {
     "fault": "FALLBACK_AFTER_FAULT",
     "turn_cap_no_agreement": "FALLBACK_NO_CONSENSUS",
+    "package_bound": "FALLBACK_PACKAGE_BOUND",
+    "nothing_to_offer": "FALLBACK_NOTHING_TO_OFFER",
 }
 
 type Judged = tuple[Package, tuple[Violation, ...]]

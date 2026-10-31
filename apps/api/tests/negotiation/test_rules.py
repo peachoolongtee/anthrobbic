@@ -78,6 +78,17 @@ def with_arrivals(*arrivals: OtherArrival, **overrides: Any) -> Scenario:
     return make_scenario(other_arrivals=tuple(arrivals), **overrides)
 
 
+# The workbook limits as the baseline scenario carries them, restated by hand.
+CAP = BASELINE["airport_ops_per_hour"]  # 36, a small hub
+STAY = BASELINE["min_turnaround_min"]  # 35, anything but a large hub
+
+
+def required_fuel(trip: int, hold: int, alternate: int) -> int:
+    """Landing fuel the rule asks for: 30 min of holding fuel, 5% of trip fuel
+    rounded up, and the alternate. Written out here, not read from the code."""
+    return 30 * hold + -(-trip * 5 // 100) + alternate
+
+
 INDEPENDENT = (
     Runway(runway_id="28L", closed=False, parallel_group=None),
     Runway(runway_id="28R", closed=False, parallel_group=None),
@@ -218,7 +229,7 @@ def taxiway_closed_cases() -> list[Case]:
 
 
 def throughput_cases() -> list[Case]:
-    cap = rv.runway_hourly_arrivals(FlightRules.IFR).value
+    cap = CAP
     hour = rv.rule_value(rv.MINUTES_PER_HOUR).value
     mine = 500
 
@@ -260,12 +271,42 @@ def throughput_cases() -> list[Case]:
             make_package(mine),
             boundary=True,
         ),
-        ok(
-            "other runway traffic does not count",
+        # The workbook cap is an airport total: every runway's arrivals count.
+        bad(
+            "traffic on another runway counts toward the airport total",
             make_scenario(
-                other_arrivals=others(cap + 5, mine - 1, "28R"), runways=INDEPENDENT
+                other_arrivals=others(cap, mine - 1, "28R"), runways=INDEPENDENT
             ),
             make_package(mine),
+            expect=(cap + 1, cap),
+        ),
+        ok(
+            "the airport total, split across two runways, at the cap",
+            make_scenario(
+                other_arrivals=(
+                    *others(cap // 2, mine - 1, "28L"),
+                    *others(cap - 1 - cap // 2, mine - 1, "28R"),
+                ),
+                runways=INDEPENDENT,
+            ),
+            make_package(mine),
+            boundary=True,
+        ),
+        bad(
+            "airport cap unknown",
+            make_scenario(airport_ops_per_hour=None),
+            make_package(mine),
+        ),
+        bad(
+            "airport cap of zero is invalid",
+            make_scenario(airport_ops_per_hour=0),
+            make_package(mine),
+        ),
+        ok(
+            "airport cap of one is the smallest valid cap",
+            make_scenario(airport_ops_per_hour=1, other_arrivals=()),
+            make_package(mine),
+            boundary=True,
         ),
         bad(
             "other arrivals unknown",
@@ -280,7 +321,7 @@ def fuel_cases() -> list[Case]:
     cruise = BASELINE["cruise_burn_kg_per_min"]
     hold = BASELINE["hold_burn_kg_per_min"]
     alternate = BASELINE["alternate_fuel_kg"]
-    reserve = rv.rule_value(rv.FUEL_RESERVE_MIN).value * cruise + alternate
+    reserve = required_fuel(trip, hold, alternate)
     delay = 20
     late = EARLIEST + delay
     hold_pkg = make_package(late, action=FlightPlanAction.HOLD)
@@ -353,7 +394,12 @@ def fuel_cases() -> list[Case]:
         ),
         bad("trip fuel unknown", make_scenario(trip_fuel_kg=None), BASELINE_PACKAGE),
         bad(
-            "cruise burn unknown",
+            "cruise burn unknown, for a vector",
+            make_scenario(cruise_burn_kg_per_min=None),
+            vector_pkg,
+        ),
+        ok(
+            "cruise burn unknown does not matter for a direct arrival",
             make_scenario(cruise_burn_kg_per_min=None),
             BASELINE_PACKAGE,
         ),
@@ -370,10 +416,16 @@ def fuel_cases() -> list[Case]:
             make_scenario(hold_burn_kg_per_min=None),
             hold_pkg,
         ),
-        ok(
-            "hold rate unknown is irrelevant to vector",
+        # The reserve is holding fuel, so the hold rate is needed for every action.
+        bad(
+            "hold rate unknown also blocks a vector",
             make_scenario(hold_burn_kg_per_min=None),
             vector_pkg,
+        ),
+        bad(
+            "hold rate unknown also blocks a direct arrival",
+            make_scenario(hold_burn_kg_per_min=None),
+            BASELINE_PACKAGE,
         ),
         *weather_cases(trip, cruise, alternate),
         *decision_point_cases(trip, reserve, delay),
@@ -394,7 +446,7 @@ def weather_cases(trip: int, cruise: int, alternate: int) -> list[Case]:
     margin = rv.rule_value(rv.ALTERNATE_WINDOW_MIN).value
     ceiling = rv.rule_value(rv.ALTERNATE_MIN_CEILING_FT).value
     vis = rv.rule_value(rv.ALTERNATE_MIN_VISIBILITY_TENTH_MI).value
-    base = trip + rv.rule_value(rv.FUEL_RESERVE_MIN).value * cruise
+    base = trip + required_fuel(trip, BASELINE["hold_burn_kg_per_min"], 0)
     start, end = EARLIEST - margin, EARLIEST + margin
 
     def sc(fuel: int, *periods: WeatherPeriod) -> Scenario:
@@ -564,7 +616,7 @@ def occupancy(start: int, end: int, gate_id: str = "A1") -> GateOccupancy:
 
 def overlap_cases() -> list[Case]:
     buf = rv.rule_value(rv.GATE_BUFFER_MIN).value
-    stay = rv.turnaround(AircraftSize.NARROW_BODY).value
+    stay = STAY
     start, end = GATE_IN, GATE_IN + stay
 
     def sc(*occ: GateOccupancy) -> Scenario:
@@ -615,7 +667,14 @@ def overlap_cases() -> list[Case]:
         ),
         bad("taxi-in unknown", make_scenario(taxi_in_min=None), BASELINE_PACKAGE),
         bad(
-            "aircraft size unknown", make_scenario(aircraft_size=None), BASELINE_PACKAGE
+            "airport minimum turnaround unknown",
+            make_scenario(min_turnaround_min=None),
+            BASELINE_PACKAGE,
+        ),
+        ok(
+            "aircraft size is not needed for the stay",
+            make_scenario(aircraft_size=None),
+            BASELINE_PACKAGE,
         ),
     ]
 
@@ -646,7 +705,7 @@ def size_cases() -> list[Case]:
 
 
 def turnaround_cases() -> list[Case]:
-    stay = rv.turnaround(AircraftSize.NARROW_BODY).value
+    stay = STAY
     exact = GATE_IN + stay
     return [
         ok(
@@ -690,7 +749,14 @@ def turnaround_cases() -> list[Case]:
         ),
         bad("taxi-in unknown", make_scenario(taxi_in_min=None), BASELINE_PACKAGE),
         bad(
-            "aircraft size unknown", make_scenario(aircraft_size=None), BASELINE_PACKAGE
+            "airport minimum turnaround unknown",
+            make_scenario(min_turnaround_min=None),
+            BASELINE_PACKAGE,
+        ),
+        bad(
+            "airport minimum turnaround of zero is invalid",
+            make_scenario(min_turnaround_min=0),
+            BASELINE_PACKAGE,
         ),
     ]
 
@@ -812,9 +878,9 @@ def extra_wake_cases() -> list[Case]:
 def extra_own_flight_cases() -> dict[str, list[Case]]:
     """B3: one row with the scenario's own flight ID is the flight itself; more
     than one is ambiguous and nothing is skipped."""
-    cap = rv.runway_hourly_arrivals(FlightRules.IFR).value
+    cap = CAP
     mine = 500
-    stay = rv.turnaround(AircraftSize.NARROW_BODY).value
+    stay = STAY
     end = GATE_IN + stay
 
     def own_stay() -> GateOccupancy:
@@ -992,8 +1058,7 @@ DUP_GATES = (
 
 
 def extra_throughput_cases() -> list[Case]:
-    cap = rv.runway_hourly_arrivals(FlightRules.IFR).value
-    vfr_cap = rv.runway_hourly_arrivals(FlightRules.VFR).value
+    cap = CAP
     hour = rv.rule_value(rv.MINUTES_PER_HOUR).value
     mine = 500
 
@@ -1002,120 +1067,57 @@ def extra_throughput_cases() -> list[Case]:
     ) -> tuple[OtherArrival, ...]:
         return tuple(arrival(LARGE, at, runway_id, f"{prefix}{i}") for i in range(n))
 
-    def good(*arrivals: OtherArrival, **kw: Any) -> Scenario:
-        kw.setdefault("destination_forecast", GOOD_FORECAST)
-        return make_scenario(other_arrivals=arrivals, **kw)
-
-    def poor(*arrivals: OtherArrival, **kw: Any) -> Scenario:
+    def sc(*arrivals: OtherArrival, **kw: Any) -> Scenario:
         return make_scenario(other_arrivals=arrivals, **kw)
 
     return [
-        # D10: the cap follows the airport's conditions at the ETA.
+        # The cap is the workbook's airport total; weather and flight rules no
+        # longer move it.
         ok(
             "flight rules are not used",
             make_scenario(flight_rules=None),
             make_package(mine),
         ),
-        ok(
-            "good weather at the ETA allows the VFR cap",
-            good(*others(vfr_cap - 1, mine - 1)),
-            make_package(mine),
-            boundary=True,
-        ),
         bad(
-            "good weather, one over the VFR cap",
-            good(*others(vfr_cap, mine - 1)),
-            make_package(mine),
-            boundary=True,
-            violations=1,
-            expect=(vfr_cap + 1, vfr_cap),
-        ),
-        bad(
-            "poor weather at the ETA uses the IFR cap even if the flight is VFR",
-            poor(*others(cap, mine - 1), flight_rules=FlightRules.VFR),
+            "good weather does not raise the cap",
+            sc(*others(cap, mine - 1), destination_forecast=GOOD_FORECAST),
             make_package(mine),
             expect=(cap + 1, cap),
         ),
         ok(
-            "poor weather, exactly the IFR cap",
-            poor(*others(cap - 1, mine - 1), flight_rules=FlightRules.VFR),
-            make_package(mine),
-        ),
-        bad(
-            "unknown forecast uses the IFR cap",
-            make_scenario(
-                destination_forecast=None, other_arrivals=others(cap, mine - 1)
-            ),
-            make_package(mine),
-        ),
-        bad(
-            "forecast that does not cover the ETA uses the IFR cap",
-            good(*others(cap, mine - 1), destination_forecast=(forecast(0, mine - 1),)),
-            make_package(mine),
-        ),
-        ok(
-            "forecast period ending exactly at the ETA covers it",
-            good(
-                *others(cap, mine - 1),
-                destination_forecast=(forecast(0, mine),),
-            ),
+            "poor weather does not lower the cap",
+            sc(*others(cap - 1, mine - 1), flight_rules=FlightRules.VFR),
             make_package(mine),
             boundary=True,
         ),
         bad(
-            "forecast period ending a minute before the ETA does not cover it",
-            good(
-                *others(cap, mine - 1),
-                destination_forecast=(forecast(0, mine - 1),),
-            ),
+            "a bigger airport has a bigger cap, and still binds",
+            sc(*others(90, mine - 1), airport_ops_per_hour=90),
             make_package(mine),
             boundary=True,
+            expect=(91, 90),
         ),
         ok(
-            "forecast period starting exactly at the ETA covers it",
-            good(
-                *others(cap, mine - 1),
-                destination_forecast=(forecast(mine, mine + 10),),
-            ),
+            "a bigger airport, exactly at its cap",
+            sc(*others(89, mine - 1), airport_ops_per_hour=90),
             make_package(mine),
-        ),
-        bad(
-            "a poor period covering the ETA outranks a good one",
-            good(
-                *others(cap, mine - 1),
-                destination_forecast=(
-                    forecast(0, 1000),
-                    forecast(mine, mine, 500),
-                ),
-            ),
-            make_package(mine),
-        ),
-        ok(
-            "a poor period elsewhere does not matter",
-            good(
-                *others(cap, mine - 1),
-                destination_forecast=(
-                    forecast(0, 1000),
-                    forecast(0, mine - 1, 500),
-                ),
-            ),
-            make_package(mine),
+            boundary=True,
         ),
         # Window edges. The cap applies to any hour that contains this arrival.
         ok(
             "cap arrivals exactly an hour later are outside the window",
-            poor(*others(cap, mine + hour)),
+            sc(*others(cap, mine + hour)),
             make_package(mine),
             boundary=True,
         ),
         ok(
             "a busy hour that does not contain this arrival is not counted",
-            poor(*others(cap + 10, mine - 2 * hour)),
+            sc(*others(cap + 10, mine - 2 * hour)),
             make_package(mine),
         ),
         bad(
             "an hour that spans before and after this arrival is counted",
-            poor(*others(15, mine - 40), *others(15, mine + 19, prefix="G")),
+            sc(*others(cap // 2, mine - 40), *others(cap // 2, mine + 19, prefix="G")),
             make_package(mine),
             boundary=True,
             violations=1,
@@ -1123,40 +1125,20 @@ def extra_throughput_cases() -> list[Case]:
         ),
         ok(
             "the same spread an hour wide is not one hour",
-            poor(*others(15, mine - 40), *others(15, mine + 20, prefix="G")),
+            sc(*others(cap // 2, mine - 40), *others(cap // 2, mine + 20, prefix="G")),
             make_package(mine),
             boundary=True,
-        ),
-        # D1: parallels share one cap.
-        bad(
-            "parallel runways share the cap",
-            poor(
-                *others(15, mine - 1, "28L"),
-                *others(15, mine - 1, "28R", "G"),
-                runways=PARALLEL,
-            ),
-            make_package(mine),
-            expect=(cap + 1, cap),
-        ),
-        ok(
-            "independent runways do not share the cap",
-            poor(
-                *others(15, mine - 1, "28L"),
-                *others(15, mine - 1, "28R", "G"),
-                runways=INDEPENDENT,
-            ),
-            make_package(mine),
         ),
         # D4 and D5.
         bad(
             "arrival names an unknown runway",
-            poor(arrival(LARGE, mine - 1, "99")),
+            sc(arrival(LARGE, mine - 1, "99")),
             make_package(mine),
         ),
         bad("runway list unknown", make_scenario(runways=None), make_package(mine)),
         ok(
             "own flight is not counted",
-            poor(*others(cap - 1, mine - 1), arrival(LARGE, mine - 1, name=OWN)),
+            sc(*others(cap - 1, mine - 1), arrival(LARGE, mine - 1, name=OWN)),
             make_package(mine),
             boundary=True,
         ),
@@ -1165,13 +1147,13 @@ def extra_throughput_cases() -> list[Case]:
 
 def extra_fuel_cases() -> list[Case]:
     trip = BASELINE["trip_fuel_kg"]
-    cruise = BASELINE["cruise_burn_kg_per_min"]
     alternate = BASELINE["alternate_fuel_kg"]
-    reserve = rv.rule_value(rv.FUEL_RESERVE_MIN).value * cruise + alternate
+    hold = BASELINE["hold_burn_kg_per_min"]
+    reserve = required_fuel(trip, hold, alternate)
     early = EARLIEST - 5
     margin = rv.rule_value(rv.ALTERNATE_WINDOW_MIN).value
     start, end = EARLIEST - margin, EARLIEST + margin
-    no_alt = trip + rv.rule_value(rv.FUEL_RESERVE_MIN).value * cruise
+    no_alt = trip + required_fuel(trip, hold, 0)
     pre = DecisionPoint.PRE_DEPARTURE
 
     def sc(*periods: WeatherPeriod) -> Scenario:
@@ -1236,19 +1218,36 @@ def extra_fuel_cases() -> list[Case]:
             BASELINE_PACKAGE,
         ),
         # D3: impossible values fail closed, they are not just unusual.
+        # Cruise burn now only prices a vector; holding burn sets the reserve.
         bad(
-            "cruise burn of zero",
+            "cruise burn of zero on a vector",
+            make_scenario(cruise_burn_kg_per_min=0),
+            make_package(EARLIEST + 5, action=FlightPlanAction.VECTOR),
+        ),
+        bad(
+            "negative cruise burn on a vector",
+            make_scenario(cruise_burn_kg_per_min=-50),
+            make_package(EARLIEST + 5, action=FlightPlanAction.VECTOR),
+        ),
+        ok(
+            "cruise burn of one is the smallest valid rate for a vector",
+            make_scenario(cruise_burn_kg_per_min=1),
+            make_package(EARLIEST + 5, action=FlightPlanAction.VECTOR),
+            boundary=True,
+        ),
+        ok(
+            "an invalid cruise burn does not matter for a direct arrival",
             make_scenario(cruise_burn_kg_per_min=0),
             BASELINE_PACKAGE,
         ),
         bad(
-            "negative cruise burn",
-            make_scenario(cruise_burn_kg_per_min=-50),
+            "hold burn of zero sets no reserve, so it is invalid for any action",
+            make_scenario(hold_burn_kg_per_min=0),
             BASELINE_PACKAGE,
         ),
         ok(
-            "cruise burn of one is the smallest valid rate",
-            make_scenario(cruise_burn_kg_per_min=1),
+            "hold burn of one is the smallest valid rate",
+            make_scenario(hold_burn_kg_per_min=1, fuel_on_board_kg=trip + 6000),
             BASELINE_PACKAGE,
             boundary=True,
         ),
@@ -1257,8 +1256,8 @@ def extra_fuel_cases() -> list[Case]:
             make_scenario(hold_burn_kg_per_min=0),
             make_package(EARLIEST + 5, action=FlightPlanAction.HOLD),
         ),
-        ok(
-            "invalid hold burn does not matter for a vector",
+        bad(
+            "invalid hold burn also blocks a vector",
             make_scenario(hold_burn_kg_per_min=-1),
             make_package(EARLIEST + 5, action=FlightPlanAction.VECTOR),
         ),
@@ -1328,7 +1327,7 @@ def extra_fuel_cases() -> list[Case]:
 
 def extra_overlap_cases() -> list[Case]:
     buf = rv.rule_value(rv.GATE_BUFFER_MIN).value
-    stay = rv.turnaround(AircraftSize.NARROW_BODY).value
+    stay = STAY
     start, end = GATE_IN, GATE_IN + stay
     late_departure = end + 60  # D2: the aircraft holds its gate until then
 
@@ -1489,6 +1488,105 @@ def slot_window_cases() -> list[Case]:
 
 
 _OWN = extra_own_flight_cases()
+
+
+def crew_duty_cases() -> list[Case]:
+    """Duty runs from the report time to gate-in (slot plus taxi-in)."""
+    limit = rv.rule_value(rv.CREW_MAX_DUTY_MIN).value  # 780, 13 hours
+    report_at_limit = GATE_IN - limit  # exactly 780 min on duty at gate-in
+    return [
+        ok(
+            "exactly 13 hours on duty at gate-in",
+            make_scenario(crew_report_min=report_at_limit),
+            BASELINE_PACKAGE,
+            boundary=True,
+        ),
+        bad(
+            "one minute past 13 hours",
+            make_scenario(crew_report_min=report_at_limit - 1),
+            BASELINE_PACKAGE,
+            boundary=True,
+            violations=1,
+            expect=(limit + 1, limit),
+        ),
+        bad(
+            "a delay pushes gate-in past the limit",
+            make_scenario(crew_report_min=report_at_limit),
+            make_package(EARLIEST + 5, action=FlightPlanAction.HOLD),
+            violations=1,
+            expect=(limit + 5, limit),
+        ),
+        ok("a short duty", make_scenario(), BASELINE_PACKAGE),
+        bad(
+            "crew report time unknown",
+            make_scenario(crew_report_min=None),
+            BASELINE_PACKAGE,
+        ),
+        bad("taxi-in unknown", make_scenario(taxi_in_min=None), BASELINE_PACKAGE),
+        bad("negative taxi-in", make_scenario(taxi_in_min=-1), BASELINE_PACKAGE),
+        ok(
+            "taxi-in of zero",
+            make_scenario(taxi_in_min=0, crew_report_min=EARLIEST - limit),
+            BASELINE_PACKAGE,
+            boundary=True,
+        ),
+    ]
+
+
+def gate_notice_cases() -> list[Case]:
+    """A gate other than the planned one (A1) needs 20 minutes' notice before the
+    arrival slot (100)."""
+    notice = rv.rule_value(rv.GATE_CHANGE_NOTICE_MIN).value  # 20
+    at_limit = EARLIEST - notice  # decided exactly 20 minutes before arrival
+    other_gate = make_package(gate_id="B1")
+    return [
+        ok(
+            "gate change decided exactly 20 minutes before arrival",
+            make_scenario(decision_time_min=at_limit),
+            other_gate,
+            boundary=True,
+        ),
+        bad(
+            "gate change decided 19 minutes before arrival",
+            make_scenario(decision_time_min=at_limit + 1),
+            other_gate,
+            boundary=True,
+            violations=1,
+            expect=(notice - 1, notice),
+        ),
+        bad(
+            "gate change decided after the arrival",
+            make_scenario(decision_time_min=EARLIEST + 10),
+            other_gate,
+            violations=1,
+            expect=(-10, notice),
+        ),
+        ok(
+            "keeping the planned gate needs no notice",
+            make_scenario(decision_time_min=EARLIEST + 10),
+            make_package(gate_id="A1"),
+        ),
+        ok("plenty of notice", make_scenario(), other_gate),
+        bad(
+            "a later slot changes the notice for the better, an earlier one the worse",
+            make_scenario(decision_time_min=at_limit + 6),
+            make_package(EARLIEST + 5, gate_id="B1", action=FlightPlanAction.HOLD),
+            violations=1,
+            expect=(notice - 1, notice),
+        ),
+        bad(
+            "decision time unknown",
+            make_scenario(decision_time_min=None),
+            other_gate,
+        ),
+        bad(
+            "planned gate unknown",
+            make_scenario(planned_gate=None),
+            other_gate,
+        ),
+    ]
+
+
 RULE_CASES: dict[str, list[Case]] = {
     atc.WAKE_SEPARATION: wake_cases() + extra_wake_cases() + _OWN[atc.WAKE_SEPARATION],
     atc.RUNWAY_CLOSED: runway_closed_cases() + extra_runway_cases(),
@@ -1503,6 +1601,8 @@ RULE_CASES: dict[str, list[Case]] = {
     + _OWN[ground.GATE_OVERLAP],
     ground.GATE_SIZE: size_cases() + extra_size_cases(),
     ground.TURNAROUND: turnaround_cases() + extra_turnaround_cases(),
+    ground.GATE_NOTICE: gate_notice_cases(),
+    pilot.CREW_DUTY: crew_duty_cases(),
 }
 
 # Rules whose limit is a yes/no fact in the scenario, so there is no value to
@@ -1577,7 +1677,7 @@ def test_wake_table_has_every_one_of_the_sixteen_pairs() -> None:
     """Written out by hand from the order, not read back from the table."""
     L, H, S, X = LARGE, HEAVY, SMALL, WakeCategory.SUPER
     expected = {
-        (X, X): 5, (X, H): 6, (X, L): 7, (X, S): 8,
+        (X, X): 3, (X, H): 6, (X, L): 7, (X, S): 8,
         (H, X): 3, (H, H): 4, (H, L): 5, (H, S): 6,
         (L, X): 3, (L, H): 3, (L, L): 3, (L, S): 4,
         (S, X): 3, (S, H): 3, (S, L): 3, (S, S): 3,

@@ -11,7 +11,6 @@ from app.negotiation.contracts import (
     WakeCategory,
 )
 from app.negotiation.rules.shared import (
-    airport_conditions,
     gates_with_id,
     own_flight_is_ambiguous,
     runway_group,
@@ -200,33 +199,38 @@ def check_taxiway_closed(scenario: Scenario, package: Package) -> tuple[Violatio
 def check_runway_throughput(
     scenario: Scenario, package: Package
 ) -> tuple[Violation, ...]:
-    """No rolling hour containing this arrival may exceed the runway cap.
+    """No rolling hour containing this arrival may exceed the airport's cap.
 
-    Parallel runways in one group count as one runway; the scenario's own
-    flight is skipped; an arrival naming an unlisted runway is a missing-data
-    violation. The cap follows the airport's conditions at the ETA, not the
-    flight's own rules: a poor or unknown forecast at the ETA uses the IFR cap,
-    otherwise the VFR cap.
+    The cap is the workbook's `max_runway_ops_per_hour`, read as an airport
+    total, so arrivals on every runway count together. Only arrivals are
+    counted, because the scenario holds no departures: the rule therefore
+    understates movements and is the more lenient side of the workbook limit.
+    The scenario's own flight is skipped; an arrival naming an unlisted runway
+    is a missing-data violation; an unknown or non-positive cap fails closed.
     """
     arrivals = scenario.other_arrivals.value
     runways = scenario.runways.value
+    cap_value = scenario.airport_ops_per_hour.value
     own_id = scenario.flight_id.value
-    source = "scenario.other_arrivals, scenario.runways, scenario.destination_forecast"
+    source = "scenario.other_arrivals, scenario.runways, scenario.airport_ops_per_hour"
     missing: list[Violation] = []
     if arrivals is None:
         missing.append(_missing(RUNWAY_THROUGHPUT, "other arrivals", source))
     if runways is None:
         missing.append(_missing(RUNWAY_THROUGHPUT, "runway list", source))
-    if arrivals is None or runways is None:
+    if cap_value is None:
+        missing.append(_missing(RUNWAY_THROUGHPUT, "airport movement cap", source))
+    elif cap_value <= 0:
+        missing.append(
+            _missing(RUNWAY_THROUGHPUT, "airport movement cap", source, "invalid")
+        )
+    if arrivals is None or runways is None or cap_value is None or cap_value <= 0:
         return tuple(missing)
+    cap = rv.airport_ops_per_hour(cap_value)
 
     hour = rv.rule_value(rv.MINUTES_PER_HOUR).value
     mine = package.slot.time_min
-    conditions = airport_conditions(scenario.destination_forecast.value, mine)
-    cap = rv.runway_hourly_arrivals(conditions)
-
     known = {r.runway_id for r in runways}
-    same_runway = runway_group(runways, package.slot.runway_id)
     found: list[Violation] = []
     times: list[int] = []
     ambiguous = own_flight_is_ambiguous((a.flight_id for a in arrivals), own_id)
@@ -245,7 +249,7 @@ def check_runway_throughput(
                     source,
                 )
             )
-        elif other.runway_id in same_runway:
+        else:
             times.append(other.time_min)
     times.append(mine)
     # The busiest hour containing this arrival starts at some arrival that is
@@ -259,9 +263,8 @@ def check_runway_throughput(
         found.append(
             _violation(
                 RUNWAY_THROUGHPUT,
-                f"{worst} arrivals within an hour on runway {package.slot.runway_id}"
-                f"; cap is {cap.value} under {conditions.value.upper()} conditions "
-                "at the ETA",
+                f"{worst} arrivals within an hour at the airport; the workbook "
+                f"cap is {cap.value} movements an hour (arrivals only counted)",
                 rv.reference(cap),
                 worst,
                 cap.value,
@@ -356,8 +359,9 @@ RULES: tuple[Rule, ...] = (
     Rule(
         rule_id=RUNWAY_THROUGHPUT,
         domain=Domain.ATC,
-        source="rule_values.runway_hourly_arrivals (IFR/VFR)",
-        description="Arrivals per rolling hour on the runway must not exceed the cap",
+        source="challenge workbook: max_runway_ops_per_hour, per airport",
+        description="Arrivals per rolling hour at the airport must not exceed "
+        "the workbook cap",
         public_reason=PublicReason.CAPACITY_LIMIT,
         check=check_runway_throughput,
     ),

@@ -26,9 +26,15 @@ Earliest arrival is the scheduled arrival plus a delay signal:
   is when an operations centre tracking the inbound aircraft knows it. The
   lateness that carries over is that lateness less the recovery allowance:
   the scheduled turnaround above a minimum turnaround of
-  `rule_values.turnaround(NARROW_BODY)` (EUROCONTROL secondary value), floored
+  the origin airport's workbook minimum turnaround, floored
   at zero. The margin of 30 minutes is our assumption. With no usable inbound
   leg the floor applies, and `earliest_basis` says so.
+
+Airport limits (runways, spare gates, throughput, minimum turnaround) come from
+the challenge workbook's airport_capacity table (`airport_limits`), which the
+organisers label synthetic. A destination with no row in it gets a scenario with
+those fields unknown, so the rules fail closed and the result is a visible
+system fault; no default is ever substituted.
 
 Either way the planning window is a fixed 60 minutes after earliest, and the
 as-flown arrival is kept apart for the evaluation to compare against.
@@ -50,6 +56,7 @@ from typing import Final, Literal
 
 from app.negotiation import dot
 from app.negotiation import rule_values as rv
+from app.negotiation.airport_limits import AirportLimits, find_limits
 from app.negotiation.contracts import (
     AircraftSize,
     Connection,
@@ -87,19 +94,26 @@ FIELD_NOTES: Final[dict[str, str]] = {
     ),
     "latest_arrival_min": "derived: earliest plus the planning window",
     "taxi_in_min": "derived: the destination's median TAXI_IN over the whole file",
-    "fuel_on_board_kg": "synthetic",
+    "fuel_on_board_kg": (
+        "synthetic: trip fuel plus the workbook's 45 minutes of holding fuel, "
+        "varied by a seeded draw, plus any alternate"
+    ),
     "trip_fuel_kg": "synthetic: real block time times a synthetic burn rate",
     "cruise_burn_kg_per_min": "synthetic",
-    "hold_burn_kg_per_min": "synthetic",
+    "hold_burn_kg_per_min": "workbook: 2,400 kg/h narrow-body, 6,500 kg/h wide-body",
     "alternate_fuel_kg": "synthetic",
     "destination_forecast": "synthetic",
     "runways": (
-        "synthetic: count scales with the real arrivals that day; consecutive "
-        "pairs are close parallels (one shared parallel_group) with a seeded "
-        "probability"
+        "synthetic: count is the workbook's active_runways for the airport; "
+        "consecutive pairs are close parallels (one shared parallel_group) with a "
+        "seeded probability"
     ),
     "taxiways": "synthetic",
-    "gates": "synthetic",
+    "gates": (
+        "synthetic: the planned gate plus the workbook's spare_gates_at_any_time "
+        "spare gates, all big enough for this aircraft and unoccupied during the "
+        "decision window (the workbook gives gate counts, not sizes)"
+    ),
     "other_arrivals": (
         "synthetic as a field: flight IDs and scheduled arrival times are real "
         "DOT rows, but each one's wake category and runway are synthetic"
@@ -117,7 +131,16 @@ FIELD_NOTES: Final[dict[str, str]] = {
         "synthetic (a seeded draw) when a next leg exists; derived false when "
         "none does, since there is nothing to hold"
     ),
-    "ground_shift_end_min": "synthetic",
+    "ground_shift_end_min": "synthetic: an 8-hour shift (workbook), seeded start",
+    "decision_time_min": (
+        "derived: late-aircraft rows, the scheduled departure plus the inbound "
+        "margin; weather rows, one hour before scheduled arrival"
+    ),
+    "crew_report_min": (
+        "synthetic: seeded from the scheduled departure only, never from what happened"
+    ),
+    "airport_ops_per_hour": "synthetic: the workbook's cap for the airport",
+    "min_turnaround_min": "synthetic: the workbook's minimum for the airport",
     "connections": "synthetic: anchored on the real scheduled gate-in",
 }
 
@@ -156,11 +179,12 @@ def earliest_basis(
         if cause == "late_aircraft"
         else None
     )
-    if inbound is None:
+    origin = find_limits(row.origin_airport)
+    if inbound is None or origin is None:
+        # No inbound leg, or no workbook minimum turnaround for the origin to
+        # say how much lateness the turn recovers: the floor applies.
         return EarliestBasis("disruption_floor", floor, floor, False, None, None, None)
-    allowance = max(
-        0, inbound.scheduled_turn_min - rv.turnaround(AircraftSize.NARROW_BODY).value
-    )
+    allowance = max(0, inbound.scheduled_turn_min - origin.min_turnaround_min)
     carried = max(0, inbound.arrival_delay_min - allowance)
     return EarliestBasis(
         basis="inbound_leg" if carried > floor else "disruption_floor",
@@ -226,27 +250,15 @@ class GeneratorParams:
     plan_window_min: int = 60  # latest minus earliest arrival
     window_margin_min: int = 60  # traffic taken either side of the window
 
-    # Runways by real arrivals scheduled that day: (upper bound, runways).
-    runway_tiers: tuple[tuple[int, int], ...] = (
-        (100, 1),
-        (300, 2),
-        (600, 3),
-        (900, 4),
-    )
-    max_runways: int = 5
+    # Runways come from the workbook's active_runways for the airport.
     # Chance each consecutive runway pair (R1+R2, R3+R4) is closely spaced, so
     # the pair counts as one runway for wake separation and throughput.
     p_close_parallel_pair: float = 0.4
     p_runway_closed: tuple[float, float] = (0.25, 0.03)  # weather, late-aircraft
     p_taxiway_closed: tuple[float, float] = (0.15, 0.05)
 
-    # Gates.
-    gates_per_daily_arrival: float = 1 / 12
-    gates_base: int = 4
-    min_gates: int = 6
-    max_gates: int = 14
+    # Gates: the planned gate plus the workbook's spare gates (not the total).
     gate_size_weights: tuple[float, float, float] = (0.25, 0.55, 0.20)
-    gates_that_fit_min: int = 2
     gate_stay_min: tuple[int, int] = (25, 120)  # synthetic occupant stays
     gate_util_base: float = 0.35  # share of time a gate is occupied
     gate_util_span: float = 0.35  # added at 900+ arrivals a day
@@ -264,22 +276,27 @@ class GeneratorParams:
     # Other arrivals' wake mix: super, heavy, small; the rest are large.
     other_wake_weights: tuple[float, float, float] = (0.01, 0.12, 0.04)
 
-    # Aircraft: burn kg per minute at cruise, by size; hold is a share of it.
+    # Aircraft: burn kg per minute at cruise, by size. Holding burn is the
+    # workbook's, by size class (see `rule_values.hold_burn_kg_per_min`).
     cruise_burn: tuple[int, int, int] = (28, 45, 105)  # regional, narrow, wide
     burn_jitter: float = 0.10
-    hold_share: tuple[float, float] = (0.80, 0.95)
     alternate_min: tuple[int, int] = (15, 35)  # alternate trip, minutes of cruise
     airborne_remaining: tuple[float, float] = (0.30, 0.90)  # share of block left
 
-    # Fuel above the policy reserve (and any alternate), in minutes of cruise,
-    # for an airborne aircraft: (probability, low, high).
+    # Variation around the workbook's default spare fuel on arrival (45 minutes
+    # of holding fuel), in minutes of holding fuel, for an airborne aircraft:
+    # (probability, low, high). The pre-workbook tiers (surplus above a 45-minute
+    # cruise reserve: -8..0, 0..20, 20..50, 50..100) shifted down by 9 minutes,
+    # the typical gap between the 45-minute default and the 30-minute reserve plus
+    # contingency, so the share starting below the reserve stays near 4%.
     surplus_tiers: tuple[tuple[float, int, int], ...] = (
-        (0.04, -8, 0),  # already below the policy reserve
-        (0.30, 0, 20),
-        (0.40, 20, 50),
-        (0.26, 50, 100),
+        (0.04, -17, -9),  # already below the reserve
+        (0.30, -9, 11),
+        (0.40, 11, 41),
+        (0.26, 41, 91),
     )
-    surplus_pre_departure_min: tuple[int, int] = (30, 90)  # can refuel on the ground
+    # The same, before departure (can refuel on the ground): old (30, 90) less 9.
+    surplus_pre_departure_min: tuple[int, int] = (21, 81)
 
     # Forecast shape probabilities for (weather, late-aircraft) rows:
     # all poor, poor then clears, good then deteriorates, all good.
@@ -303,7 +320,15 @@ class GeneratorParams:
         (40, 200),
     )
     connection_gap_min: tuple[int, int] = (35, 180)
-    shift_end_after_gate_in_min: tuple[int, int] = (30, 240)
+    # Minutes of the 8-hour ground shift already worked at the scheduled gate-in.
+    # The shift end falls 240 to 30 minutes after it, as before.
+    shift_elapsed_at_gate_in_min: tuple[int, int] = (240, 450)
+
+    # Flight crew duty starts (report time) this long before the scheduled
+    # departure: most are on their first flight of the duty, some are late in it.
+    p_crew_late_in_duty: float = 0.30
+    crew_report_lead_min: tuple[int, int] = (60, 120)
+    crew_report_late_lead_min: tuple[int, int] = (300, 600)
 
     # Aircraft size by airline and distance.
     regional_airlines: tuple[str, ...] = ("EV", "OO", "MQ")
@@ -350,13 +375,6 @@ def _weighted(rng: random.Random, weights: Sequence[float]) -> int:
 
 def _sourced[T](value: T | None, provenance: Provenance) -> Sourced[T]:
     return Sourced(value=value, provenance=provenance)
-
-
-def _runway_count(daily: int, params: GeneratorParams) -> int:
-    for bound, count in params.runway_tiers:
-        if daily < bound:
-            return count
-    return params.max_runways
 
 
 def _parallel_groups(
@@ -462,22 +480,17 @@ def _poor_between(forecast: Sequence[WeatherPeriod], lo: int, hi: int) -> bool:
 
 
 def _gates(
-    rng: random.Random, daily: int, size: AircraftSize, p: GeneratorParams
+    rng: random.Random, spare: int, size: AircraftSize, p: GeneratorParams
 ) -> tuple[Gate, ...]:
-    count = min(
-        p.max_gates,
-        max(p.min_gates, round(daily * p.gates_per_daily_arrival) + p.gates_base),
-    )
+    """The planned gate's pool: one gate for the flight plus the spares.
+
+    The workbook gives gate counts but no gate sizes, so any size here is ours.
+    Every candidate gate fits this aircraft: a spare gate that cannot take it
+    would not be spare for this flight. Sizes above the aircraft's still vary."""
+    count = 1 + spare
     taxiways = max(2, math.ceil(count / 4))
-    sizes = [_SIZES[_weighted(rng, p.gate_size_weights)] for _ in range(count)]
-    fitting = [i for i, s in enumerate(sizes) if s >= size]
-    # An airport that cannot park the aircraft anywhere is not a negotiation.
-    for i in rng.sample(range(count), count):
-        if len(fitting) >= p.gates_that_fit_min:
-            break
-        if i not in fitting:
-            sizes[i] = size
-            fitting.append(i)
+    drawn = [_SIZES[_weighted(rng, p.gate_size_weights)] for _ in range(count)]
+    sizes = [max(size, d) for d in drawn]
     return tuple(
         Gate(gate_id=f"G{i + 1}", taxiway_id=f"T{i % taxiways + 1}", max_size=s)
         for i, s in enumerate(sizes)
@@ -587,10 +600,15 @@ def build_scenario(
     rng_air = _rng(key, "aircraft")
     wake = _wake_of(size, rng_air, p)
 
-    # The airport, scaled by the real traffic that day.
+    # The airport, from the workbook. With no row for the destination the
+    # airport fields below are replaced by "unknown" before returning, so the
+    # rules fail closed and the fault is visible; nothing is defaulted.
+    workbook = find_limits(row.destination_airport)
+    airport_known = workbook is not None
+    limits = workbook or AirportLimits(row.destination_airport, "", 1, 0, 1, 1, 0)
     daily = dot.daily_arrivals(row, path)
     rng_airport = _rng(key, "airport")
-    runway_ids = [f"R{i + 1}" for i in range(_runway_count(daily, p))]
+    runway_ids = [f"R{i + 1}" for i in range(limits.active_runways)]
     closed_runways = {
         r
         for r in runway_ids
@@ -599,7 +617,7 @@ def build_scenario(
     if len(closed_runways) == len(runway_ids):  # keep the airport open
         closed_runways.discard(runway_ids[-1])
     parallel_groups = _parallel_groups(_rng(key, "runway-groups"), runway_ids, p)
-    gates = _gates(rng_airport, daily, size, p)
+    gates = _gates(rng_airport, limits.spare_gates_at_any_time, size, p)
     taxiway_ids = sorted({g.taxiway_id for g in gates})
     closed_taxiways = {
         t for t in taxiway_ids if rng_airport.random() < p.p_taxiway_closed[cause_index]
@@ -626,7 +644,7 @@ def build_scenario(
 
     # Gates: a planned gate that fit at the scheduled time, others in use around it.
     rng_gate = _rng(key, "gates")
-    stay = rv.turnaround(size).value
+    stay = limits.min_turnaround_min
     buffer = rv.rule_value(rv.GATE_BUFFER_MIN).value
     occupancies = _occupancies(
         rng_gate,
@@ -656,6 +674,23 @@ def build_scenario(
             and o.end_min > plan_lo
         )
     ]
+    # Spare gates are spare: no generated occupant sits on one anywhere in the
+    # decision window, from the scheduled gate-in to the end of the longest stay
+    # the latest slot can need (gate-in plus the minimum turnaround, or the next
+    # departure if later), plus the buffer. The workbook says these gates are
+    # free "at any time". Only the planned gate keeps occupants, including the
+    # seeded planned-gate conflict below.
+    last_gate_in = latest + (_DEFAULT_TAXI_IN_MIN if taxi_in is None else taxi_in)
+    window_hi = last_gate_in + stay
+    if leg is not None:
+        window_hi = max(window_hi, leg.scheduled_departure_min)
+    window_lo, window_hi = scheduled_gate_in - buffer, window_hi + buffer
+    occupancies = [
+        o
+        for o in occupancies
+        if o.gate_id == planned.gate_id
+        or not (o.start_min < window_hi and o.end_min > window_lo)
+    ]
     occupancies = _with_planned_gate_conflict(
         _rng(key, "gate-conflict"),
         occupancies,
@@ -665,7 +700,9 @@ def build_scenario(
         p,
     )
 
-    # Fuel.
+    # Fuel. Holding burn is the workbook's. On arrival the aircraft carries the
+    # workbook's 45 minutes of holding fuel, varied by a seeded draw (see
+    # `surplus_tiers`), on top of the trip fuel and any alternate.
     rng_fuel = _rng(key, "fuel")
     cruise = max(
         1,
@@ -674,7 +711,7 @@ def build_scenario(
             * (1 + rng_fuel.uniform(-p.burn_jitter, p.burn_jitter))
         ),
     )
-    hold = max(1, round(cruise * rng_fuel.uniform(*p.hold_share)))
+    hold = rv.hold_burn_kg_per_min(size)
     alternate = round(cruise * rng_fuel.uniform(*p.alternate_min))
     block = row.scheduled_time
     if block is None:
@@ -687,15 +724,15 @@ def build_scenario(
     if decision_point is DecisionPoint.AIRBORNE:
         remaining = block * rng_fuel.uniform(*p.airborne_remaining)
         tier = p.surplus_tiers[_weighted(rng_fuel, [t[0] for t in p.surplus_tiers])]
-        surplus_min = rng_fuel.uniform(tier[1], tier[2])
+        variation_min = rng_fuel.uniform(tier[1], tier[2])
         needs_alternate = _poor_between(forecast, earliest - 60, earliest + 60)
     else:
         remaining = float(block)
-        surplus_min = rng_fuel.uniform(*p.surplus_pre_departure_min)
+        variation_min = rng_fuel.uniform(*p.surplus_pre_departure_min)
         needs_alternate = True  # loaded on the ground for any forecast
     trip = max(1, round(remaining * cruise))
-    reserve_min = rv.rule_value(rv.FUEL_RESERVE_MIN).value
-    on_board = trip + round((reserve_min + surplus_min) * cruise)
+    spare_min = rv.rule_value(rv.FUEL_SPARE_ON_ARRIVAL_MIN).value
+    on_board = trip + round((spare_min + variation_min) * hold)
     if needs_alternate:
         on_board += alternate
 
@@ -717,7 +754,28 @@ def build_scenario(
         )
         for _ in range(_weighted(rng_ops, p.connection_count_weights))
     )
-    shift_end = scheduled_gate_in + rng_ops.randint(*p.shift_end_after_gate_in_min)
+    # An 8-hour shift (workbook); the seeded part is how much of it has run.
+    shift_end = (
+        scheduled_gate_in
+        - rng_ops.randint(*p.shift_elapsed_at_gate_in_min)
+        + rv.rule_value(rv.GROUND_SHIFT_MIN).value
+    )
+
+    # Decision time and crew duty start: from the schedule only, no hindsight.
+    departure_min = dot.hhmm_to_min(row.scheduled_departure)
+    if cause == "weather":
+        decision_time = scheduled_arrival - p.window_margin_min
+    else:
+        decision_time = departure_min + INBOUND_KNOWN_MARGIN_MIN
+    rng_crew = _rng(key, "crew")
+    late_in_duty = rng_crew.random() < p.p_crew_late_in_duty
+    crew_report = departure_min - rng_crew.randint(
+        *(p.crew_report_late_lead_min if late_in_duty else p.crew_report_lead_min)
+    )
+
+    def known[T](value: T) -> Sourced[T]:
+        """A synthetic airport field, unknown when the workbook has no row."""
+        return _sourced(value if airport_known else None, SYNTHETIC)
 
     return Scenario(
         scenario_id=_sourced(
@@ -739,7 +797,7 @@ def build_scenario(
         hold_burn_kg_per_min=_sourced(hold, SYNTHETIC),
         alternate_fuel_kg=_sourced(alternate, SYNTHETIC),
         destination_forecast=_sourced(forecast, SYNTHETIC),
-        runways=_sourced(
+        runways=known(
             tuple(
                 Runway(
                     runway_id=r,
@@ -747,23 +805,25 @@ def build_scenario(
                     parallel_group=parallel_groups.get(r),
                 )
                 for r in runway_ids
-            ),
-            SYNTHETIC,
+            )
         ),
-        taxiways=_sourced(
+        taxiways=known(
             tuple(
                 Taxiway(taxiway_id=t, closed=t in closed_taxiways) for t in taxiway_ids
-            ),
-            SYNTHETIC,
+            )
         ),
-        gates=_sourced(gates, SYNTHETIC),
+        gates=known(gates),
         other_arrivals=_sourced(others, SYNTHETIC),
-        gate_occupancies=_sourced(tuple(occupancies), SYNTHETIC),
-        planned_gate=_sourced(planned.gate_id, SYNTHETIC),
+        gate_occupancies=known(tuple(occupancies)),
+        planned_gate=known(planned.gate_id),
         next_departure_min=next_departure,
         next_leg_turnaround_hard=hard,
         ground_shift_end_min=_sourced(shift_end, SYNTHETIC),
         connections=_sourced(connections, SYNTHETIC),
+        decision_time_min=_sourced(decision_time, DERIVED),
+        crew_report_min=_sourced(crew_report, SYNTHETIC),
+        airport_ops_per_hour=known(limits.max_runway_ops_per_hour),
+        min_turnaround_min=known(limits.min_turnaround_min),
     )
 
 

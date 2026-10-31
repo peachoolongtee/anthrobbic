@@ -77,6 +77,10 @@ class Sourced[T](FrozenModel):
     provenance: Provenance
 
 
+def _unknown_int() -> "Sourced[int]":
+    return Sourced[int](value=None, provenance=Provenance.SYNTHETIC)
+
+
 class Runway(FrozenModel):
     """A runway. Runways sharing a `parallel_group` are treated as one runway
     for wake separation and throughput (FAA JO 7110.65: parallel runways less
@@ -183,6 +187,16 @@ class Scenario(FrozenModel):
     next_leg_turnaround_hard: Sourced[bool]
     ground_shift_end_min: Sourced[int]
     connections: Sourced[tuple[Connection, ...]]
+    # Fields added with the challenge workbook limits. Each defaults to unknown,
+    # so a scenario built without them fails closed in the rules that need them.
+    # When the disruption is handled; a gate change needs notice before arrival.
+    decision_time_min: Sourced[int] = Field(default_factory=_unknown_int)
+    # When the flight crew's duty began (synthetic, seeded from the schedule).
+    crew_report_min: Sourced[int] = Field(default_factory=_unknown_int)
+    # The destination airport's cap on runway movements per hour (workbook).
+    airport_ops_per_hour: Sourced[int] = Field(default_factory=_unknown_int)
+    # The destination airport's minimum turnaround (workbook).
+    min_turnaround_min: Sourced[int] = Field(default_factory=_unknown_int)
 
 
 class ArrivalSlot(FrozenModel):

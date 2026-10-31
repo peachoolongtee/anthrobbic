@@ -86,6 +86,8 @@ GROUND_SPEC = AgentSpec(
         "next_departure_min",
         "next_leg_turnaround_hard",
         "ground_shift_end_min",
+        "decision_time_min",
+        "min_turnaround_min",
     ),
     reply_model=GroundReply,
     public_reasons=_PUBLIC_REASONS,

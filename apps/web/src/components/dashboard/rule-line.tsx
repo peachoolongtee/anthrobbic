@@ -12,6 +12,7 @@ function limitText(rule: RuleResult, result: "held" | "broken"): string {
 
 const STATUS_TONE: Record<NonNullable<RuleResult["status"]>, string> = {
   confirmed: "bg-success-soft text-success",
+  organiser_workbook: "bg-muted text-muted-foreground",
   secondary: "bg-muted text-muted-foreground",
   unverified: "bg-warning-soft text-warning",
   policy: "bg-warning-soft text-warning",

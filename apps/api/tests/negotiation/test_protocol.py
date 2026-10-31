@@ -39,6 +39,7 @@ from app.negotiation.log import EvidenceLog, verify_entries
 from app.negotiation.notes import Note, ground_truth_preferences, notes_for
 from app.negotiation.options import enumerate_packages
 from app.negotiation.protocol import (
+    FALLBACK_REASONS,
     MAX_TURNS,
     NegotiationResult,
     build_shortlist,
@@ -287,7 +288,13 @@ def test_no_agreement_after_two_turns_falls_back_visibly_with_no_fake_fault() ->
     assert not result.faults  # nothing failed
     assert not _is_clean_fallback(result)
     assert "cap" in sink.kinds()
-    assert ("fallback", {"trigger": "turn_cap_no_agreement"}) in sink.entries
+    assert (
+        "fallback",
+        {
+            "trigger": "turn_cap_no_agreement",
+            "reason": FALLBACK_REASONS["turn_cap_no_agreement"],
+        },
+    ) in sink.entries
 
 
 def test_an_agent_accepting_nothing_is_an_empty_intersection() -> None:
@@ -374,7 +381,10 @@ def test_any_sdk_fault_stops_the_run_and_is_never_clean(
     assert not result.agents_agreed
     assert result.decision == fallback.decide(scenario)
     assert "fault" in sink.kinds()
-    assert ("fallback", {"trigger": "fault"}) in sink.entries
+    assert (
+        "fallback",
+        {"trigger": "fault", "reason": FALLBACK_REASONS["fault"]},
+    ) in sink.entries
 
 
 @pytest.mark.parametrize(
@@ -558,7 +568,10 @@ def test_off_needs_no_key_and_makes_no_call(monkeypatch: pytest.MonkeyPatch) -> 
     assert result.path == "fallback"
     assert not result.agents_agreed
     assert result.decision == fallback.decide(scenario)
-    assert ("fallback", {"trigger": "llm_off"}) in sink.entries
+    assert (
+        "fallback",
+        {"trigger": "llm_off", "reason": FALLBACK_REASONS["llm_off"]},
+    ) in sink.entries
 
 
 def test_off_never_loads_the_sdk() -> None:
@@ -703,6 +716,7 @@ _SENTINELS: dict[Domain, dict[str, Any]] = {
         "cruise_burn_kg_per_min": 57,
         "hold_burn_kg_per_min": 43,
         "alternate_fuel_kg": 1_237,
+        "crew_report_min": 45,
         "destination_forecast": (
             WeatherPeriod(
                 start_min=0, end_min=3_777, ceiling_ft=1_789, visibility_tenth_mi=93
@@ -724,6 +738,7 @@ _SENTINELS: dict[Domain, dict[str, Any]] = {
             ),
         ),
         "connections": (Connection(passengers=33, departure_min=7_123),),
+        "airport_ops_per_hour": 59,
     },
     Domain.GROUND: {
         "taxi_in_min": 13,
@@ -741,6 +756,8 @@ _SENTINELS: dict[Domain, dict[str, Any]] = {
         "next_departure_min": 5_511,
         "next_leg_turnaround_hard": True,
         "ground_shift_end_min": 6_622,
+        "decision_time_min": 61,
+        "min_turnaround_min": 33,
     },
 }
 
@@ -1455,3 +1472,22 @@ def test_a_sink_that_fails_on_the_result_event_cannot_read_as_clean_consensus() 
     assert result.path != "consensus"
     assert result.path == "fallback"
     assert FaultKind.SINK_FAILURE in {f.kind for f in result.faults}
+
+
+def test_every_fallback_trigger_has_a_plain_words_reason() -> None:
+    """With no agreement the log says why code decided, in a sentence a duty
+    manager can read, not only a trigger code."""
+    triggers = {
+        "turn_cap_no_agreement",
+        "fault",
+        "llm_off",
+        "package_bound",
+        "nothing_to_offer",
+    }
+    assert set(FALLBACK_REASONS) == triggers
+    for sentence in FALLBACK_REASONS.values():
+        assert sentence.endswith(".") and " " in sentence
+        assert "_" not in sentence  # no trigger codes in the prose
+    assert "within 2 turns" in FALLBACK_REASONS["turn_cap_no_agreement"]
+    assert "did not agree" in FALLBACK_REASONS["turn_cap_no_agreement"]
+    assert "switched off" in FALLBACK_REASONS["llm_off"]
