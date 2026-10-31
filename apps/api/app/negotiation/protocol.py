@@ -177,6 +177,9 @@ class NegotiationResult(FrozenModel):
     model_notes: tuple[ModelNote, ...]
     agents_agreed: bool
     rules_passed: bool
+    # What the agents were offered, for display only. Feeds no prompt or hash.
+    offered: tuple[Package, ...] = ()
+    packages_legal: int = 0
 
 
 class UnguardedReason(StrEnum):
@@ -516,6 +519,7 @@ class _Negotiation:
         self.agents_agreed = False
         self.packages_enumerated = 0
         self.packages_legal = 0
+        self.offered: tuple[Package, ...] = ()
 
     def result(self, decision: Decision, path: _Path) -> NegotiationResult:
         passed = isinstance(decision, Deal) and not check_package(
@@ -555,6 +559,8 @@ class _Negotiation:
             model_notes=tuple(self.model_notes),
             agents_agreed=self.agents_agreed,
             rules_passed=passed,
+            offered=self.offered,
+            packages_legal=self.packages_legal,
         )
 
     def _over_bound(self) -> bool:
@@ -632,6 +638,7 @@ class _Negotiation:
 
         shortlist = build_shortlist(scenario, legal)
         offers = _offers(shortlist)
+        self.offered = tuple(o.package for o in offers)
         self.trace.emit(
             "shortlist",
             {
