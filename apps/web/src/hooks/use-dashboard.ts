@@ -59,6 +59,10 @@ export function useDashboard() {
   const [runState, setRunState] = useState<RunState>({ status: "idle" });
   const [signoff, setSignoff] = useState<SignoffState>({ status: "idle" });
   const [decision, setDecision] = useState<DecisionState>({ status: "idle" });
+  const [sameAsRejected, setSameAsRejected] = useState(false);
+  // For this page only: to say so if a new plan is the one just rejected. It does
+  // not change what the backend plans.
+  const rejected = useRef<{ scenarioId: string; terms: string } | null>(null);
   const [outcome, setOutcome] = useState<BreakOutcome | null>(null);
   const [tamper, setTamper] = useState<VerifyResult | null>(null);
   const [busy, setBusy] = useState<BreakKind | null>(null);
@@ -75,6 +79,11 @@ export function useDashboard() {
       try {
         const run = await api.createRun({ scenario_id: scenarioId, mode: runMode, overrides: ov });
         if (seq !== runSeq.current) return null;
+        setSameAsRejected(
+          run.decision.kind === "DEAL" &&
+            rejected.current?.scenarioId === scenarioId &&
+            rejected.current.terms === run.decision.terms_hash,
+        );
         setRunState({ status: "ready", run, mode: runMode });
         return run;
       } catch (err) {
@@ -172,13 +181,16 @@ export function useDashboard() {
       const injected = run.removed_packages.filter((p) => p.injected);
       if (kind === "unsafe") {
         const first = injected[0];
+        const closedFor = run.injection?.closed_for_check;
         setOutcome(
           first
             ? {
                 kind,
                 tone: "ok",
                 title: "Caught before it could be chosen",
-                detail: `${[...new Set(first.violations.map((v) => v.rule_id))].join(", ")} removed it. It is listed under Plans the rules removed.`,
+                detail: `${[...new Set(first.violations.map((v) => v.rule_id))].join(", ")} removed it. It is listed under Plans the rules removed.${
+                  closedFor ? ` No runway was closed, so ${closedFor} was treated as closed for this check only.` : ""
+                }`,
               }
             : {
                 kind,
@@ -324,6 +336,10 @@ export function useDashboard() {
           decided_by: DECIDED_BY,
           ...(text ? { reason: text } : {}),
         });
+        const { run } = runState;
+        if (result.status === "REJECTED" && run.decision.kind === "DEAL") {
+          rejected.current = { scenarioId: run.scenario_id, terms: run.decision.terms_hash };
+        }
         setDecision({ status: "done", result });
       } catch (err) {
         setDecision({ status: "error", message: describeError(err) });
@@ -370,6 +386,7 @@ export function useDashboard() {
     signoff,
     approve,
     decision,
+    sameAsRejected,
     reject,
     takeOver,
     resetSignoff,

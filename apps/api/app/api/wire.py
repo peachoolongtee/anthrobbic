@@ -179,6 +179,8 @@ class Injection(FrozenModel):
     # NOT_REACHED: no package could make this rule fire on this row.
     status: Literal["STOPPED", "NOT_REACHED"]
     package_id: str | None
+    # A runway closed only to judge this plan, when none was closed. Not the run's.
+    closed_for_check: str | None = None
 
 
 class RunView(FrozenModel):
@@ -274,8 +276,11 @@ class EvaluationRow(FrozenModel):
     metric: str
     value: int | float | str
     interval: tuple[float, float] | None
+    interval_text: str | None
     n: int | None
     evidence_class: str
+    panel: str
+    note: str
     commit: str
     mode: str
     seed: int | str
@@ -286,3 +291,5 @@ class Evaluation(FrozenModel):
     status: Literal["ok", "not_yet_run", "unreadable"]
     rows: tuple[EvaluationRow, ...]
     limits: tuple[str, ...]
+    # Controls that failed in the run. Shown first: they outrank every number.
+    failures: tuple[str, ...] = ()

@@ -69,6 +69,7 @@ from app.negotiation.options import PackageBoundError, enumerate_packages
 from app.negotiation.protocol import Mode, NegotiationResult, run_negotiation
 from app.negotiation.recording import DEFAULT_RECORDINGS_DIR, RecordingClient
 from app.negotiation.rules import ALL_RULES, check_package, rule_ids
+from app.negotiation.rules.atc import RUNWAY_CLOSED
 from app.negotiation.signoff import (
     SignOffRequest,
     SignOffStatus,
@@ -243,17 +244,38 @@ def _is_the_limit_itself(violation: Violation) -> bool:
     )
 
 
-def build_injected(scenario: Scenario, rule_id: str) -> Judged | None:
+def injection_scenario(scenario: Scenario, rule_id: str) -> tuple[Scenario, str | None]:
+    """What an injected plan is judged against, and any runway closed only for that.
+
+    With every runway open, a closed-runway plan cannot exist, so one runway is
+    closed for this check alone. The run itself still uses `scenario`, and the
+    response and the log both name the runway.
+    """
+    runways = scenario.runways.value or ()
+    if rule_id != RUNWAY_CLOSED or not runways or any(r.closed for r in runways):
+        return scenario, None
+    runway_id = runways[0].runway_id
+    closed = apply_state_change(scenario, StateChange(closed_runways=(runway_id,)))
+    return closed, runway_id
+
+
+def build_injected(
+    scenario: Scenario, rule_id: str, *, real: Scenario | None = None
+) -> Judged | None:
     """A package the named rule stops, preferring a real limit over missing data.
 
     None if no candidate makes that rule fire on this scenario: the control was
-    not reached, and the caller says so rather than claiming a catch.
+    not reached, and the caller says so rather than claiming a catch. When `scenario`
+    was altered for the check, `real` is the run's own: the plan must be illegal
+    there too, so that it can never also be the plan the run chose.
     """
     rule = next(r for r in ALL_RULES if r.rule_id == rule_id)
     chosen: Package | None = None
     fallback: Package | None = None
-    for package in _candidates(scenario):
+    for package in _candidates(real or scenario):
         found = rule.check(scenario, package)
+        if real is not None and not check_package(real, package):
+            continue
         if any(_is_the_limit_itself(v) for v in found):
             chosen = package
             break
@@ -424,13 +446,22 @@ class RunService:
                 "inject_unsafe": inject,
             },
         )
-        injected = build_injected(scenario, inject) if inject is not None else None
+        injected: Judged | None = None
+        closed_for_check: str | None = None
+        if inject is not None:
+            judged_on, closed_for_check = injection_scenario(scenario, inject)
+            injected = build_injected(
+                judged_on,
+                inject,
+                real=scenario if closed_for_check is not None else None,
+            )
         injection = None
         if inject is not None:
             injection = Injection(
                 rule_id=inject,
                 status="STOPPED" if injected else "NOT_REACHED",
                 package_id=injected[0].terms_hash if injected else None,
+                closed_for_check=closed_for_check,
             )
             log.append(
                 "injected_unsafe",
@@ -461,7 +492,9 @@ class RunService:
         card: CardView | None = None
         if isinstance(decision, Deal):
             package = decision.package
-            reached = reached_from_result(result.path, result.faults)
+            reached = reached_from_result(
+                result.path, result.faults, model_off=trigger == "llm_off"
+            )
             built = decision_card(
                 scenario,
                 decision,

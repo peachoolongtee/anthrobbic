@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import type { Card as PlanCardData, PackageTerm, Run } from "@/lib/api-types";
 import type { DecisionState, SignoffState } from "@/hooks/use-dashboard";
 import { DECIDED_BY } from "@/hooks/use-dashboard";
-import { TERM_LABEL, changedFieldLabel, isApproved, signoffStatusLabel } from "@/lib/labels";
+import { FINAL_DECISION_LABEL, TERM_LABEL, changedFieldLabel, isApproved, refusalBanner, signoffStatusLabel } from "@/lib/labels";
 import { FallbackNotice } from "@/components/dashboard/fallback-notice";
 import { ProvenanceBadge } from "@/components/dashboard/provenance-badge";
 import { RuleList } from "@/components/dashboard/rule-line";
@@ -193,6 +193,8 @@ function SignoffForm({
   const [decide, setDecide] = useState(false);
   const [request, setRequest] = useState(false);
   const [reason, setReason] = useState("");
+  // Rejecting takes two steps, and the reason is on screen at the second.
+  const [confirmingReject, setConfirmingReject] = useState(false);
   const decided = decision.status === "done";
   const rejecting = decision.status === "loading";
   const locked =
@@ -200,7 +202,9 @@ function SignoffForm({
   const none = !decide && !request;
   const approved = signoff.status === "done" && isApproved(signoff.result.status);
   // After any refusal the plan on screen is out of date until a new one is made.
-  const stale = signoff.status === "done" && !approved;
+  const refused = signoff.status === "done" && !approved;
+  const stale = refused && refusalBanner(signoff.result.status).outOfDate;
+  const alreadyDecided = refused && signoff.result.status === "REFUSED_ALREADY_DECIDED";
   const loading = signoff.status === "loading";
 
   return (
@@ -269,25 +273,40 @@ function SignoffForm({
         </div>
       </fieldset>
 
-      <FreeText id="reject-reason" label="Reason for rejecting (optional, recorded as unverified)" value={reason} onChange={setReason} disabled={locked} />
-
       {/* Stays on screen while the rest of the panel scrolls. */}
       <div className="sticky -bottom-3 space-y-1 bg-card pt-2 pb-3">
-        <div className="flex gap-2">
-          <Button type="submit" disabled={none || stale || loading || approved || decided || rejecting} className="flex-1">
-            {loading ? "Checking the rules again..." : approved ? "Approved" : "Approve"}
-          </Button>
-          <Button type="button" variant="secondary" disabled={loading || approved || decided || rejecting} onClick={() => onReject(reason)}>
-            {rejecting ? "Logging..." : "Reject plan"}
-          </Button>
-        </div>
-        {!approved && !decided && (
+        {confirmingReject && !decided ? (
+          <div className="space-y-2 rounded-lg border border-destructive/40 bg-destructive-soft p-2">
+            <p className="text-sm font-semibold">Reject this plan? Nothing is issued, and this run cannot then be approved.</p>
+            <FreeText id="reject-reason" label="Reason (optional, recorded as unverified)" value={reason} onChange={setReason} disabled={rejecting} />
+            <div className="flex gap-2">
+              <Button type="button" variant="destructive" disabled={rejecting} onClick={() => onReject(reason)} className="flex-1">
+                {rejecting ? "Logging..." : "Confirm rejection"}
+              </Button>
+              <Button type="button" variant="outline" disabled={rejecting} onClick={() => setConfirmingReject(false)}>
+                Keep plan
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <Button type="submit" disabled={none || refused || loading || approved || decided || rejecting} className="flex-1">
+              {loading ? "Checking the rules again..." : approved ? "Approved" : "Approve"}
+            </Button>
+            <Button type="button" variant="secondary" disabled={loading || approved || decided || rejecting || alreadyDecided} onClick={() => setConfirmingReject(true)}>
+              Reject plan
+            </Button>
+          </div>
+        )}
+        {!approved && !decided && !confirmingReject && (
           <p className="text-xs text-muted-foreground">
             {stale
               ? "This plan is out of date. Make a new recovery plan to approve again."
-              : none
-                ? "Tick at least one box to approve."
-                : "Sign-off checks the plan, the airport, the rules and this plan summary again before anything is issued."}
+              : refused
+                ? "This plan cannot be approved here."
+                : none
+                  ? "Tick at least one box to approve."
+                  : "Sign-off checks the plan, the airport, the rules and this plan summary again before anything is issued."}
           </p>
         )}
       </div>
@@ -344,7 +363,10 @@ function Refusal({
         <CircleX aria-hidden className="mt-0.5 size-4 shrink-0" />
         {label.title}
       </p>
-      <p className="text-xs">Nothing was issued. {label.detail}</p>
+      <p className="text-xs">
+        {result.final_decision ? `${FINAL_DECISION_LABEL[result.final_decision]} ` : ""}
+        {label.detail}
+      </p>
       {state.length > 0 && (
         <div>
           <p className="text-xs font-semibold">Airport fields that changed</p>
@@ -371,9 +393,11 @@ function Refusal({
           <RuleList rules={result.violations} result="broken" />
         </div>
       )}
-      <Button type="button" variant="outline" size="sm" onClick={onNewPlan}>
-        Make a new recovery plan
-      </Button>
+      {refusalBanner(result.status).outOfDate && (
+        <Button type="button" variant="outline" size="sm" onClick={onNewPlan}>
+          Make a new recovery plan
+        </Button>
+      )}
     </div>
   );
 }

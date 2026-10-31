@@ -3,6 +3,7 @@ import type {
   Domain,
   EvidenceClass,
   FaultKind,
+  FinalDecision,
   Provenance,
   RuleStatus,
   RunMode,
@@ -103,31 +104,31 @@ export const SIGNOFF_STATUS: Record<SignoffStatus, { title: string; detail: stri
   },
   REFUSED_STATE_CHANGED: {
     title: "Refused: the airport changed after you looked",
-    detail: "The plan you saw was made for an earlier state. Make a new recovery plan.",
+    detail: "Nothing was issued. The plan you saw was made for an earlier state. Make a new recovery plan.",
   },
   REFUSED_PACKAGE_CHANGED: {
     title: "Refused: this is not the recovery plan you were shown",
-    detail: "The plan being signed differs from the one on screen.",
+    detail: "Nothing was issued. The plan being signed differs from the one on screen.",
   },
   REFUSED_CARD_CHANGED: {
     title: "Refused: the plan summary is not the one you saw",
-    detail: "What the plan summary says now differs from what was on screen when you decided.",
+    detail: "Nothing was issued. What the plan summary says now differs from what was on screen when you decided.",
   },
   REFUSED_RULES_FAILED: {
     title: "Refused: a rule fails now",
-    detail: "The plan broke a hard rule when checked again against the current state.",
+    detail: "Nothing was issued. The plan broke a hard rule when checked again against the current state.",
   },
   REFUSED_ALREADY_USED: {
-    title: "Refused: this approval was already used",
-    detail: "Each approval can be used once. Make a new recovery plan to approve again.",
+    title: "Refused: this exact approval was already used",
+    detail: "Each approval can be used once, and this one has been. Nothing more was issued.",
   },
   REFUSED_NOT_ELIGIBLE: {
     title: "Refused: this plan was not offered for sign-off",
-    detail: "Only a plan the system itself offered for this flight can be approved.",
+    detail: "Only a plan the system itself offered for this flight can be approved. Nothing was issued.",
   },
   REFUSED_ALREADY_DECIDED: {
     title: "Refused: this run was already decided",
-    detail: "A run has one final decision, and this one is recorded. Make a new recovery plan to decide again.",
+    detail: "A run has one final decision, and this one is already recorded. Nothing more was issued.",
   },
 };
 
@@ -168,6 +169,44 @@ export function signoffStatusLabel(status: string): { title: string; detail: str
       detail: "",
     }
   );
+}
+
+/**
+ * What a refusal means for the plan on screen. Only a changed airport or plan makes
+ * it out of date, and only then does making a new plan help.
+ */
+export function refusalBanner(status: string): { lead: string; outOfDate: boolean } {
+  switch (status) {
+    case "REFUSED_ALREADY_DECIDED":
+      return { lead: "This run is already decided.", outOfDate: false };
+    case "REFUSED_NOT_ELIGIBLE":
+      return { lead: "This plan cannot be signed off.", outOfDate: false };
+    case "REFUSED_ALREADY_USED":
+      return { lead: "This plan was already approved.", outOfDate: false };
+    default:
+      return { lead: "This plan is out of date.", outOfDate: true };
+  }
+}
+
+export const FINAL_DECISION_LABEL: Record<FinalDecision, string> = {
+  APPROVED: "It was approved.",
+  REJECTED: "It was rejected.",
+  TAKEN_OVER: "The duty manager took the case.",
+};
+
+/** What other agents are told, in plain words. Unknown classes are shown as received. */
+const PUBLIC_REASON_LABEL: Record<string, string> = {
+  infeasible_for_another_domain: "Does not work for this agent",
+  safety_margin: "Safety margin",
+  resource_closed: "Something is closed",
+  capacity_limit: "Capacity limit",
+  resource_conflict: "Clashes with another use",
+  equipment_mismatch: "Equipment does not fit",
+  schedule_limit: "Schedule limit",
+};
+
+export function publicReasonLabel(reason: string): string {
+  return PUBLIC_REASON_LABEL[reason] ?? reason;
 }
 
 export const isApproved = (status: string) => status === "APPROVED";

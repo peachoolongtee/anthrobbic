@@ -48,6 +48,9 @@ export function BreakItDock(p: Props) {
   const closedGates = p.overrides.closed_gates ?? [];
   const runways = options(p.run, "runways", closedRunways);
   const gates = options(p.run, "gates", closedGates);
+  // A runway the scenario itself closed shows as closed, and cannot be toggled open.
+  const closedInScenario = runways.filter((r) => r.closed && !closedRunways.includes(r.id)).map((r) => r.id);
+  const runwayValue = [...closedRunways, ...closedInScenario];
   const off = p.disabled || p.busy !== null || p.run === null;
   const hasOverrides = closedRunways.length > 0 || closedGates.length > 0 || !!p.overrides.inject_unsafe;
   const tone = p.outcome ? TONE[p.outcome.tone] : null;
@@ -74,10 +77,10 @@ export function BreakItDock(p: Props) {
             variant="outline"
             size="sm"
             spacing={0}
-            value={closedRunways}
+            value={runwayValue}
             disabled={off}
             onValueChange={(next) => {
-              const changed = next.find((v) => !closedRunways.includes(v)) ?? closedRunways.find((v) => !next.includes(v));
+              const changed = next.find((v) => !runwayValue.includes(v)) ?? runwayValue.find((v) => !next.includes(v));
               if (changed) p.onRunway(changed);
             }}
           >
@@ -86,6 +89,8 @@ export function BreakItDock(p: Props) {
                 key={r.id}
                 value={r.id}
                 aria-label={`Runway ${r.id}, ${r.closed ? "closed" : "open"}`}
+                title={closedInScenario.includes(r.id) ? "Closed in this scenario" : undefined}
+                disabled={off || closedInScenario.includes(r.id)}
                 className={CLOSED_STYLE}
               >
                 {r.closed && <Ban aria-hidden className="size-3" />}

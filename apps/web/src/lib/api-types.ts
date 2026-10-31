@@ -156,7 +156,7 @@ export interface Card {
   /** (addition) Hash per hashed card fact, sent back as `card_field_hashes_seen`. */
   field_hashes?: Record<string, string>;
   /** (addition) How the plan was chosen. Stated on the card and in its hash. */
-  how_reached?: "consensus" | "fallback" | "fallback_after_fault";
+  how_reached?: "consensus" | "fallback" | "fallback_model_off" | "fallback_after_fault";
   /** The action as one sentence, written from a template. */
   action: string;
   action_facts: Fact[];
@@ -226,6 +226,13 @@ export interface Run {
   model_notes: ModelNote[];
   faults: Fault[];
   log_head: string;
+  /** (addition) What became of an injected plan, and any runway closed only to judge it. */
+  injection?: {
+    rule_id: string;
+    status: "STOPPED" | "NOT_REACHED";
+    package_id: string | null;
+    closed_for_check?: string | null;
+  } | null;
   /** (addition) Current airport state, so the break-it controls list real resources. */
   airport?: AirportState;
 }
@@ -319,7 +326,12 @@ export interface EvaluationRow {
   metric: string;
   value: number | string;
   interval: [number, number] | null;
+  /** (addition) The interval as the evaluation displays it. */
+  interval_text?: string | null;
   n: number | null;
+  /** (addition) Which part of the report this came from, and its note. */
+  panel?: string;
+  note?: string;
   evidence_class: EvidenceClass;
   commit: string;
   mode: string;
@@ -331,6 +343,8 @@ export interface Evaluation {
   status?: "ok" | "not_yet_run" | "unreadable";
   rows: EvaluationRow[];
   limits: string[];
+  /** (addition) Controls that failed in the run. */
+  failures?: string[];
 }
 
 export interface StateChange {

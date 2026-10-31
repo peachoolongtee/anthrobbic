@@ -344,7 +344,7 @@ def test_how_a_plan_was_reached_comes_from_the_result_and_the_client_cannot_set_
     client: TestClient,
 ) -> None:
     run = _deal_run(client)
-    assert run["card"]["how_reached"] == "fallback"
+    assert run["card"]["how_reached"] == "fallback_model_off"
     faulted = _post_run(client, run["scenario_id"], "recorded")
     assert faulted["card"]["how_reached"] == "fallback_after_fault"
     # It is in the card hash, so the two plans' cards differ.

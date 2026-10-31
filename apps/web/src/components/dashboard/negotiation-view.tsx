@@ -1,7 +1,7 @@
 import { Ban, ShieldX } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { Domain, Run, Turn } from "@/lib/api-types";
-import { DOMAIN_LABEL, DOMAIN_ROLE, FAULT_LABEL } from "@/lib/labels";
+import { DOMAIN_LABEL, DOMAIN_ROLE, FAULT_LABEL, publicReasonLabel } from "@/lib/labels";
 import { EmptyPanel } from "@/components/dashboard/states";
 import { RuleList } from "@/components/dashboard/rule-line";
 
@@ -52,8 +52,8 @@ function TurnColumns({ turn, run }: { turn: Turn; run: Run }) {
                       <p className="text-xs font-medium">Shared with the others</p>
                       <div className="mt-0.5 flex flex-wrap gap-1">
                         {r.public_reason_classes.map((c, i) => (
-                          <Badge key={i} variant="outline">
-                            {c}
+                          <Badge key={i} variant="outline" className="h-auto whitespace-normal">
+                            {publicReasonLabel(c)}
                           </Badge>
                         ))}
                       </div>

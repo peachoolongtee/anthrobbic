@@ -158,6 +158,7 @@ class Reached(StrEnum):
 
     CONSENSUS = "consensus"
     FALLBACK = "fallback"
+    FALLBACK_MODEL_OFF = "fallback_model_off"
     FALLBACK_AFTER_FAULT = "fallback_after_fault"
 
 
@@ -171,6 +172,9 @@ _REACHED_TEXT: Mapping[Reached, str] = MappingProxyType(
             "Chosen by code, not by agreement: the domains did not agree within "
             "the turn cap."
         ),
+        Reached.FALLBACK_MODEL_OFF: (
+            "Chosen by rules. The model was off, so the agents did not run."
+        ),
         Reached.FALLBACK_AFTER_FAULT: (
             "Chosen by code after a system fault, not by agreement. A call "
             "failed, was refused or could not be logged."
@@ -179,14 +183,20 @@ _REACHED_TEXT: Mapping[Reached, str] = MappingProxyType(
 )
 
 
-def reached_from_result(path: str, faults: Sequence[object]) -> Reached:
+def reached_from_result(
+    path: str, faults: Sequence[object], *, model_off: bool = False
+) -> Reached:
     """Read it from a protocol result's `path` and `faults`. Any fault means the
-    plan did not come cleanly, whatever the path says."""
+    plan did not come cleanly, whatever the path says, so it outranks `model_off`,
+    which is whether the protocol logged that the fallback ran because the model
+    was switched off."""
     if path not in ("consensus", "fallback"):
         raise ValueError("only a consensus or fallback plan has a package card")
     if faults:
         return Reached.FALLBACK_AFTER_FAULT
-    return Reached.CONSENSUS if path == "consensus" else Reached.FALLBACK
+    if path == "consensus":
+        return Reached.CONSENSUS
+    return Reached.FALLBACK_MODEL_OFF if model_off else Reached.FALLBACK
 
 
 # ---------------------------------------------------- status and labels

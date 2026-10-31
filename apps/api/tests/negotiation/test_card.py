@@ -734,7 +734,15 @@ def test_how_reached_is_required_and_part_of_the_hash() -> None:
         r: real_decision_card(scenario, BASELINE_PACKAGE, cost, how_reached=r)
         for r in Reached
     }
-    assert len({c.card_hash for c in cards.values()}) == 3
+    # One hash per value, so a new way of reaching a plan always moves the hash.
+    assert len({c.card_hash for c in cards.values()}) == len(Reached) == 4
+    assert cards[Reached.FALLBACK_MODEL_OFF].why[0] == (
+        "Chosen by rules. The model was off, so the agents did not run."
+    )
+    # Every value has its own wording, and only the turn-cap one claims a disagreement.
+    assert len({c.why[0] for c in cards.values()}) == len(Reached)
+    claims = [r for r, c in cards.items() if "did not agree" in c.why[0]]
+    assert claims == [Reached.FALLBACK]
     assert "how_reached" in HASHED_FIELDS
 
 
@@ -766,6 +774,11 @@ def test_how_reached_is_read_from_the_protocol_result() -> None:
     assert reached_from_result("fallback", []) is Reached.FALLBACK
     assert reached_from_result("fallback", ["x"]) is Reached.FALLBACK_AFTER_FAULT
     assert reached_from_result("consensus", ["x"]) is Reached.FALLBACK_AFTER_FAULT
+    off = reached_from_result("fallback", [], model_off=True)
+    assert off is Reached.FALLBACK_MODEL_OFF
+    # A real fault is never hidden behind the model being off.
+    faulted = reached_from_result("fallback", ["x"], model_off=True)
+    assert faulted is Reached.FALLBACK_AFTER_FAULT
     with pytest.raises(ValueError):
         reached_from_result("no_deal", [])
 
