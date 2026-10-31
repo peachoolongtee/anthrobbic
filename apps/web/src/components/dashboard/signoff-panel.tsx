@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CircleCheck, CircleX, Hash, Info, TriangleAlert } from "lucide-react";
+import { ArrowUpRight, CircleCheck, CircleX, Hash, Info, Send, TriangleAlert, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -9,7 +9,7 @@ import type { Card as PlanCardData, PackageTerm, Run } from "@/lib/api-types";
 import type { SignoffState } from "@/hooks/use-dashboard";
 import { DECIDED_BY } from "@/hooks/use-dashboard";
 import { TERM_LABEL, changedFieldLabel, isApproved, signoffStatusLabel } from "@/lib/labels";
-import { ProvenanceBadge } from "@/components/dashboard/provenance-badge";
+import { ProvenanceMark } from "@/components/dashboard/provenance-badge";
 import { RuleList } from "@/components/dashboard/rule-line";
 
 export function SignoffPanel({
@@ -80,13 +80,15 @@ function SignoffForm({
       <SignoffResultView signoff={signoff} onNewPlan={onNewPlan} />
 
       <fieldset className="space-y-1.5" disabled={locked}>
-        <legend className="text-sm font-semibold">You decide</legend>
-        <p className="text-xs text-muted-foreground">The airline&rsquo;s own calls.</p>
+        <legend className="flex items-center gap-1.5 text-sm font-semibold" title="The airline's own calls">
+          <UserCheck aria-hidden className="size-4 text-muted-foreground" />
+          You decide
+        </legend>
         <ul className="space-y-0.5 text-sm">
           {card.airline_decisions.map((d) => (
             <li key={d.key}>
               <span className="text-muted-foreground">{d.label}: </span>
-              <span className="font-medium">{d.value}</span> <ProvenanceBadge provenance={d.provenance} className="align-middle" />
+              <span className="font-medium">{d.value}</span> <ProvenanceMark provenance={d.provenance} className="align-middle" />
             </li>
           ))}
         </ul>
@@ -99,16 +101,22 @@ function SignoffForm({
       </fieldset>
 
       <fieldset className="space-y-1.5" disabled={locked}>
-        <legend className="text-sm font-semibold">You request</legend>
-        <p className="text-xs text-muted-foreground">
-          Others decide these. The pilot in command keeps fuel and safety authority.
-        </p>
+        <legend
+          className="flex items-center gap-1.5 text-sm font-semibold"
+          title="Others decide these. The pilot in command keeps fuel and safety authority."
+        >
+          <Send aria-hidden className="size-4 text-muted-foreground" />
+          You request
+        </legend>
         <ul className="space-y-0.5 text-sm">
           {card.requests.map((r) => (
             <li key={r.key}>
               <span className="text-muted-foreground">{r.label}: </span>
-              <span className="font-medium">{r.value}</span> <ProvenanceBadge provenance={r.provenance} className="align-middle" />
-              <span className="text-xs text-muted-foreground">to {r.to}</span>
+              <span className="font-medium">{r.value}</span> <ProvenanceMark provenance={r.provenance} className="align-middle" />{" "}
+              <span title={`To ${r.to}`} className="inline-flex align-middle text-muted-foreground">
+                <ArrowUpRight aria-hidden className="size-3.5" />
+                <span className="sr-only">to {r.to}</span>
+              </span>
             </li>
           ))}
         </ul>
@@ -125,21 +133,22 @@ function SignoffForm({
           {modelOff ? (
             <Info aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           ) : (
-            <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
+            <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           )}
-          <span>Chosen by the rule-based fallback. The agents did not agree.</span>
+          <span>Rule-based fallback: the agents did not agree.</span>
         </p>
       )}
-      <Button type="submit" disabled={none || stale || loading || approved} className="w-full">
+      <Button
+        type="submit"
+        disabled={none || stale || loading || approved}
+        className="w-full"
+        title="Sign-off checks the plan, the airport, the rules and this summary again before anything is issued"
+      >
         {loading ? "Checking the rules again..." : approved ? "Approved" : "Approve"}
       </Button>
       {!approved && (
         <p className="text-xs text-muted-foreground">
-          {stale
-            ? "This plan is out of date. Make a new recovery plan to approve again."
-            : none
-              ? "Tick at least one box to approve."
-              : "Sign-off checks the plan, the airport, the rules and this plan summary again before anything is issued."}
+          {stale ? "Out of date. Make a new recovery plan." : none ? "Tick a box to approve." : "Rules are re-checked on approve."}
         </p>
       )}
     </form>

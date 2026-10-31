@@ -86,18 +86,24 @@ export function BreakItDock(p: Props) {
         </Button>
         <span aria-hidden className="mx-1 h-5 w-px bg-border" />
         <Button
-          size="sm"
+          size="icon-sm"
           variant="ghost"
           disabled={off}
           onClick={p.onStale}
+          aria-label="Change the airport behind the screen"
           title="Block the recovery plan's gate on the server while this screen keeps the old recovery plan. Then try to approve."
         >
           <TimerReset aria-hidden />
-          Change behind
         </Button>
-        <Button size="sm" variant="ghost" disabled={off} onClick={p.onTamper} title="Edit the decision log and check it">
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          disabled={off}
+          onClick={p.onTamper}
+          aria-label="Tamper with the log"
+          title="Edit the decision log and check it"
+        >
           <FileWarning aria-hidden />
-          Tamper log
         </Button>
         <Button size="icon-sm" variant="ghost" disabled={off || !hasOverrides} onClick={p.onReset} aria-label="Reset" title="Reset">
           <RotateCcw aria-hidden />

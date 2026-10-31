@@ -2,7 +2,17 @@
 
 import { useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { Box, CircleAlert, Map as MapIcon, X } from "lucide-react";
+import {
+  Box,
+  CircleAlert,
+  FileText,
+  FlaskConical,
+  Map as MapIcon,
+  MessagesSquare,
+  ScrollText,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { Button } from "@/components/ui/button";
 import { isApproved, signoffStatusLabel } from "@/lib/labels";
@@ -24,11 +34,11 @@ import { EmptyPanel, ErrorPanel, LoadingBlock } from "@/components/dashboard/sta
 
 type Tab = "details" | "negotiation" | "log" | "evidence";
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "details", label: "Plan" },
-  { id: "negotiation", label: "Negotiation" },
-  { id: "log", label: "Log" },
-  { id: "evidence", label: "Evidence" },
+const TABS: { id: Tab; label: string; Icon: LucideIcon }[] = [
+  { id: "details", label: "Plan", Icon: FileText },
+  { id: "negotiation", label: "Negotiation", Icon: MessagesSquare },
+  { id: "log", label: "Log", Icon: ScrollText },
+  { id: "evidence", label: "Evidence", Icon: FlaskConical },
 ];
 
 const NO_FLIGHTS: never[] = [];
@@ -41,7 +51,10 @@ const AirportScene = dynamic(() => import("@/components/dashboard/airport-scene"
 
 type View = "map" | "airport";
 /** Floating panel surface used over the map on large screens. */
-const PANEL = "rounded-2xl border border-border bg-card/80 shadow-xl shadow-black/30 backdrop-blur-md";
+// Frosted glass: a strong blur, a slight saturation lift and a thin top
+// highlight. Opaque enough that text keeps its contrast over the map.
+const PANEL =
+  "rounded-2xl border border-white/10 bg-card/70 shadow-xl shadow-black/40 backdrop-blur-xl backdrop-saturate-150 [box-shadow:inset_0_1px_0_0_rgb(255_255_255/0.06),0_20px_40px_-12px_rgb(0_0_0/0.5)]";
 
 export function Dashboard() {
   const d = useDashboard();
@@ -250,13 +263,15 @@ export function Dashboard() {
                   key={t.id}
                   type="button"
                   aria-pressed={tab === t.id}
+                  title={t.label}
                   onClick={() => toggleTab(t.id)}
                   className={cn(
-                    "rounded-lg px-3 py-1.5 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                     tab === t.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
                   )}
                 >
-                  {t.label}
+                  <t.Icon aria-hidden className="size-4" />
+                  <span className="max-xl:sr-only">{t.label}</span>
                 </button>
               ))}
             </nav>

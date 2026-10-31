@@ -1,6 +1,6 @@
 "use client";
 
-import { CloudLightning, Layers, PlaneLanding, Search } from "lucide-react";
+import { CloudLightning, CornerDownRight, Layers, PlaneLanding, Search } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { Cause, ScenarioSummary } from "@/lib/api-types";
 import { CAUSE_LABEL } from "@/lib/labels";
@@ -155,8 +155,9 @@ export function FlightList({
                       <span>{s.scheduled_arrival}</span>
                       {s.next_leg && (
                         <span title={`Same aircraft flies ${s.next_leg.flight_id} at ${s.next_leg.scheduled_departure}; ${s.next_leg.delay_minutes} min of delay reaches it`}>
-                          Next {s.next_leg.flight_id}{" "}
-                          <span className="text-warning">+{s.next_leg.delay_minutes}</span>
+                          <CornerDownRight aria-hidden className="mr-0.5 inline size-3.5 align-[-2px]" />
+                          <span className="sr-only">Next flight </span>
+                          {s.next_leg.flight_id} <span className="text-beacon">+{s.next_leg.delay_minutes}</span>
                         </span>
                       )}
                     </div>

@@ -3,7 +3,18 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, CircleAlert, CircleCheck, CircleDashed, CloudLightning, PlaneLanding } from "lucide-react";
+import {
+  ArrowUpRight,
+  CircleAlert,
+  CircleCheck,
+  CircleDashed,
+  CloudLightning,
+  Database,
+  Hourglass,
+  Link2,
+  PlaneLanding,
+  PlayCircle,
+} from "lucide-react";
 import { api } from "@/lib/api";
 import type { Run, ScenarioSummary } from "@/lib/api-types";
 import { AIRPORTS, routeCodes } from "@/lib/airports";
@@ -23,7 +34,7 @@ interface Row {
 
 const OUTCOME: Record<Outcome, { label: string; dot: string; text: string; Icon: typeof CircleCheck }> = {
   agreed: { label: "Agents agreed", dot: "bg-success", text: "text-success", Icon: CircleCheck },
-  fallback: { label: "Fallback", dot: "bg-warning", text: "text-warning", Icon: CircleAlert },
+  fallback: { label: "Fallback", dot: "bg-muted-foreground", text: "text-muted-foreground", Icon: CircleAlert },
   none: { label: "No recovery plan", dot: "bg-destructive", text: "text-destructive", Icon: CircleAlert },
   error: { label: "Failed", dot: "bg-muted-foreground", text: "text-muted-foreground", Icon: CircleDashed },
 };
@@ -65,19 +76,17 @@ function Panel({
   return (
     <section
       aria-label={title}
-      className={cn("flex min-w-0 flex-col rounded-2xl border border-border bg-card/70 p-5 backdrop-blur", className)}
+      className={cn("flex min-w-0 flex-col rounded-2xl border border-white/10 bg-card/70 p-5 backdrop-blur-xl backdrop-saturate-150 [box-shadow:inset_0_1px_0_0_rgb(255_255_255/0.06)]", className)}
     >
       <header className="mb-4 flex items-center gap-2">
         <h2 className="font-display text-lg font-medium">{title}</h2>
         {source && (
           <span
             title={source === "real" ? "Counted from the 2015 US DOT records" : "From recorded runs of the demo flights"}
-            className={cn(
-              "rounded px-1.5 py-0.5 text-[11px] font-medium",
-              source === "real" ? "bg-success-soft text-success" : "bg-info-soft text-info",
-            )}
+            className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground"
           >
-            {source === "real" ? "2015 DOT" : "Runs"}
+            {source === "real" ? <Database aria-hidden className="size-3.5" /> : <PlayCircle aria-hidden className="size-3.5" />}
+            {source === "real" ? "DOT" : "Runs"}
           </span>
         )}
         <div className="ml-auto">{action}</div>
@@ -115,7 +124,7 @@ function Donut({ counts, total }: { counts: [Outcome, number][]; total: number }
             transform="rotate(-90 80 80)"
             className={cn(
               o === "agreed" && "stroke-success",
-              o === "fallback" && "stroke-warning",
+              o === "fallback" && "stroke-muted-foreground",
               o === "none" && "stroke-destructive",
               o === "error" && "stroke-muted-foreground",
             )}
@@ -338,7 +347,7 @@ export function Overview() {
               {removedByRule.map(([id, r]) => (
                 <li key={id}>
                   <Bar label={r.label} value={r.count} max={removedByRule[0][1].count} tone="bg-destructive/80" />
-                  <span className="mt-1 block font-mono text-[11px] text-muted-foreground">{id}</span>
+                  <span className="mt-1 block font-mono text-xs text-muted-foreground">{id}</span>
                 </li>
               ))}
             </ul>
@@ -354,7 +363,6 @@ export function Overview() {
               </li>
             ))}
           </ul>
-          <p className="mt-auto pt-4 text-xs text-muted-foreground">Delayed arrivals per airport</p>
         </Panel>
 
         {/* Real: the dataset in four numbers, and delay hours by cause */}
@@ -362,13 +370,16 @@ export function Overview() {
           <div className="grid gap-4 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
             <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {[
-                { label: "Delayed arrivals", value: fmt.format(stats.eligible) },
-                { label: "Avg arrival delay", value: `${stats.avgEligibleArrivalDelay}m` },
-                { label: "Late aircraft 20m+", value: pct(stats.eligibleLateAircraft) },
-                { label: "Weather 15m+", value: pct(stats.eligibleWeather) },
+                { label: "Delayed arrivals", value: fmt.format(stats.eligible), Icon: PlaneLanding },
+                { label: "Avg arrival delay", value: `${stats.avgEligibleArrivalDelay}m`, Icon: Hourglass },
+                { label: "Late aircraft 20m+", value: pct(stats.eligibleLateAircraft), Icon: Link2 },
+                { label: "Weather 15m+", value: pct(stats.eligibleWeather), Icon: CloudLightning },
               ].map((t) => (
                 <div key={t.label} className="flex flex-col justify-between rounded-xl border border-border bg-background/40 p-3">
-                  <dt className="text-xs text-muted-foreground">{t.label}</dt>
+                  <dt className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <t.Icon aria-hidden className="size-4" />
+                    {t.label}
+                  </dt>
                   <dd className="mt-6 font-display text-2xl font-semibold tabular-nums">{t.value}</dd>
                 </div>
               ))}
@@ -389,10 +400,6 @@ export function Overview() {
           </div>
         </Panel>
 
-        <p className="text-xs text-muted-foreground lg:col-span-12">
-          2015 DOT: {fmt.format(stats.rows)} delayed arrivals that meet the challenge rule (weather over 15 min or late
-          aircraft over 20 min). Runs: recorded runs of the demo flights.
-        </p>
       </main>
     </div>
   );
