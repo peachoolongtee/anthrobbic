@@ -27,11 +27,13 @@ from pydantic import Field, model_validator
 from app.api import adapter
 from app.api.catalogue import Catalogue
 from app.api.evaluation import DEFAULT_RESULTS_DIR
+from app.api.spread import delay_spread
 from app.api.wire import (
     ALREADY_DECIDED,
     CardView,
     DealView,
     DecisionResult,
+    DelaySpread,
     FinalDecision,
     Injection,
     NoGoView,
@@ -71,6 +73,7 @@ from app.negotiation.protocol import Mode, NegotiationResult, run_negotiation
 from app.negotiation.recording import DEFAULT_RECORDINGS_DIR, RecordingClient
 from app.negotiation.rules import ALL_RULES, check_package, rule_ids
 from app.negotiation.rules.atc import RUNWAY_CLOSED
+from app.negotiation.rules.ground import gate_in_min
 from app.negotiation.signoff import (
     SignOffRequest,
     SignOffStatus,
@@ -714,6 +717,20 @@ class RunService:
                 verify=adapter.verify_view(result),
                 head=record.log.head,
             )
+
+    def spread(self, run_id: str) -> DelaySpread:
+        """The flight's aircraft's later legs that day, projected from this run's
+        plan. Read-only: nothing is logged, and no card or hash depends on it."""
+        record = self._record(run_id)
+        entry = self.catalogue.get(record.view.scenario_id)
+        if entry is None:
+            raise ApiError(404, f"Unknown scenario: {record.view.scenario_id}")
+        plan_arrival = (
+            None
+            if record.package is None
+            else gate_in_min(record.scenario, record.package)
+        )
+        return delay_spread(entry.row, plan_arrival)
 
     def verify_log(self, run_id: str, request: VerifyRequest) -> VerifyLogResult:
         """With `tamper`, checks an edited copy. The real log is never altered."""

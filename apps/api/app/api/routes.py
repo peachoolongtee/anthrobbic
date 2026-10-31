@@ -15,6 +15,7 @@ from app.api.runs import (
 )
 from app.api.wire import (
     DecisionResult,
+    DelaySpread,
     Evaluation,
     RunLog,
     RunView,
@@ -74,6 +75,11 @@ def take_over(service: Service, run_id: str, body: TakeOverRequest) -> DecisionR
 @router.get("/runs/{run_id}/log")
 def get_log(service: Service, run_id: str) -> RunLog:
     return service.log(run_id)
+
+
+@router.get("/runs/{run_id}/spread")
+def get_spread(service: Service, run_id: str) -> DelaySpread:
+    return service.spread(run_id)
 
 
 @router.post("/runs/{run_id}/log/verify")
