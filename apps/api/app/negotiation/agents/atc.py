@@ -51,7 +51,7 @@ Your brief holds the traffic and airfield picture and the connection list. Your 
 notes are weather and flow remarks. Each offered package carries your_figures, \
 computed by code: delay against the earliest arrival, the smallest gap to other \
 traffic on that runway, and your soft cost. Favour a calm sequence and low delay, \
-and let a clear weather note move your ranking or your acceptable set."""
+and apply your weather notes as described below."""
 
 
 def _facts(scenario: Scenario, package: Package) -> Mapping[str, JsonValue]:

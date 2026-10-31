@@ -1,7 +1,8 @@
 """The bounded negotiation: turn cap, wall-clock cap, routing, rule gate.
 
 Agents propose and code disposes. Code removes illegal packages before any agent
-sees them, offers a bounded shortlist, intersects three independent answers and
+sees them, offers a bounded shortlist, intersects three independent answers, picks
+the lowest summed rank within the intersection (then `Package.sort_key`) and
 re-checks the winner. Any fault, or no agreement within the cap, goes to
 `fallback.decide`, and the result says so.
 
@@ -18,7 +19,6 @@ and fault handling only, and `run_negotiation` cannot reach it.
 
 import json
 import os
-from collections import Counter
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
@@ -98,11 +98,18 @@ class ProtocolEvent(FrozenModel):
 
 
 class ModelNote(FrozenModel):
-    """Model prose. Unverified, never shown as fact, never sent to another agent."""
+    """Model prose from one domain's agent. It may quote that domain's private
+    figures, so show it only in `domain`'s panel. Unverified, never shown as fact,
+    never sent to another agent.
+    """
 
     turn: int
     domain: Domain
     text: str
+    private_to_domain: Literal[True] = True
+    label: Literal["unverified model prose, may quote private figures"] = (
+        "unverified model prose, may quote private figures"
+    )
 
 
 class DeclinedPackage(FrozenModel):
@@ -116,7 +123,7 @@ class AgentTurn(FrozenModel):
     ranking: tuple[str, ...]
     reason_codes: tuple[str, ...]
     public_reason_classes: tuple[DeclinedPackage, ...]
-    note_readings: tuple[dict[str, str | None], ...]
+    note_readings: tuple[dict[str, str | bool | None], ...]
     prompt_hash: str
     input_tokens: int
     output_tokens: int
@@ -409,37 +416,69 @@ def _agent_turn(domain: Domain, answer: AgentAnswer) -> AgentTurn:
     )
 
 
-def _rank_sum_choice(
+def rank_sums(
     responses: Sequence[Response], common: Sequence[Package]
-) -> str | None:
-    """What summed rankings would pick. Logged only, it decides nothing."""
-    if not common:
-        return None
-    totals: Counter[str] = Counter()
+) -> dict[str, int]:
+    """Each common package's summed rank, 0 is best, counting only common packages.
+
+    Packages outside the intersection cannot win, so they do not count: an agent
+    gains no weight by accepting more. Every agent ranks every common package, as
+    `Response` requires its ranking to cover exactly what it accepts.
+    """
+    ids = {package.terms_hash for package in common}
+    totals = dict.fromkeys(ids, 0)
     for response in responses:
-        for position, package_id in enumerate(response.ranking):
+        ranked = [i for i in response.ranking if i in ids]
+        for position, package_id in enumerate(ranked):
             totals[package_id] += position
-    return min(common, key=lambda p: (totals[p.terms_hash], p.sort_key)).terms_hash
+    return totals
+
+
+def choose_consensus(
+    responses: Sequence[Response], common: Sequence[Package]
+) -> Package:
+    """The code's choice: lowest summed rank, then `Package.sort_key`."""
+    totals = rank_sums(responses, common)
+    return min(common, key=lambda p: (totals[p.terms_hash], p.sort_key))
+
+
+def _fallback_choice(scenario: Scenario) -> str | None:
+    """What the fallback would pick, for the log's comparison only."""
+    try:
+        decision = fallback.decide(scenario)
+    except Exception:
+        return None
+    return decision.package.terms_hash if isinstance(decision, Deal) else None
 
 
 def _system_fault(reason: str) -> NoDeal:
-    return NoDeal(
-        reason_type=NoDealReason.SYSTEM_FAULT,
-        binding_rule_ids=(),
-        eliminations=(),
-        packages_considered=0,
-        nearest_package=None,
-        nearest_violations=(),
-        reason=reason,
-    )
+    fields: dict[str, Any] = {
+        "reason_type": NoDealReason.SYSTEM_FAULT,
+        "binding_rule_ids": (),
+        "eliminations": (),
+        "packages_considered": 0,
+        "nearest_package": None,
+        "nearest_violations": (),
+        "reason": reason,
+    }
+    # The safety core is adding this field, possibly with no default.
+    if "binding_violations" in NoDeal.model_fields:
+        fields["binding_violations"] = ()
+    return NoDeal(**fields)
 
 
 class _Negotiation:
     def __init__(
-        self, scenario: Scenario, mode: Mode, trace: _Trace, client: ModelClient | None
+        self,
+        scenario: Scenario,
+        mode: Mode,
+        trace: _Trace,
+        client: ModelClient | None,
+        notes_seed: int,
     ) -> None:
         self.scenario = scenario
         self.mode: Mode = mode
+        self.notes_seed = notes_seed
         self.trace = trace
         self.client = client
         self.turns: list[TurnRecord] = []
@@ -569,7 +608,7 @@ class _Negotiation:
             self.trace.fault(_fault_for(exc, None, None))
             return self.to_fallback("fault")
 
-        notes = notes_for(scenario, NOTES_SEED)
+        notes = notes_for(scenario, self.notes_seed)
         notes_by_domain = {
             domain: tuple(n for n in notes if n.domain is domain)
             for domain in _DOMAIN_ORDER
@@ -657,6 +696,8 @@ class _Negotiation:
         responses = [a.response for a in answers.values()]
         offered = [o.package for o in offers]
         common = intersect_responses(responses, offered)
+        chosen = choose_consensus(responses, common) if common else None
+        sums: dict[str, JsonValue] = dict(rank_sums(responses, common))
         removed_now = (
             tuple(removed) if turn == 1 else _declined_turn_1(previous, offers)
         )
@@ -675,17 +716,19 @@ class _Negotiation:
                 "turn": turn,
                 "responses": len(responses),
                 "common": [p.terms_hash for p in common],
-                "code_tie_break": common[0].terms_hash if common else None,
-                "rank_sum_choice_not_used": _rank_sum_choice(responses, common),
+                "rank_sums": sums,
+                "chosen": chosen.terms_hash if chosen else None,
+                "earliest_by_sort_key": common[0].terms_hash if common else None,
+                "fallback_choice": _fallback_choice(self.scenario),
             },
         )
         if self.trace.faults:
             return self.to_fallback("fault")
-        if not common:
+        if chosen is None:
             previous.clear()
             previous.update(answers)
             return None
-        return self._conclude(turn, common[0])
+        return self._conclude(turn, chosen)
 
     def _log_answer(self, domain: Domain, turn: int, answer: AgentAnswer) -> None:
         self.trace.emit(
@@ -765,6 +808,8 @@ def run_negotiation(
     mode: Mode,
     sink: EvidenceSink | None = None,
     client: ModelClient | None = None,
+    *,
+    notes_seed: int = NOTES_SEED,
 ) -> NegotiationResult:
     """Negotiate one scenario. Only an unknown `mode` raises."""
     if mode not in _MODES:
@@ -778,7 +823,7 @@ def run_negotiation(
             "max_turns": MAX_TURNS,
         },
     )
-    run = _Negotiation(scenario, mode, trace, client)
+    run = _Negotiation(scenario, mode, trace, client, notes_seed)
     try:
         return run.negotiate()
     except Exception as exc:
@@ -841,6 +886,8 @@ def run_unguarded(
     mode: Mode,
     sink: EvidenceSink | None = None,
     client: ModelClient | None = None,
+    *,
+    notes_seed: int = NOTES_SEED,
 ) -> UnguardedResult:
     """The evaluation's naive baseline: one model call, no removal, no rule gate.
 
@@ -905,7 +952,7 @@ def run_unguarded(
         if not offers:
             return finish(None, 0, 0)
         resolved = _resolve_client(mode, client)
-        notes = notes_for(scenario, NOTES_SEED)
+        notes = notes_for(scenario, notes_seed)
         request = build_request(
             _UNGUARDED_SYSTEM,
             _unguarded_message(scenario, offers, notes),

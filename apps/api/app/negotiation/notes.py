@@ -63,6 +63,7 @@ class HiddenPreference(FrozenModel):
     kind: PreferenceKind
     target: str | None
     relevance: Literal["affects_ranking", "irrelevant", "ambiguous"]
+    firm: bool = False  # an avoid note worded to rule its target out entirely
 
 
 # Candidate preferences per domain: which package attribute each may talk about.
@@ -146,6 +147,25 @@ _TEMPLATES: dict[PreferenceKind, tuple[str, ...]] = {
 }
 
 
+_FIRM_TEMPLATES: dict[PreferenceKind, tuple[str, ...]] = {
+    PreferenceKind.AVOID_ACTION: (
+        "Captain has ruled out {target} on this arrival, the crew will not accept it.",
+        "Crew have refused {target} today, take it off the table.",
+        "Under no circumstances {target} for this crew, the captain was explicit.",
+    ),
+    PreferenceKind.AVOID_GATE: (
+        "Gate {target} is out of action for this turn, do not plan onto it.",
+        "Jet bridge at gate {target} has failed, it cannot be used for this arrival.",
+        "Ramp cannot work gate {target} today, rule it out.",
+    ),
+    PreferenceKind.AVOID_RUNWAY: (
+        "Do not plan this arrival onto runway {target}, braking action is poor.",
+        "Runway {target} is unusable for this flow, rule it out.",
+        "Met and flow agree runway {target} is off the table for this arrival.",
+    ),
+}
+
+
 def _legal_packages(scenario: Scenario) -> tuple[Package, ...]:
     try:
         packages = enumerate_packages(scenario)
@@ -211,6 +231,11 @@ def preference_score(preference: HiddenPreference, package: Package) -> int:
             return 0
 
 
+def rules_out(preference: HiddenPreference, package: Package) -> bool:
+    """Whether a firm note excludes this package. Lets an evaluation score sets."""
+    return preference.firm and preference_score(preference, package) == 0
+
+
 def _word_for(kind: PreferenceKind, target: str | None) -> str:
     if target is None:
         return ""
@@ -265,8 +290,9 @@ def _generate(
 
         for index, (kind, target, word) in enumerate(drawn, start=1):
             note_id = f"{topic}-{index}"
-            template = rng.choice(_TEMPLATES[kind])
-            text = template.format(target=word)
+            firm = kind in _FIRM_TEMPLATES and rng.random() < 0.5
+            templates = _FIRM_TEMPLATES[kind] if firm else _TEMPLATES[kind]
+            text = rng.choice(templates).format(target=word)
             notes.append(Note(note_id=note_id, domain=domain, topic=topic, text=text))
             truths.append(
                 HiddenPreference(
@@ -275,6 +301,7 @@ def _generate(
                     kind=kind,
                     target=target,
                     relevance=_relevance(kind),
+                    firm=firm,
                 )
             )
     return tuple(notes), tuple(truths)

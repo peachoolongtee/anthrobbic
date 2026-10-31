@@ -27,6 +27,7 @@ from app.negotiation.contracts import (
     NoDealReason,
     OtherArrival,
     Provenance,
+    Response,
     Runway,
     Scenario,
     Sourced,
@@ -41,6 +42,8 @@ from app.negotiation.protocol import (
     MAX_TURNS,
     NegotiationResult,
     build_shortlist,
+    choose_consensus,
+    rank_sums,
     run_negotiation,
     run_unguarded,
 )
@@ -129,6 +132,116 @@ def test_converges_on_turn_2_after_disagreeing_on_turn_1() -> None:
     assert stages == {"declined_turn_1"}
 
 
+def test_consensus_takes_the_lowest_rank_sum_over_the_earliest_package() -> None:
+    def script(_d: Domain, _t: int, ids: list[str], _k: Any) -> FakeMessage:
+        return reply_message(list(reversed(ids)))
+
+    # Small enough to be offered whole, so the last legal package is on offer.
+    scenario = make_scenario(latest_arrival_min=105)
+    sink = ListSink()
+    result = run_negotiation(scenario, "live", sink=sink, client=ScriptedClient(script))
+    assert result.path == "consensus"
+    assert isinstance(result.decision, Deal)
+    legal = sorted(_legal(scenario), key=lambda p: p.sort_key)
+    assert result.decision.package == legal[-1]  # every agent ranked it first
+    assert result.decision.package != legal[0]
+    verdict = next(p for k, p in sink.entries if k == "verdict")
+    assert verdict["chosen"] == legal[-1].terms_hash
+    assert verdict["earliest_by_sort_key"] == legal[0].terms_hash
+    assert verdict["rank_sums"][legal[-1].terms_hash] == 0
+    assert verdict["rank_sums"][legal[0].terms_hash] == 3 * (len(legal) - 1)
+    fallback_pick = fallback.decide(scenario)
+    assert isinstance(fallback_pick, Deal)
+    assert verdict["fallback_choice"] == fallback_pick.package.terms_hash
+
+
+def test_equal_rank_sums_fall_to_the_sort_key() -> None:
+    packages = [make_package(time_min=105, runway_id=r) for r in ("28R", "28L")]
+    first, second = (p.terms_hash for p in packages)
+    responses = [
+        Response(
+            turn=1,
+            responder=domain,
+            acceptable_package_ids=(first, second),
+            ranking=ranking,
+            reason="",
+        )
+        for domain, ranking in (
+            (Domain.ATC, (first, second)),
+            (Domain.PILOT, (second, first)),
+            (Domain.GROUND, (first, second)),
+        )
+    ]
+    assert rank_sums(responses, packages) == {first: 1, second: 2}
+    # Two opposed rankings tie exactly, so only the sort key can separate them.
+    balanced = [responses[0], responses[1]]
+    assert rank_sums(balanced, packages) == {first: 1, second: 1}
+    assert choose_consensus(balanced, packages) == min(
+        packages, key=lambda p: p.sort_key
+    )
+
+
+def test_rank_sums_ignore_packages_outside_the_intersection() -> None:
+    a, b, other = (
+        make_package(time_min=105),
+        make_package(time_min=110),
+        make_package(time_min=115),
+    )
+    responses = [
+        Response(
+            turn=1,
+            responder=Domain.ATC,
+            acceptable_package_ids=(other.terms_hash, a.terms_hash, b.terms_hash),
+            ranking=(other.terms_hash, a.terms_hash, b.terms_hash),
+            reason="",
+        )
+    ]
+    assert rank_sums(responses, [a, b]) == {a.terms_hash: 0, b.terms_hash: 1}
+
+
+def test_notes_seed_is_keyword_only_and_changes_what_agents_read() -> None:
+    scenario = make_scenario(gate_occupancies=())
+    prompts: dict[int, set[str]] = {}
+    for seed in (0, 1, 2, 3):
+        client = ScriptedClient(accept_all)
+        run_negotiation(scenario, "live", client=client, notes_seed=seed)
+        prompts[seed] = {c["messages"][0]["content"] for c in client.calls}
+    assert len({frozenset(p) for p in prompts.values()}) > 1
+    with pytest.raises(TypeError):
+        run_negotiation(  # type: ignore[misc]
+            scenario, "off", None, None, 1
+        )
+
+
+def test_each_model_note_names_its_domain_panel() -> None:
+    result = run_negotiation(
+        make_scenario(),
+        "live",
+        client=ScriptedClient(
+            lambda d, _t, ids, _k: reply_message(ids, model_note=f"from {d.value}")
+        ),
+    )
+    assert {(n.domain.value, n.text) for n in result.model_notes} == {
+        (d.value, f"from {d.value}") for d in Domain
+    }
+    for note in result.model_notes:
+        dumped = note.model_dump()
+        assert dumped["private_to_domain"] is True
+        assert "private figures" in dumped["label"]
+
+
+def test_system_fault_survives_a_required_binding_violations_field(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Strict(NoDeal):
+        binding_violations: tuple[Any, ...]
+
+    monkeypatch.setattr(protocol, "NoDeal", Strict)
+    built = protocol._system_fault("over bound")
+    assert built.binding_violations == ()  # type: ignore[attr-defined]
+    assert built.reason_type is NoDealReason.SYSTEM_FAULT
+
+
 def test_turn_records_carry_sets_rankings_codes_classes_and_removals() -> None:
     def script(domain: Domain, _t: int, ids: list[str], _k: Any) -> FakeMessage:
         code = {
@@ -191,6 +304,7 @@ def test_turn_cap_cannot_be_set_from_outside(monkeypatch: pytest.MonkeyPatch) ->
         "mode",
         "sink",
         "client",
+        "notes_seed",
     ]
     with pytest.raises(TypeError):
         run_negotiation(make_scenario(), "off", max_turns=9)  # type: ignore[call-arg]

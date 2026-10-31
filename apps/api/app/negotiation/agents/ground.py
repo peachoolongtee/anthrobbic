@@ -51,7 +51,7 @@ Your brief holds the gate map, occupancy, the planned gate and the next leg. You
 notes are ramp remarks. Each offered package carries your_figures, computed by \
 code: gate-in time, whether the planned gate is kept, spare turnaround minutes, \
 overtime minutes, and your soft cost. Prefer fewer gate moves and spare turnaround \
-time, and let a clear ramp note move your ranking or your acceptable set."""
+time, and apply your ramp notes as described below."""
 
 
 def _facts(scenario: Scenario, package: Package) -> Mapping[str, JsonValue]:

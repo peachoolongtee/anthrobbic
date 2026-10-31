@@ -52,8 +52,7 @@ Your brief holds fuel state and the destination forecast. Your notes are crew \
 remarks. Each offered package carries your_figures, computed by code: the delay, \
 extra burn, projected landing fuel, margin above the required reserve, whether an \
 alternate is required, and your soft cost. Do not recompute them. Prefer healthy \
-margins and little extra burn, and let a clear crew note move your ranking or your \
-acceptable set."""
+margins and little extra burn, and apply your crew notes as described below."""
 
 
 def _facts(scenario: Scenario, package: Package) -> Mapping[str, JsonValue]:
