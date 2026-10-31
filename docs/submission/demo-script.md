@@ -59,10 +59,10 @@ The view shows each agent's accepted count, reasons in plain words, objections w
 **Click, in order:**
 
 1. On the right panel, point at the small letter marks next to the plan facts, and the line under them: "R real, D derived from the file, S synthetic." Hovering one shows the word.
-2. In the bottom dock, click **Change behind**. This blocks the plan's gate on the server while the screen keeps the old plan.
+2. In the **Try to break it** card, click **Late change**. This blocks the plan's gate on the server while the screen keeps the old plan.
 3. In the **Sign off** panel, tick **I approve these decisions** and **Send these requests**, then click **Approve**.
 4. A red alert appears: "This plan is out of date. Sign-off refused: the airport changed after you looked." In the Sign off panel the refusal reads "Refused: the airport changed after you looked", and it names "Gate occupancy".
-5. In the dock, click **Tamper log**. It opens the **Log** view. Point at "Tampered copy: detected" and "First bad entry". If you have time, point at "The log checks out." for the real log. Click the **X** to close the drawer.
+5. In the **Try to break it** card, click **Tamper log**. It opens the **Log** view. Point at "Tampered copy: detected" and "First bad entry". If you have time, point at "The log checks out." for the real log. Click the **X** to close the drawer.
 
 **Say:**
 
@@ -76,8 +76,8 @@ The view shows each agent's accepted count, reasons in plain words, objections w
 
 **Click, in order:**
 
-1. Click **Reset** (the circular arrow at the right end of the dock). It clears the blocked gate and returns to the recorded agreement. Do not use **Make a new recovery plan** here: it keeps the blocked gate, which no recording covers, so it lists "No recording" faults.
-2. In the **Runways and gates** panel on the map (keep **Map** selected, not **Airport 3D**), click **R1**, then **R3**. R2 at MDW is already closed in this scenario and cannot be clicked. After R1 the panel lists "No recording: ATC, Pilot, Ground" and a rule-based plan, because a changed airport is not what was recorded. Say so if asked. R3 gives the no-go.
+1. Click **Reset every change** (the circular arrow at the top of the **Try to break it** card). It clears the blocked gate and returns to the recorded agreement. Do not use **Make a new recovery plan** here: it keeps the blocked gate, which no recording covers, so it lists "No recording" faults.
+2. In the **Try to break it** card, on the diagram (keep **Map** selected, not **Airport 3D**), click **R1**, then **R3**. R2 at MDW is already closed in this scenario and cannot be clicked. After R1 the panel lists "No recording: ATC, Pilot, Ground" and a rule-based plan, because a changed airport is not what was recorded. Say so if asked. R3 gives the no-go.
 3. Point at the right panel: "No-go" and "No-go: no recovery plan passes". Click **Plan** at the bottom and point at "No legal recovery plan", "No-go: nothing is legal", "Rules that block every plan" and "Closest plan". Click the **X**.
 4. Point at the Sign off panel: "Nothing to approve." Click **I've taken this case**. It reads "Logged: this case is with the duty manager. Nothing was approved or requested."
 
@@ -124,7 +124,7 @@ Also read these before the talk, because judges ask: "NO_GO NOTHING_LEGAL rate, 
 | C9 | Right panel pills | "Agents agreed", "Passes the rules checked", "2 turns" |
 | C10 | A missing recording shows as a fault | "No recording: ATC, Pilot, Ground" |
 | C11 | Marks R, D, S with a hover name and a legend line | Yes |
-| C12 | **Change behind**, the two ticks, **Approve**, the alert and refusal | Yes, wording corrected above |
+| C12 | **Late change**, the two ticks, **Approve**, the alert and refusal | Yes, wording corrected above |
 | C13 | **Tamper log** opens the Log view with its results | Yes |
 | C14 | **Reset** returns to the recorded agreement | Yes; **Make a new recovery plan** keeps the blocked gate and shows "No recording" |
 | C15 | Runway tiles at MDW | R1, R2 (closed in the scenario), R3 |
