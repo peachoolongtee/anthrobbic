@@ -23,6 +23,7 @@ function EvidenceRow({ row }: { row: EvaluationRow }) {
     <TableRow className={row.arm === "unguarded_model" ? "bg-muted/50" : undefined}>
       <TableCell className="whitespace-normal">
         {row.metric}
+        {row.note && <span className="block text-xs text-muted-foreground">{row.note}</span>}
         {row.arm === "unguarded_model" && (
           <Badge variant="outline" className="ml-2 border-destructive/50 text-destructive">
             Never eligible for sign-off
@@ -37,8 +38,8 @@ function EvidenceRow({ row }: { row: EvaluationRow }) {
           </Badge>
         )}
       </TableCell>
-      <TableCell>{row.interval ? `${row.interval[0]} to ${row.interval[1]}` : "none"}</TableCell>
-      <TableCell>{row.n}</TableCell>
+      <TableCell>{row.interval_text ?? (row.interval ? `${row.interval[0]} to ${row.interval[1]}` : "none")}</TableCell>
+      <TableCell>{row.n ?? "none"}</TableCell>
       <TableCell>
         <Badge variant="secondary" title={ev.detail}>
           {ev.name}
@@ -82,7 +83,7 @@ export function EvidenceView() {
       />
     );
 
-  const { rows, limits, status } = state.data;
+  const { rows, limits, status, failures = [] } = state.data;
   if (status === "unreadable")
     return <EmptyPanel title="Evaluation output could not be read">No numbers are shown. Run the evaluation command again.</EmptyPanel>;
   if (rows.length === 0 && limits.length === 0)
@@ -100,6 +101,12 @@ export function EvidenceView() {
           <AlertDescription>
             Every figure here was invented for the mock. None comes from a run.
           </AlertDescription>
+        </Alert>
+      )}
+      {failures.length > 0 && (
+        <Alert variant="destructive">
+          <AlertTitle>A control failed in this run</AlertTitle>
+          <AlertDescription>{failures.join(" ")}</AlertDescription>
         </Alert>
       )}
       <p className="text-xs text-muted-foreground">

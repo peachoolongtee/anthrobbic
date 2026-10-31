@@ -5,7 +5,7 @@ import { useDashboard } from "@/hooks/use-dashboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CircleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { CAUSE_LABEL, isApproved, signoffStatusLabel } from "@/lib/labels";
+import { CAUSE_LABEL, FINAL_DECISION_LABEL, isApproved, refusalBanner, signoffStatusLabel } from "@/lib/labels";
 import { BreakItDock } from "@/components/dashboard/break-it-dock";
 import { EvidenceView } from "@/components/dashboard/evidence-view";
 import { FlightList } from "@/components/dashboard/flight-list";
@@ -31,6 +31,8 @@ export function Dashboard() {
 
   // A refused sign-off leaves the plan on screen out of date until a new one is made.
   const refused = d.signoff.status === "done" && !isApproved(d.signoff.result.status) ? d.signoff.result : null;
+  const banner = refused ? refusalBanner(refused.status) : null;
+  const dimmed = banner?.outOfDate === true;
 
   const pickFlight = (id: string) => {
     setTab("plan");
@@ -63,22 +65,34 @@ export function Dashboard() {
             </span>
           </h1>
 
-          {refused && (
+          {d.sameAsRejected && (
+            <p role="status" className="rounded-lg border border-warning/50 bg-warning-soft px-3 py-2 text-sm">
+              <strong>This is the same plan you rejected.</strong> Nothing about the flight or the airport changed, and
+              the system keeps no memory of rejected plans. Change something below, or handle the case yourself.
+            </p>
+          )}
+
+          {refused && banner && (
             <div
               role="alert"
               className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-destructive bg-destructive px-3 py-2 text-sm text-background"
             >
               <CircleAlert aria-hidden className="size-4 shrink-0" />
               <span className="flex-1">
-                <strong>This plan is out of date.</strong> Sign-off refused: {signoffStatusLabel(refused.status).title.replace(/^Refused: /, "")}
+                <strong>{banner.lead}</strong>{" "}
+                {banner.outOfDate
+                  ? `Sign-off refused: ${signoffStatusLabel(refused.status).title.replace(/^Refused: /, "")}`
+                  : `${refused.final_decision ? `${FINAL_DECISION_LABEL[refused.final_decision]} ` : ""}${signoffStatusLabel(refused.status).detail}`}
               </span>
-              <Button size="sm" variant="secondary" onClick={d.rerun}>
-                Make a new recovery plan
-              </Button>
+              {banner.outOfDate && (
+                <Button size="sm" variant="secondary" onClick={d.rerun}>
+                  Make a new recovery plan
+                </Button>
+              )}
             </div>
           )}
 
-          <div className={refused ? "opacity-50" : undefined}>{run && !running && <OutcomeStrip run={run} />}</div>
+          <div className={dimmed ? "opacity-50" : undefined}>{run && !running && <OutcomeStrip run={run} />}</div>
 
           <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
             <TabsList variant="line" aria-label="Views" className="w-full justify-start border-b">
@@ -96,7 +110,7 @@ export function Dashboard() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="plan" className={refused ? "pt-2 opacity-50" : "pt-2"}>
+            <TabsContent value="plan" className={dimmed ? "pt-2 opacity-50" : "pt-2"}>
               <RunGate d={d} running={running} run={run} empty="Pick a delayed flight">
                 {run && run.decision.kind === "DEAL" && run.card && (
                   <PlanCard run={run} card={run.card} deal={run.decision} modelNotes={run.model_notes} />
