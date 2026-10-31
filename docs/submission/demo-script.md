@@ -14,13 +14,13 @@ Follow `runbook.md` first. Then:
 
 1. The intro (a plane crossing the screen) plays once per browser tab. Open `http://localhost:3000` in the tab you will use, click anywhere to skip it, and leave the tab open on the overview. Landing and intro are not part of the 3 minutes.
 2. The flights page opens in **Recorded** when the flight has saved answers, and in **Model off** when it has none. Use **Live** only in the last part of the talk. Restart the API before each rehearsal: a used approval is refused until then.
-3. Know where WN4832 is. In the overview's **Arrivals** list (scroll down past the globe), look for the row "DCA → MDW" with "WN4832" under it. The list holds 12 flights, those with saved answers first, then by scheduled arrival. If it is not there, on the flights page type WN4832 in **Search** in the left panel. The first load after an API restart takes several seconds, so open the overview once before you go on.
+3. Know where WN4832 is. In the overview's **Arrivals** list (scroll down past the globe), look for the row "DCA → MDW" with "WN4832" under it. The list shows 50 flights, those with saved answers first, then by scheduled arrival, and it scrolls inside its own panel. WN4832 is row 16, in the left column, so scroll the list about two rows. If you cannot find it, click **Open flights**: WN4832 is row 4 of 200 on the flights page, or type WN4832 in **Filter this list** in the left panel, which filters only the listed flights. The first load after an API restart takes several seconds, so open the overview once before you go on.
 
 ## Beat 1. The user (0:00 to 0:20). Budget 50 words, spoken text 42
 
 **Screen:** the overview. The globe is headed "Demo flights", with the **Arrivals** list under it.
 
-**Click:** in the **Arrivals** list, click the row "DCA → MDW" (WN4832). It opens the flights page with that flight selected and a recovery plan already running.
+**Click:** in the **Arrivals** list, scroll the list about two rows and click the row "DCA → MDW" (WN4832). It opens the flights page with that flight selected and a recovery plan already running.
 
 **Say:**
 
@@ -148,7 +148,7 @@ Also read these before the talk, because judges ask: "NO_GO NOTHING_LEGAL rate, 
 |---|---|---|
 | C1 | The intro plays once per tab and a click skips it | Yes |
 | C2 | Toggle reads Model off, Recorded, Live; a flight with saved answers opens in Recorded | Yes |
-| C3 | WN4832 DCA to MDW is in the overview **Arrivals** list | Yes, row 10 of 12 |
+| C3 | WN4832 DCA to MDW is in the overview **Arrivals** list | Yes, row 16 of 50, in the panel's own scroll; row 4 of 200 on the flights page |
 | C4 | Clicking it opens the flights page with that flight selected and a Recorded run | Yes |
 | C5 | Agent strip shows counts per turn | ATC 4 › 12, Pilot 8 › 8, Ground 7 › 12 |
 | C6 | Map draws the route, labelled illustrative, and works with no network | Yes, on a local basemap; the hold is drawn only because this plan's action is a hold |
