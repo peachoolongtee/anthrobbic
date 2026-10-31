@@ -28,6 +28,8 @@ from app.api.wire import (
     ModelNoteView,
     NextLegView,
     NoGoView,
+    OfferedPlan,
+    OriginalPlan,
     PackageRef,
     RemovedPackage,
     RequestFact,
@@ -65,7 +67,7 @@ from app.negotiation.contracts import (
 from app.negotiation.dot import MINUTES_PER_DAY, DotRow
 from app.negotiation.log import LogEntry as ChainEntry
 from app.negotiation.log import VerifyResult
-from app.negotiation.protocol import ModelNote, TurnRecord
+from app.negotiation.protocol import ModelNote, NegotiationResult, TurnRecord
 from app.negotiation.rules.ground import turnaround_min
 from app.negotiation.scenario import earliest_basis, next_leg_of
 from app.negotiation.signoff import SignOffOutcome
@@ -290,6 +292,36 @@ def card_view(card: Card, package: Package, scenario: Scenario) -> CardView:
 def _ranking_summary(ranking: Sequence[str], shown: int = 3) -> str:
     """The top package names, in the agent's order. Names only, no prose."""
     return ", ".join(f"PKG-{package_id[:8]}" for package_id in ranking[:shown])
+
+
+def original_plan(scenario: Scenario, row: DotRow) -> OriginalPlan | None:
+    gate = scenario.planned_gate
+    if gate.value is None:
+        return None
+    return OriginalPlan(
+        gate_id=gate.value,
+        gate_provenance=gate.provenance,
+        due=clock(dot.scheduled_arrival_min(row)),
+        due_provenance="real",
+    )
+
+
+def offered_plans(result: NegotiationResult) -> tuple[OfferedPlan, ...]:
+    if not any(record.agents for record in result.turns):
+        return ()
+    decision = result.decision
+    chosen = decision.package.terms_hash if isinstance(decision, Deal) else None
+    return tuple(
+        OfferedPlan(
+            package=f"PKG-{package.terms_hash[:8]}",
+            gate_id=package.gate_id,
+            runway_id=package.slot.runway_id,
+            lands=clock(package.slot.time_min),
+            action=package.action.value,
+            chosen=package.terms_hash == chosen,
+        )
+        for package in result.offered
+    )
 
 
 def turn_view(record: TurnRecord) -> Turn:

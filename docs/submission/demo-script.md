@@ -56,7 +56,7 @@ Follow `runbook.md` first. Then:
 
 > Three agents are meant to negotiate here. This time they did not: the saved model answers did not load. The rules alone chose this plan, and the screen says so. Code removes every illegal plan first, so even a fallback plan has passed every rule.
 
-The view shows each agent's accepted count, reasons in plain words, objections withdrawn, and the model's own note, labelled **Unverified**. The private synthetic notes themselves are not shown. Say only what the screen shows.
+The **Plans considered** table in that drawer is there if a judge asks. The view shows each agent's accepted count, reasons in plain words, objections withdrawn, and the model's own note, labelled **Unverified**. The private synthetic notes themselves are not shown. Say only what the screen shows.
 
 ## Beat 3. The trust (1:00 to 1:35). Budget 87 words, spoken text 50
 

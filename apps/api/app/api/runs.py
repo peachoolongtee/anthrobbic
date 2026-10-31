@@ -563,6 +563,9 @@ class RunService:
             log_head=log.head,
             airport=adapter.airport_view(scenario),
             injection=injection,
+            original=adapter.original_plan(scenario, entry.row),
+            offered_plans=adapter.offered_plans(result),
+            packages_legal=result.packages_legal,
         )
         record = RunRecord(
             view=view,

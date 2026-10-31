@@ -217,6 +217,23 @@ class Injection(FrozenModel):
     closed_for_check: str | None = None
 
 
+class OfferedPlan(FrozenModel):
+    # The same name as `TurnResponse.accepted`, so acceptance can be read across.
+    package: str
+    gate_id: str
+    runway_id: str
+    lands: str
+    action: str
+    chosen: bool
+
+
+class OriginalPlan(FrozenModel):
+    gate_id: str
+    gate_provenance: Provenance
+    due: str
+    due_provenance: Provenance
+
+
 class RunView(FrozenModel):
     run_id: str
     scenario_id: str
@@ -237,6 +254,10 @@ class RunView(FrozenModel):
     log_head: str
     airport: AirportState
     injection: Injection | None
+    original: OriginalPlan | None = None
+    # Empty unless an agent answered: nothing was weighed otherwise.
+    offered_plans: tuple[OfferedPlan, ...] = ()
+    packages_legal: int = 0
 
 
 class StateChanged(FrozenModel):
