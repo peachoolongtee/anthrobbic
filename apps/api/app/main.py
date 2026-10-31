@@ -33,7 +33,22 @@ def create_app(
 
     @application.exception_handler(ApiError)
     def api_error(_: Request, error: ApiError) -> JSONResponse:
-        return JSONResponse(status_code=error.status, content={"detail": error.detail})
+        content = {"detail": error.detail}
+        if error.code is not None:
+            content["code"] = error.code
+        return JSONResponse(status_code=error.status, content=content)
+
+    @application.exception_handler(OSError)
+    def file_error(_: Request, error: OSError) -> JSONResponse:
+        # Sign-off and decisions take effect only once their log entry is written.
+        logger.error("a service file failed: %s", type(error).__name__)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": "A file the service needs could not be read or written, "
+                "so nothing was issued or recorded."
+            },
+        )
 
     @application.exception_handler(DotError)
     def data_error(_: Request, error: DotError) -> JSONResponse:

@@ -2,7 +2,11 @@
 
 Runs live in memory in one process, keyed by run ID, and used sign-off tokens are
 per process. Both vanish on restart and are not shared between workers. The oldest
-runs are dropped past `MAX_RUNS`.
+runs are dropped past `MAX_RUNS`. Each run's evidence log is also a JSONL file, which
+outlives the run; log checks read that file, not this process's memory.
+
+A run has one final decision: approved, rejected or taken over. The check and its
+log entry happen together under the run's lock.
 
 An injected unsafe package is judged by the same `check_package` the protocol
 uses. It is never offered to an agent and never held as the run's package, so
@@ -16,16 +20,21 @@ from collections.abc import Iterator
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from app.api import adapter
 from app.api.catalogue import Catalogue
 from app.api.evaluation import DEFAULT_RESULTS_DIR
 from app.api.wire import (
+    ALREADY_DECIDED,
     CardView,
+    DealView,
+    DecisionResult,
+    FinalDecision,
     Injection,
+    NoDealView,
     RemovedPackage,
     RunLog,
     RunView,
@@ -49,19 +58,32 @@ from app.negotiation.contracts import (
     Violation,
     ViolationCause,
 )
-from app.negotiation.log import EvidenceLog, verify_entries
+from app.negotiation.log import (
+    EvidenceLog,
+    LogEntry,
+    VerifyReason,
+    VerifyResult,
+    load_entries,
+    verify_entries,
+)
 from app.negotiation.options import PackageBoundError, enumerate_packages
 from app.negotiation.protocol import Mode, NegotiationResult, run_negotiation
 from app.negotiation.recording import DEFAULT_RECORDINGS_DIR, RecordingClient
 from app.negotiation.rules import ALL_RULES, check_package, rule_ids
 from app.negotiation.signoff import (
     SignOffRequest,
+    SignOffStatus,
     field_versions,
     sign_off,
     state_version,
 )
 
 MAX_RUNS: Final = 500
+# One append-only file per run, git-ignored. Sign-off anchors and log checks read it.
+DEFAULT_LOGS_DIR: Final = Path(__file__).resolve().parents[2] / "run_logs"
+MAX_FREE_TEXT_CHARS: Final = 2_000
+WRONG_DECISION_KIND: Final = "WRONG_DECISION_KIND"
+DECISION_KINDS: Final = frozenset({"signoff", "plan_rejected", "case_taken_over"})
 # One package per distinct set of failing rules; the total is reported beside it.
 MAX_REMOVED_SHOWN: Final = 12
 _UNKNOWN_RESOURCE: Final = "INJECTED-UNKNOWN"
@@ -80,10 +102,11 @@ type Judged = tuple[Package, tuple[Violation, ...]]
 class ApiError(Exception):
     """Refused for a stated reason. `status` is the HTTP code."""
 
-    def __init__(self, status: int, detail: str) -> None:
+    def __init__(self, status: int, detail: str, code: str | None = None) -> None:
         super().__init__(detail)
         self.status = status
         self.detail = detail
+        self.code = code
 
 
 class StateChange(FrozenModel):
@@ -103,6 +126,24 @@ class RunRequest(FrozenModel):
 
 class VerifyRequest(FrozenModel):
     tamper: bool = False
+
+
+class _DecisionRequest(FrozenModel):
+    decided_by: str
+
+    @model_validator(mode="after")
+    def _names_a_person(self) -> Self:
+        if not self.decided_by.strip():
+            raise ValueError("decided_by must name the person")
+        return self
+
+
+class RejectRequest(_DecisionRequest):
+    reason: str | None = Field(default=None, max_length=MAX_FREE_TEXT_CHARS)
+
+
+class TakeOverRequest(_DecisionRequest):
+    note: str | None = Field(default=None, max_length=MAX_FREE_TEXT_CHARS)
 
 
 def _rebuild(scenario: Scenario, updates: dict[str, Sourced[Any]]) -> Scenario:
@@ -290,11 +331,26 @@ def _removed_views(
 class RunRecord:
     view: RunView
     log: EvidenceLog
+    log_path: Path
     scenario: Scenario
-    # None for a no-deal run. Only ever a package from `run_negotiation`.
+    # None for a no-deal run. Only ever a package from `run_negotiation`: sign-off
+    # takes it from here, never from the client, and no unguarded result reaches it.
     package: Package | None
     anchor: str
+    # Guards the state, every decision and its log entry as one step.
     lock: threading.Lock = field(default_factory=threading.Lock)
+    final: FinalDecision | None = None
+
+    def stored(self) -> tuple[tuple[LogEntry, ...], VerifyResult]:
+        """The log as it is on disk, checked against the anchor. A file that cannot
+        even be parsed is invalid, with the entries this process remembers."""
+        try:
+            entries = load_entries(self.log_path)
+        except ValueError:
+            return self.log.entries, VerifyResult(
+                False, None, VerifyReason.MALFORMED_ENTRY
+            )
+        return entries, verify_entries(entries, self.anchor)
 
 
 class RunService:
@@ -304,11 +360,13 @@ class RunService:
         *,
         recordings_dir: Path = DEFAULT_RECORDINGS_DIR,
         results_dir: Path = DEFAULT_RESULTS_DIR,
+        logs_dir: Path = DEFAULT_LOGS_DIR,
         live_client: ModelClient | None = None,
     ) -> None:
         self.settings = settings
         self.recordings_dir = recordings_dir
         self.results_dir = results_dir
+        self.logs_dir = logs_dir
         self.catalogue = Catalogue(recordings_dir)
         self._live_client = live_client
         self._runs: OrderedDict[str, RunRecord] = OrderedDict()
@@ -353,7 +411,9 @@ class RunService:
             ),
         )
 
-        log = EvidenceLog()
+        run_id = uuid.uuid4().hex
+        log_path = self.logs_dir / f"{run_id}.jsonl"
+        log = EvidenceLog(log_path)
         log.append(
             "run_context",
             {
@@ -420,7 +480,6 @@ class RunService:
             )
 
         removed, removed_total = _removed_views(scenario, result, injected)
-        run_id = uuid.uuid4().hex
         view = RunView(
             run_id=run_id,
             scenario_id=request.scenario_id,
@@ -445,7 +504,12 @@ class RunService:
             injection=injection,
         )
         record = RunRecord(
-            view=view, log=log, scenario=scenario, package=package, anchor=log.head
+            view=view,
+            log=log,
+            log_path=log_path,
+            scenario=scenario,
+            package=package,
+            anchor=log.head,
         )
         with self._lock:
             self._runs[run_id] = record
@@ -476,42 +540,150 @@ class RunService:
 
     def sign_off(self, run_id: str, request: SignOffRequest) -> SignoffResult:
         record = self._record(run_id)
-        if record.package is None:
-            raise ApiError(409, "This run has no plan to sign: it ended in no deal.")
+        package = record.package
+        if package is None:
+            raise ApiError(
+                409,
+                "This run has no plan to sign: it ended in no deal.",
+                WRONG_DECISION_KIND,
+            )
         with record.lock:
+            # Replaying the exact approval keeps sign-off's own REFUSED_ALREADY_USED.
+            replay = record.final == "APPROVED" and request.token in self._used_tokens
+            if record.final is not None and not replay:
+                head = self._log_refused(record, "signoff", request.decided_by)
+                card = record.view.card
+                assert card is not None
+                return adapter.already_decided(
+                    package, card.card_hash, record.final, head
+                )
             outcome = sign_off(
                 request,
-                record.package,
+                package,
                 record.scenario,
                 record.log,
                 self._used_tokens,
             )
-            return adapter.signoff_result(outcome, record.package, record.scenario)
+            if outcome.status is SignOffStatus.APPROVED:
+                record.final = "APPROVED"
+            return adapter.signoff_result(outcome, package, record.scenario)
+
+    @staticmethod
+    def _log_refused(record: RunRecord, attempted: str, decided_by: str) -> str:
+        """Caller holds the run's lock. Refusals are evidence, as sign-off's are."""
+        return record.log.append(
+            "decision_refused",
+            {
+                "status": ALREADY_DECIDED,
+                "attempted": attempted,
+                "final_decision": record.final,
+                "decided_by": decided_by,
+                "issued": False,
+            },
+        ).entry_hash
+
+    def reject(self, run_id: str, request: RejectRequest) -> DecisionResult:
+        """Records a rejection. Issues nothing, so it does not re-run the rules."""
+        record = self._record(run_id)
+        decision = record.view.decision
+        card = record.view.card
+        if not isinstance(decision, DealView) or card is None:
+            raise ApiError(
+                409,
+                "This run has no plan to reject: it ended in no deal.",
+                WRONG_DECISION_KIND,
+            )
+        with record.lock:
+            if record.final is not None:
+                head = self._log_refused(record, "reject", request.decided_by)
+                return DecisionResult(
+                    status=ALREADY_DECIDED, final_decision=record.final, log_head=head
+                )
+            entry = record.log.append(
+                "plan_rejected",
+                {
+                    "package_id": decision.terms_hash,
+                    "package_name": card.package_name,
+                    "card_hash": card.card_hash,
+                    "decided_by": request.decided_by,
+                    "unverified_reason": request.reason or None,
+                    "has_unverified_reason": bool(request.reason),
+                    "issued": False,
+                },
+            )
+            record.final = "REJECTED"
+            return DecisionResult(
+                status="REJECTED", final_decision="REJECTED", log_head=entry.entry_hash
+            )
+
+    def take_over(self, run_id: str, request: TakeOverRequest) -> DecisionResult:
+        """Records that a person has the case. No approval or request is created."""
+        record = self._record(run_id)
+        decision = record.view.decision
+        if not isinstance(decision, NoDealView):
+            raise ApiError(
+                409,
+                "This run has a plan: approve or reject it instead.",
+                WRONG_DECISION_KIND,
+            )
+        with record.lock:
+            if record.final is not None:
+                head = self._log_refused(record, "take_over", request.decided_by)
+                return DecisionResult(
+                    status=ALREADY_DECIDED, final_decision=record.final, log_head=head
+                )
+            entry = record.log.append(
+                "case_taken_over",
+                {
+                    # SYSTEM_FAULT and NOTHING_LEGAL stay distinct in the evidence.
+                    "reason_type": decision.reason_type.value,
+                    "decided_by": request.decided_by,
+                    "unverified_note": request.note or None,
+                    "has_unverified_note": bool(request.note),
+                    "issued": False,
+                },
+            )
+            record.final = "TAKEN_OVER"
+            return DecisionResult(
+                status="TAKEN_OVER",
+                final_decision="TAKEN_OVER",
+                log_head=entry.entry_hash,
+            )
 
     def log(self, run_id: str) -> RunLog:
         record = self._record(run_id)
-        return RunLog(
-            entries=tuple(adapter.log_entry_view(e) for e in record.log.entries),
-            verify=adapter.verify_view(record.log.verify(record.anchor)),
-            head=record.log.head,
-        )
+        with record.lock:
+            entries, result = record.stored()
+            return RunLog(
+                entries=tuple(adapter.log_entry_view(e) for e in entries),
+                verify=adapter.verify_view(result),
+                head=record.log.head,
+            )
 
     def verify_log(self, run_id: str, request: VerifyRequest) -> VerifyLogResult:
         """With `tamper`, checks an edited copy. The real log is never altered."""
         record = self._record(run_id)
-        entries = list(record.log.entries)
+        with record.lock:
+            stored, real = record.stored()
+            head = record.log.head
+        entries = list(stored)
         tampered_seq: int | None = None
-        if request.tamper:
-            tampered_seq = len(entries) // 2
+        checked = real
+        if request.tamper and entries:
+            # The last decision when there is one, else an entry from the middle.
+            decisions = [
+                i for i, entry in enumerate(entries) if entry.kind in DECISION_KINDS
+            ]
+            tampered_seq = decisions[-1] if decisions else len(entries) // 2
             target = entries[tampered_seq]
             entries[tampered_seq] = replace(
                 target, payload={**deepcopy(dict(target.payload)), "tampered": True}
             )
-        checked = adapter.verify_view(verify_entries(entries, record.anchor))
+            checked = verify_entries(entries, record.anchor)
         return VerifyLogResult(
-            **checked.model_dump(),
+            **adapter.verify_view(checked).model_dump(),
             tampered_copy=request.tamper,
             tampered_seq=tampered_seq,
-            real_log_valid=record.log.verify(record.anchor).valid,
-            head=record.log.head,
+            real_log_valid=real.valid,
+            head=head,
         )

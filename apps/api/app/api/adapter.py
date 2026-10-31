@@ -9,12 +9,14 @@ from collections.abc import Mapping, Sequence
 from typing import Literal
 
 from app.api.wire import (
+    ALREADY_DECIDED,
     AirportState,
     CardView,
     DealPackage,
     DealView,
     Fact,
     FaultView,
+    FinalDecision,
     LogEntryView,
     ModelNoteView,
     NextLegView,
@@ -71,7 +73,10 @@ _TERM_FIELDS: Mapping[str, str] = {
     "action": "decision_point",
 }
 _DOMAIN_ORDER = tuple(Domain)
-_NOTE_FIELDS = frozenset({"unverified_model_note"})
+# Free text from a model or a person. In the log, never in a summary shown as fact.
+_NOTE_FIELDS = frozenset(
+    {"unverified_model_note", "unverified_reason", "unverified_note"}
+)
 
 
 def clock(minute: int) -> str:
@@ -361,6 +366,24 @@ def signoff_result(
         requests=terms(outcome.requests),
         card_hash=outcome.card_hash,
         log_head=outcome.log_head,
+    )
+
+
+def already_decided(
+    package: Package, card_hash: str, final: FinalDecision, log_head: str
+) -> SignoffResult:
+    """The sign-off refusal shape, for a run whose decision is already final."""
+    return SignoffResult(
+        status=ALREADY_DECIDED,
+        final_decision=final,
+        package_name=package_name(package),
+        violations=(),
+        changed_fields=(),
+        changed_card_fields=(),
+        airline_decisions=(),
+        requests=(),
+        card_hash=card_hash,
+        log_head=log_head,
     )
 
 

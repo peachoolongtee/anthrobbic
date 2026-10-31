@@ -5,8 +5,16 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, Query, Request
 
 from app.api.evaluation import read_evaluation
-from app.api.runs import RunRequest, RunService, StateChange, VerifyRequest
+from app.api.runs import (
+    RejectRequest,
+    RunRequest,
+    RunService,
+    StateChange,
+    TakeOverRequest,
+    VerifyRequest,
+)
 from app.api.wire import (
+    DecisionResult,
     Evaluation,
     RunLog,
     RunView,
@@ -51,6 +59,16 @@ def change_state(service: Service, run_id: str, body: StateChange) -> StateChang
 @router.post("/runs/{run_id}/signoff")
 def sign_off(service: Service, run_id: str, body: SignOffRequest) -> SignoffResult:
     return service.sign_off(run_id, body)
+
+
+@router.post("/runs/{run_id}/reject")
+def reject(service: Service, run_id: str, body: RejectRequest) -> DecisionResult:
+    return service.reject(run_id, body)
+
+
+@router.post("/runs/{run_id}/take-over")
+def take_over(service: Service, run_id: str, body: TakeOverRequest) -> DecisionResult:
+    return service.take_over(run_id, body)
 
 
 @router.get("/runs/{run_id}/log")

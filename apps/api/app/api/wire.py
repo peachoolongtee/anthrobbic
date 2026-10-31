@@ -3,7 +3,7 @@ so an as-flown outcome column cannot ride along. Mirrors
 `apps/web/src/lib/api-types.ts`.
 """
 
-from typing import Literal
+from typing import Final, Literal
 
 from app.negotiation.agents.base import FaultKind
 from app.negotiation.card import CostLine, ProvenanceLine, RuleStatus
@@ -214,8 +214,22 @@ class SignoffTerm(FrozenModel):
     value: str
 
 
+# One per run. Refused decisions and refused sign-offs do not set it.
+type FinalDecision = Literal["APPROVED", "REJECTED", "TAKEN_OVER"]
+ALREADY_DECIDED: Final = "REFUSED_ALREADY_DECIDED"
+
+
+class DecisionResult(FrozenModel):
+    status: Literal["REJECTED", "TAKEN_OVER", "REFUSED_ALREADY_DECIDED"]
+    # What stands for this run now, whoever made it.
+    final_decision: FinalDecision
+    log_head: str
+
+
 class SignoffResult(FrozenModel):
-    status: SignOffStatus
+    # `signoff.py`'s statuses unchanged, plus the run-level refusal it cannot see.
+    status: SignOffStatus | Literal["REFUSED_ALREADY_DECIDED"]
+    final_decision: FinalDecision | None = None
     package_name: str
     violations: tuple[RuleResult, ...]
     changed_fields: tuple[str, ...]

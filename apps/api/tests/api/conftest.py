@@ -50,17 +50,25 @@ def results(tmp_path: Path) -> Path:
     return path
 
 
+@pytest.fixture
+def logs(tmp_path: Path) -> Path:
+    return tmp_path / "run_logs"
+
+
 type ClientFactory = Callable[..., TestClient]
 
 
 @pytest.fixture
-def make_client(flights_csv: Path, recordings: Path, results: Path) -> ClientFactory:
+def make_client(
+    flights_csv: Path, recordings: Path, results: Path, logs: Path
+) -> ClientFactory:
     def build(*, allow_live: bool = False, live_client: Any = None) -> TestClient:
         settings = Settings(ALLOW_LIVE=allow_live)
         service = RunService(
             settings,
             recordings_dir=recordings,
             results_dir=results,
+            logs_dir=logs,
             live_client=live_client,
         )
         return TestClient(create_app(settings, service))
