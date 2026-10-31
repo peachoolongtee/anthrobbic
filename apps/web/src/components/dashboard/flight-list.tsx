@@ -3,7 +3,6 @@
 import type { ReactNode } from "react";
 import { CloudLightning, CornerDownRight, Layers, PlaneLanding, Search } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { Cause, ScenarioSummary } from "@/lib/api-types";
 import { CAUSE_LABEL } from "@/lib/labels";
 import { cn } from "@/lib/utils";
@@ -17,6 +16,12 @@ type ScenarioLoad =
   | { status: "ready"; data: ScenarioSummary[] };
 
 const CAUSE_ICON = { weather: CloudLightning, late_aircraft: PlaneLanding } as const;
+
+const CAUSE_FILTERS: { value: Cause | "all"; label: string; Icon: typeof Layers }[] = [
+  { value: "all", label: "All", Icon: Layers },
+  { value: "weather", label: CAUSE_LABEL.weather, Icon: CAUSE_ICON.weather },
+  { value: "late_aircraft", label: CAUSE_LABEL.late_aircraft, Icon: CAUSE_ICON.late_aircraft },
+];
 
 function codes(route: string): [string, string] {
   const [a, b] = route.split(" to ");
@@ -94,27 +99,40 @@ export function FlightList({
             className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
         </label>
-        <ToggleGroup
-          aria-label="Filter by cause of delay"
-          variant="outline"
-          size="sm"
-          spacing={0}
-          value={[cause]}
-          onValueChange={(v) => {
-            const next = v[0] as Cause | "all" | undefined;
-            if (next && next !== cause) onCauseChange(next);
-          }}
-        >
-          <ToggleGroupItem value="all" aria-label="All causes" title="All">
-            <Layers aria-hidden />
-          </ToggleGroupItem>
-          <ToggleGroupItem value="weather" aria-label="Weather" title="Weather">
-            <CloudLightning aria-hidden />
-          </ToggleGroupItem>
-          <ToggleGroupItem value="late_aircraft" aria-label="Late aircraft" title="Late aircraft">
-            <PlaneLanding aria-hidden />
-          </ToggleGroupItem>
-        </ToggleGroup>
+      </div>
+
+      {/* Cause of delay, named in words. One pill slides to the chosen cause. */}
+      <div
+        role="radiogroup"
+        aria-label="Filter by cause of delay"
+        className="grid grid-cols-[auto_1fr_1fr] gap-0.5 rounded-lg border border-border bg-card/60 p-0.5"
+      >
+        {CAUSE_FILTERS.map(({ value, label, Icon }) => {
+          const on = cause === value;
+          return (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              onClick={() => on || onCauseChange(value)}
+              className={cn(
+                "relative flex h-7 items-center justify-center gap-1.5 rounded-md px-2.5 text-xs font-medium whitespace-nowrap outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                on ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {on && (
+                <motion.span
+                  layoutId="cause-filter"
+                  aria-hidden
+                  className="absolute inset-0 rounded-md border border-primary/50 bg-primary/15"
+                />
+              )}
+              <Icon aria-hidden className={cn("relative size-3.5", on && "text-primary")} />
+              <span className="relative">{label}</span>
+            </button>
+          );
+        })}
       </div>
 
       {finder}
