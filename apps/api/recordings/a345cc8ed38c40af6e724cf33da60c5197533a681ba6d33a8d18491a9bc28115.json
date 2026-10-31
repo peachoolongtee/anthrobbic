@@ -150,16 +150,16 @@
   "response": {
     "content": [
       {
-        "text": "{\"acceptable_package_ids\":[\"P02\",\"P03\",\"P04\",\"P07\",\"P08\",\"P09\",\"P10\"],\"ranking\":[\"P02\",\"P03\",\"P04\",\"P07\",\"P08\",\"P09\",\"P10\"],\"declined\":[{\"package_id\":\"P01\",\"reason_code\":\"ramp_note\"},{\"package_id\":\"P05\",\"reason_code\":\"ramp_note\"},{\"package_id\":\"P06\",\"reason_code\":\"ramp_note\"},{\"package_id\":\"P11\",\"reason_code\":\"ramp_note\"},{\"package_id\":\"P12\",\"reason_code\":\"tight_turnaround\"}],\"reason_codes\":[\"ramp_note\",\"gate_move\",\"tight_turnaround\"],\"note_readings\":[{\"note_id\":\"ramp-1\",\"kind\":\"avoid_gate\",\"target\":\"G1\",\"firm\":false},{\"note_id\":\"ramp-2\",\"kind\":\"no_preference\",\"target\":null,\"firm\":false}],\"model_note\":\"G1 avoided per the soft ramp note on turn 1, so the remaining gates are ranked by spare turnaround.\"}",
+        "text": "{\"acceptable_package_ids\":[\"P02\",\"P03\",\"P04\",\"P07\",\"P08\",\"P09\",\"P10\"],\"ranking\":[\"P02\",\"P03\",\"P04\",\"P07\",\"P08\",\"P09\",\"P10\"],\"declined\":[{\"package_id\":\"P01\",\"reason_code\":\"ramp_note\"},{\"package_id\":\"P05\",\"reason_code\":\"ramp_note\"},{\"package_id\":\"P06\",\"reason_code\":\"ramp_note\"},{\"package_id\":\"P11\",\"reason_code\":\"ramp_note\"},{\"package_id\":\"P12\",\"reason_code\":\"tight_turnaround\"}],\"reason_codes\":[\"ramp_note\",\"gate_move\",\"tight_turnaround\"],\"note_readings\":[{\"note_id\":\"ramp-1\",\"kind\":\"avoid_gate\",\"target\":\"G1\",\"firm\":false},{\"note_id\":\"ramp-2\",\"kind\":\"no_preference\",\"target\":null,\"firm\":false}],\"model_note\":\"G1 is set aside on turn 1 because of the slow jet bridge note; the remaining packages are ranked by spare turnaround.\"}",
         "type": "text"
       }
     ],
-    "latency_ms": 5709,
+    "latency_ms": 5749,
     "model": "claude-opus-5-5",
     "stop_reason": "end_turn",
     "usage": {
       "input_tokens": 5102,
-      "output_tokens": 573
+      "output_tokens": 564
     }
   }
 }

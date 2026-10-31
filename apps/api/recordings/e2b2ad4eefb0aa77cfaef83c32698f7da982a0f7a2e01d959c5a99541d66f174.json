@@ -150,16 +150,16 @@
   "response": {
     "content": [
       {
-        "text": "{\"acceptable_package_ids\":[\"P01\",\"P02\",\"P03\",\"P04\"],\"ranking\":[\"P01\",\"P02\",\"P03\",\"P04\"],\"declined\":[{\"package_id\":\"P05\",\"reason_code\":\"weather_note\"},{\"package_id\":\"P06\",\"reason_code\":\"weather_note\"},{\"package_id\":\"P07\",\"reason_code\":\"weather_note\"},{\"package_id\":\"P08\",\"reason_code\":\"weather_note\"},{\"package_id\":\"P09\",\"reason_code\":\"weather_note\"},{\"package_id\":\"P10\",\"reason_code\":\"weather_note\"},{\"package_id\":\"P11\",\"reason_code\":\"weather_note\"},{\"package_id\":\"P12\",\"reason_code\":\"weather_note\"}],\"reason_codes\":[\"low_own_cost\",\"weather_note\"],\"note_readings\":[{\"note_id\":\"weather-1\",\"kind\":\"avoid_runway\",\"target\":\"R3\",\"firm\":false},{\"note_id\":\"weather-2\",\"kind\":\"no_preference\",\"target\":null,\"firm\":false}],\"model_note\":\"R1 direct options give zero delay and avoid R3 standing water.\"}",
+        "text": "{\"acceptable_package_ids\":[\"P01\",\"P02\",\"P03\",\"P04\"],\"ranking\":[\"P01\",\"P02\",\"P03\",\"P04\"],\"declined\":[{\"package_id\":\"P05\",\"reason_code\":\"weather_note\"},{\"package_id\":\"P06\",\"reason_code\":\"weather_note\"},{\"package_id\":\"P07\",\"reason_code\":\"weather_note\"},{\"package_id\":\"P08\",\"reason_code\":\"weather_note\"},{\"package_id\":\"P09\",\"reason_code\":\"weather_note\"},{\"package_id\":\"P10\",\"reason_code\":\"weather_note\"},{\"package_id\":\"P11\",\"reason_code\":\"weather_note\"},{\"package_id\":\"P12\",\"reason_code\":\"weather_note\"}],\"reason_codes\":[\"low_own_cost\",\"weather_note\"],\"note_readings\":[{\"note_id\":\"weather-1\",\"kind\":\"avoid_runway\",\"target\":\"R3\",\"firm\":false},{\"note_id\":\"weather-2\",\"kind\":\"no_preference\",\"target\":null,\"firm\":false}],\"model_note\":\"The R1 direct packages carry zero delay and avoid R3, where standing water is reported.\"}",
         "type": "text"
       }
     ],
-    "latency_ms": 5829,
+    "latency_ms": 4468,
     "model": "claude-opus-5-5",
     "stop_reason": "end_turn",
     "usage": {
       "input_tokens": 7274,
-      "output_tokens": 352
+      "output_tokens": 359
     }
   }
 }
