@@ -1,0 +1,126 @@
+"""Soft costs per domain, in integer units.
+
+Costs only rank packages that already pass every rule. They never decide
+legality. All weights live in `DEFAULT_WEIGHTS`.
+
+Domain split: the pilot bears fuel burn, ATC bears connections put at risk by
+arrival delay, and ground bears gate moves, overtime and turnaround delay.
+"""
+
+from app.negotiation import rule_values as rv
+from app.negotiation.contracts import (
+    CostBreakdown,
+    DomainCosts,
+    FrozenModel,
+    Package,
+    Scenario,
+)
+from app.negotiation.rules.ground import gate_in_min, turnaround_min
+from app.negotiation.rules.pilot import extra_burn_kg
+
+
+class CostWeights(FrozenModel):
+    fuel_per_kg: int
+    per_passenger_at_risk: int
+    per_gate_move: int
+    overtime_per_min: int
+    turnaround_delay_per_min: int
+
+
+# Demo assumptions, not calibrated against any airline's costs.
+DEFAULT_WEIGHTS = CostWeights(
+    fuel_per_kg=2,
+    per_passenger_at_risk=100,
+    per_gate_move=50,
+    overtime_per_min=20,
+    turnaround_delay_per_min=30,
+)
+
+
+def _connections_at_risk(
+    scenario: Scenario, gate_in: int | None, unknown: list[str]
+) -> int:
+    connections = scenario.connections.value
+    if connections is None:
+        unknown.append("connections")
+        return 0
+    if gate_in is None:
+        unknown.append("taxi_in_min")
+        return 0
+    min_connect = rv.rule_value(rv.MIN_CONNECTION_MIN).value
+    return sum(
+        c.passengers for c in connections if gate_in + min_connect > c.departure_min
+    )
+
+
+def _overtime_min(scenario: Scenario, gate_in: int | None, unknown: list[str]) -> int:
+    shift_end = scenario.ground_shift_end_min.value
+    stay = turnaround_min(scenario)
+    if shift_end is None:
+        unknown.append("ground_shift_end_min")
+        return 0
+    if gate_in is None or stay is None:
+        unknown.append("taxi_in_min" if gate_in is None else "aircraft_size")
+        return 0
+    return max(0, gate_in + stay.value - shift_end)
+
+
+def _turnaround_delay_min(
+    scenario: Scenario, gate_in: int | None, unknown: list[str]
+) -> int:
+    depart = scenario.next_departure_min.value
+    stay = turnaround_min(scenario)
+    if depart is None:
+        unknown.append("next_departure_min")
+        return 0
+    if gate_in is None or stay is None:
+        unknown.append("taxi_in_min" if gate_in is None else "aircraft_size")
+        return 0
+    return max(0, gate_in + stay.value - depart)
+
+
+def compute_cost(
+    scenario: Scenario,
+    package: Package,
+    weights: CostWeights = DEFAULT_WEIGHTS,
+) -> CostBreakdown:
+    """Weighted soft cost of one package. Unknown inputs are listed, not hidden."""
+    unknown: list[str] = []
+    gate_in = gate_in_min(scenario, package)
+
+    burn = extra_burn_kg(scenario, package)
+    if burn is None:
+        unknown.append("fuel inputs")
+        burn = 0
+    fuel_cost = burn * weights.fuel_per_kg
+
+    passengers = _connections_at_risk(scenario, gate_in, unknown)
+    connection_cost = passengers * weights.per_passenger_at_risk
+
+    planned = scenario.planned_gate.value
+    if planned is None:
+        unknown.append("planned_gate")
+    moved = planned is None or planned != package.gate_id
+    move_cost = weights.per_gate_move if moved else 0
+
+    overtime_cost = _overtime_min(scenario, gate_in, unknown) * weights.overtime_per_min
+    delay_cost = (
+        _turnaround_delay_min(scenario, gate_in, unknown)
+        * weights.turnaround_delay_per_min
+    )
+
+    by_domain = DomainCosts(
+        pilot=fuel_cost,
+        atc=connection_cost,
+        ground=move_cost + overtime_cost + delay_cost,
+    )
+    return CostBreakdown(
+        fuel_burn=fuel_cost,
+        connections_at_risk=connection_cost,
+        gate_moves=move_cost,
+        overtime=overtime_cost,
+        turnaround_delay=delay_cost,
+        by_domain=by_domain,
+        total=by_domain.pilot + by_domain.atc + by_domain.ground,
+        unknown_inputs=tuple(sorted(set(unknown))),
+    )
