@@ -26,7 +26,6 @@ const CAUSES: { key: keyof typeof stats.causeMinutes; label: string }[] = [
   { key: "security", label: "Security" },
 ];
 
-const fmt = new Intl.NumberFormat("en-US");
 
 function Panel({
   title,
@@ -238,6 +237,7 @@ export function Overview() {
           </div>
           <div
             className="relative cursor-pointer"
+            title="Illustration. The planes circle the routes for show; they are not live positions."
             onPointerDown={(e) => (pressAt.current = { x: e.clientX, y: e.clientY })}
             onClick={(e) => {
               // A drag spins the globe; only a still click opens the flights page.
@@ -252,9 +252,6 @@ export function Overview() {
               className="h-[22rem] sm:h-[28rem] lg:h-[min(62vh,40rem)]"
             />
           </div>
-          <p className="pointer-events-none absolute right-1 bottom-2 z-10 max-w-48 text-right text-[11px] text-muted-foreground sm:max-w-none">
-            Illustration. The planes circle the routes for show; they are not live positions.
-          </p>
           <div className="absolute inset-x-0 bottom-2 z-10 flex justify-center">
             <Link
               href="/dashboard/flights"
@@ -321,7 +318,6 @@ export function Overview() {
               ))}
             </ul>
           )}
-          <p className="mt-auto pt-4 text-xs text-muted-foreground">Plans removed per rule, across these flights&apos; runs</p>
         </Panel>
 
         {/* Real: where delays are */}
@@ -333,7 +329,6 @@ export function Overview() {
               </li>
             ))}
           </ul>
-          <p className="mt-auto pt-4 text-xs text-muted-foreground">Delayed arrivals per route, US DOT 2015</p>
         </Panel>
 
         <Panel title="Airports with most delayed arrivals" source="real" className="lg:col-span-4">
@@ -350,7 +345,7 @@ export function Overview() {
         {/* Real: the dataset in four numbers, and delay hours by cause */}
         <Panel title="US DOT 2015 delayed arrivals" source="real" className="lg:col-span-8">
           <div className="grid gap-4 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-            <div className="space-y-2">
+            <div>
               <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {[
                   { label: "Delayed arrivals", value: stats.eligible, suffix: "" },
@@ -371,9 +366,6 @@ export function Overview() {
                   </motion.div>
                 ))}
               </dl>
-              <p className="text-xs text-muted-foreground">
-                The two shares are of these arrivals. A flight can be in both, so they add up to more than 100%.
-              </p>
             </div>
             <ul className="space-y-3">
               {CAUSES.slice(0, 3).map((c) => (
@@ -387,16 +379,9 @@ export function Overview() {
                   />
                 </li>
               ))}
-              <li className="text-xs text-muted-foreground">Hours of delay by cause, added up over these arrivals</li>
             </ul>
           </div>
         </Panel>
-
-        <p className="text-xs text-muted-foreground lg:col-span-12">
-          Source: US DOT on-time records, 2015, the organiser file flights.csv. {fmt.format(stats.eligible)} flown
-          arrivals with weather delay over 15 min or late-aircraft delay over 20 min, October left out. Counted from the
-          file, not estimated. Demo flights: the sample list shown on the Flights page, not a count from this file.
-        </p>
       </motion.main>
     </div>
   );

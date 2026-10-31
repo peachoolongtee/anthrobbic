@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { api } from "@/lib/api";
 import type { LookupQuery, ScenarioSummary } from "@/lib/api-types";
 import type { LookupState } from "@/hooks/use-dashboard";
 
@@ -44,21 +43,7 @@ export function FindFlight({
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
   const [invalid, setInvalid] = useState<string | null>(null);
-  const [total, setTotal] = useState<number | null>(null);
   const loading = lookup.status === "loading";
-
-  useEffect(() => {
-    let live = true;
-    api
-      .eligibleCount()
-      .then((r) => live && setTotal(r.eligible_total))
-      .catch(() => {
-        // The sentence reads the same without the figure, so nothing is shown.
-      });
-    return () => {
-      live = false;
-    };
-  }, []);
 
   return (
     <details
@@ -84,10 +69,6 @@ export function FindFlight({
           onFind(parsed);
         }}
       >
-        <p className="text-xs text-muted-foreground">
-          The list is a sample. This searches all{" "}
-          {total !== null ? `${total.toLocaleString("en-US")} ` : ""}eligible flights.
-        </p>
         <label htmlFor="find-date" className="sr-only">
           Flight date
         </label>
