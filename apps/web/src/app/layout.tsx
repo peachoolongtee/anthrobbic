@@ -1,23 +1,32 @@
 import type { Metadata } from "next";
-import { Barlow, Geist, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-// globals.css (shadcn) maps Tailwind's font-sans to --font-sans.
-const geistSans = Geist({
+// Fonts are vendored in ./fonts (SIL Open Font License) so the app needs no
+// network at build or run time. globals.css (shadcn) maps Tailwind's font-sans
+// to --font-sans.
+const geistSans = localFont({
+  src: "./fonts/Geist-Variable.woff2",
   variable: "--font-sans",
-  subsets: ["latin"],
+  weight: "100 900",
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
+const geistMono = localFont({
+  src: "./fonts/GeistMono-Variable.woff2",
   variable: "--font-geist-mono",
-  subsets: ["latin"],
+  weight: "100 900",
+  display: "swap",
 });
 
 // Display face for the landing page, in the spirit of airport signage.
-const barlow = Barlow({
+const barlow = localFont({
+  src: [
+    { path: "./fonts/barlow-latin-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/barlow-latin-600-normal.woff2", weight: "600", style: "normal" },
+  ],
   variable: "--font-barlow",
-  subsets: ["latin"],
-  weight: ["500", "600"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
