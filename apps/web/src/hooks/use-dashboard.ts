@@ -58,6 +58,9 @@ export interface BreakOutcome {
 
 export const DECIDED_BY = "Duty manager (demo, not authenticated)";
 
+/** The API's maximum for one list. */
+const LIST_LIMIT = 200;
+
 export function useDashboard() {
   const [cause, setCause] = useState<Cause | "all">("all");
   const [query, setQuery] = useState("");
@@ -112,7 +115,7 @@ export function useDashboard() {
   const fetchScenarios = useCallback(
     (c: Cause | "all") => {
       api
-        .listScenarios(c === "all" ? { limit: 50 } : { cause: c, limit: 50 })
+        .listScenarios(c === "all" ? { limit: LIST_LIMIT } : { cause: c, limit: LIST_LIMIT })
         .then((data) => {
           setScenarios({ status: "ready", data });
           if (selectedRef.current === null && data.length > 0) {

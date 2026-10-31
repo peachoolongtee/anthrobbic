@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { CloudLightning, CornerDownRight, Layers, PlaneLanding, Search } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { Cause, ScenarioSummary } from "@/lib/api-types";
+import { useEligibleCount } from "@/hooks/use-eligible-count";
 import { CAUSE_LABEL } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { EmptyPanel, ErrorPanel, LoadingBlock } from "@/components/dashboard/states";
@@ -68,6 +69,7 @@ export function FlightList({
   /** In Live nothing is replayed, so the tag would read as if this run were. */
   hideRecordedTag: boolean;
 }) {
+  const eligible = useEligibleCount();
   const q = query.trim().toLowerCase();
   const foundIds = new Set(found.map((s) => s.scenario_id));
   const rows =
@@ -87,10 +89,10 @@ export function FlightList({
       <div className="flex items-center gap-1.5">
         <label className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-lg border border-input bg-input/30 px-2 focus-within:ring-2 focus-within:ring-ring/50">
           <Search aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-          <span className="sr-only">Search flights</span>
+          <span className="sr-only">Filter the flights in this list</span>
           <input
             type="search"
-            placeholder="Search"
+            placeholder="Filter this list"
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
@@ -118,6 +120,14 @@ export function FlightList({
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
+
+      {scenarios.status === "ready" && (
+        <p className="text-xs text-muted-foreground tabular-nums">
+          Showing {scenarios.data.length.toLocaleString("en-US")}
+          {eligible !== null ? ` of ${eligible.toLocaleString("en-US")} eligible` : ""} flights. The filter covers only these;
+          Find any flight covers them all.
+        </p>
+      )}
 
       {finder}
 

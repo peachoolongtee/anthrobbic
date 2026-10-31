@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   Box,
@@ -44,6 +44,7 @@ const TABS: { id: Tab; label: string; Icon: LucideIcon }[] = [
   { id: "evidence", label: "Evidence", Icon: FlaskConical },
 ];
 
+const MAP_FLIGHTS = 50;
 const NO_FLIGHTS: never[] = [];
 
 // The 3D airport loads only when chosen, so three.js stays off the first load.
@@ -65,6 +66,8 @@ export function Dashboard() {
   const [view, setView] = useState<View>("map");
   // The clear area between the panels, where the map frames the route.
   const clearArea = useRef<HTMLDivElement>(null);
+  // The list is longer than the map can show: more lines would bury the chosen route.
+  const mapFlights = useMemo(() => (d.scenarios.status === "ready" ? d.scenarios.data.slice(0, MAP_FLIGHTS) : NO_FLIGHTS), [d.scenarios]);
   const [breakOpen, setBreakOpen] = useState(false);
 
   const run = d.runState.status === "ready" ? d.runState.run : null;
@@ -97,7 +100,7 @@ export function Dashboard() {
         {view === "map" ? (
           <FlightMap
             planAction={planActionFromLabel(run?.card?.action_facts.find((f) => f.key === "action")?.value)}
-            flights={d.scenarios.status === "ready" ? d.scenarios.data : NO_FLIGHTS}
+            flights={mapFlights}
             selected={selected}
             frame={clearArea}
             className="relative h-72 rounded-2xl border border-border lg:absolute lg:inset-0 lg:h-auto lg:rounded-none lg:border-0"

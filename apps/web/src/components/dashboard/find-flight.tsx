@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { api } from "@/lib/api";
 import type { LookupQuery, ScenarioSummary } from "@/lib/api-types";
 import type { LookupState } from "@/hooks/use-dashboard";
+import { useEligibleCount } from "@/hooks/use-eligible-count";
 
 /** "1672" or "UA 1672". An airline code has a letter, so "123" stays a number. */
 const FLIGHT = /^\s*((?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{2})?\s*(\d{1,4})\s*$/;
@@ -44,21 +44,8 @@ export function FindFlight({
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
   const [invalid, setInvalid] = useState<string | null>(null);
-  const [total, setTotal] = useState<number | null>(null);
+  const total = useEligibleCount();
   const loading = lookup.status === "loading";
-
-  useEffect(() => {
-    let live = true;
-    api
-      .eligibleCount()
-      .then((r) => live && setTotal(r.eligible_total))
-      .catch(() => {
-        // The sentence reads the same without the figure, so nothing is shown.
-      });
-    return () => {
-      live = false;
-    };
-  }, []);
 
   return (
     <details

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowUpRight, CloudLightning, Database, PlaneLanding, PlayCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import type { ScenarioSummary } from "@/lib/api-types";
+import { useEligibleCount } from "@/hooks/use-eligible-count";
 import { AIRPORTS, routeCodes } from "@/lib/airports";
 import { CAUSE_LABEL } from "@/lib/labels";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,10 @@ const fmt = new Intl.NumberFormat("en-US");
 function flightHref(id: string) {
   return `/dashboard/flights?flight=${encodeURIComponent(id)}`;
 }
+
+const LIST_LIMIT = 50;
+/** The globe stays readable, and stays as cheap to draw as it was. */
+const GLOBE_FLIGHTS = 12;
 
 function Panel({
   title,
@@ -128,12 +133,13 @@ export function Overview() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const router = useRouter();
   const pressAt = useRef<{ x: number; y: number } | null>(null);
+  const eligible = useEligibleCount();
 
   useEffect(() => {
     let live = true;
     // The flight list only. The overview starts no runs, so it spends no model calls and writes no logs.
     api
-      .listScenarios({ limit: 12 })
+      .listScenarios({ limit: LIST_LIMIT })
       .then((list) => live && setFlights(list))
       .catch(() => live && setFailed(true));
     return () => {
@@ -143,7 +149,7 @@ export function Overview() {
 
   const routes = useMemo<GlobeRoute[]>(
     () =>
-      (flights ?? []).flatMap((flight) => {
+      (flights ?? []).slice(0, GLOBE_FLIGHTS).flatMap((flight) => {
         const codes = routeCodes(flight.route);
         const from = codes && AIRPORTS[codes[0]];
         const to = codes && AIRPORTS[codes[1]];
@@ -183,7 +189,7 @@ export function Overview() {
           <div className="pointer-events-none absolute top-1 left-1 z-10">
             <h1 className="font-display text-2xl font-medium">Demo flights</h1>
             <p className="text-sm text-muted-foreground tabular-nums">
-              {flights ? `${flights.length} flights, ${flights.reduce((n, f) => n + f.delay_minutes, 0)} min of delay in all` : "\u00a0"}
+              {flights ? `${flights.length} flights listed, ${flights.reduce((n, f) => n + f.delay_minutes, 0)} min of delay in all` : "\u00a0"}
             </p>
           </div>
           <div
@@ -203,7 +209,7 @@ export function Overview() {
             />
           </div>
           <p className="pointer-events-none absolute right-1 bottom-2 z-10 max-w-48 text-right text-[11px] text-muted-foreground sm:max-w-none">
-            Illustration. The planes circle the routes for show; they are not live positions.
+            Illustration. The planes circle {routes.length} of these routes for show; they are not live positions.
           </p>
           <div className="absolute inset-x-0 bottom-2 z-10 flex justify-center">
             <Link
@@ -223,7 +229,22 @@ export function Overview() {
           ) : sorted && sorted.length === 0 ? (
             <p className="text-sm text-muted-foreground">There are no demo flights.</p>
           ) : (
-            <ol className="-mx-2 grid gap-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6" onMouseLeave={() => setActiveId(null)}>
+            <>
+            {sorted && (
+              <p className="mb-2 text-xs text-muted-foreground tabular-nums">
+                Showing {sorted.length}
+                {eligible !== null ? ` of ${eligible.toLocaleString("en-US")} eligible` : ""} flights.{" "}
+                <Link href="/dashboard/flights" className="underline underline-offset-2 hover:text-beacon">
+                  Find any flight
+                </Link>{" "}
+                on the Flights page covers them all.
+              </p>
+            )}
+            {/* Scrolls inside itself, so a longer list leaves the page the same length. */}
+            <ol
+              className="-mx-2 grid max-h-[15.5rem] gap-1 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6"
+              onMouseLeave={() => setActiveId(null)}
+            >
               {!sorted && Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="mx-2 h-16" />)}
               {sorted?.map((flight) => {
                 const Icon = CAUSE_ICON[flight.cause];
@@ -259,6 +280,7 @@ export function Overview() {
                 );
               })}
             </ol>
+            </>
           )}
         </Panel>
 
