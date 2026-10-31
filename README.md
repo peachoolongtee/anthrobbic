@@ -1,4 +1,4 @@
-# Magic Airbus: arrival recovery
+# Magic Airbuzz: arrival recovery
 
 Autonomous SG 2026, Airbus track, Challenge 2.
 
