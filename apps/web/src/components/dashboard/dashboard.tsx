@@ -258,7 +258,11 @@ export function Dashboard() {
           {/* Not drawn: marks the space below the agent strip and above the
               try-to-break-it card, for framing the route. Hidden on small screens. */}
           <div ref={clearArea} aria-hidden className="pointer-events-none! absolute inset-x-0 top-28 bottom-32 max-lg:hidden" />
-          <div className="flex justify-center lg:absolute lg:top-3 lg:left-1/2 lg:-translate-x-1/2">
+          {/* Top row: the Map / 3D switch on the left, the agents centred. A
+              grid keeps the agents centred and stops the two overlapping when
+              the stage is narrow. The row itself lets map drags through. */}
+          <div className="flex flex-col gap-3 lg:pointer-events-none! lg:absolute lg:inset-x-0 lg:top-3 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:items-center lg:gap-3">
+          <div className="flex justify-center lg:pointer-events-auto lg:col-start-2 lg:row-start-1">
             {running && d.mode === "live" ? (
               <LiveWorking />
             ) : d.runState.status === "error" && d.mode === "live" ? (
@@ -272,7 +276,7 @@ export function Dashboard() {
           <div
             role="group"
             aria-label="Backdrop"
-            className="flex w-fit items-center gap-0.5 rounded-xl border border-border bg-card/85 p-1 backdrop-blur lg:absolute lg:top-16 lg:left-0"
+            className="flex w-fit items-center gap-0.5 rounded-xl border border-border bg-card/85 p-1 backdrop-blur lg:pointer-events-auto lg:col-start-1 lg:row-start-1 lg:justify-self-start"
           >
             {(
               [
@@ -286,7 +290,7 @@ export function Dashboard() {
                 aria-pressed={view === id}
                 onClick={() => setView(id)}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                  "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm whitespace-nowrap outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                   view === id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
                 )}
               >
@@ -295,6 +299,7 @@ export function Dashboard() {
               </button>
             ))}
           </div>
+          </div>
 
           {/* Result of the last try-to-break-it action, under the agent strip. */}
           <BreakNotice
@@ -302,7 +307,7 @@ export function Dashboard() {
             className={cn(
               "z-30 flex justify-center lg:absolute lg:left-1/2 lg:w-[min(28rem,100%)] lg:-translate-x-1/2",
               // Never over the drawer's first lines.
-              tab ? "lg:bottom-[4.75rem]" : "lg:top-28",
+              tab ? "lg:bottom-[4.75rem]" : "lg:top-16",
             )}
           />
 
