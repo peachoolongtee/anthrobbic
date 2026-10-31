@@ -2,7 +2,17 @@
 
 import { useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { Box, CircleAlert, Map as MapIcon, X } from "lucide-react";
+import {
+  Box,
+  CircleAlert,
+  FileText,
+  FlaskConical,
+  Map as MapIcon,
+  MessagesSquare,
+  ScrollText,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { Button } from "@/components/ui/button";
 import { FINAL_DECISION_LABEL, isApproved, refusalBanner, signoffStatusLabel } from "@/lib/labels";
@@ -10,7 +20,7 @@ import { planActionFromLabel } from "@/lib/plan-action";
 import { cn } from "@/lib/utils";
 import { AgentStrip } from "@/components/dashboard/agent-strip";
 import { AirportMap } from "@/components/dashboard/airport-map";
-import { BreakItDock } from "@/components/dashboard/break-it-dock";
+import { BreakItDock, BreakNotice, SceneHint } from "@/components/dashboard/break-it-dock";
 import { DelaySpreadView } from "@/components/dashboard/delay-spread";
 import { EvidenceView } from "@/components/dashboard/evidence-view";
 import { FindFlight } from "@/components/dashboard/find-flight";
@@ -27,11 +37,11 @@ import { EmptyPanel, ErrorPanel, LoadingBlock } from "@/components/dashboard/sta
 
 type Tab = "details" | "negotiation" | "log" | "evidence";
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "details", label: "Plan" },
-  { id: "negotiation", label: "Negotiation" },
-  { id: "log", label: "Log" },
-  { id: "evidence", label: "Evidence" },
+const TABS: { id: Tab; label: string; Icon: LucideIcon }[] = [
+  { id: "details", label: "Plan", Icon: FileText },
+  { id: "negotiation", label: "Negotiation", Icon: MessagesSquare },
+  { id: "log", label: "Log", Icon: ScrollText },
+  { id: "evidence", label: "Evidence", Icon: FlaskConical },
 ];
 
 const NO_FLIGHTS: never[] = [];
@@ -44,7 +54,10 @@ const AirportScene = dynamic(() => import("@/components/dashboard/safe-airport-s
 
 type View = "map" | "airport";
 /** Floating panel surface used over the map on large screens. */
-const PANEL = "rounded-2xl border border-border bg-card/80 shadow-xl shadow-black/30 backdrop-blur-md";
+// Frosted glass: a strong blur, a slight saturation lift and a thin top
+// highlight. Opaque enough that text keeps its contrast over the map.
+const PANEL =
+  "rounded-2xl border border-white/10 bg-card/70 shadow-xl shadow-black/40 backdrop-blur-xl backdrop-saturate-150 [box-shadow:inset_0_1px_0_0_rgb(255_255_255/0.06),0_20px_40px_-12px_rgb(0_0_0/0.5)]";
 
 export function Dashboard() {
   const d = useDashboard();
@@ -71,8 +84,6 @@ export function Dashboard() {
     setTab(null);
     d.select(id);
   };
-  // The result of a control sits above the dock, so the panels clear it.
-  const clearOfOutcome = d.outcome !== null || d.busy !== null;
   const toggleTab = (t: Tab) => setTab((cur) => (cur === t ? null : t));
 
   return (
@@ -145,8 +156,8 @@ export function Dashboard() {
           className="relative flex flex-col gap-3 lg:pointer-events-none lg:absolute lg:inset-y-0 lg:right-[24.5rem] lg:left-[20.5rem] lg:gap-0 [&>*]:pointer-events-auto"
         >
           {/* Not drawn: marks the space below the agent strip and above the
-              runway inset, for framing the route. Hidden on small screens. */}
-          <div ref={clearArea} aria-hidden className="pointer-events-none! absolute inset-x-0 top-14 bottom-[19rem] max-lg:hidden" />
+              try-to-break-it card, for framing the route. Hidden on small screens. */}
+          <div ref={clearArea} aria-hidden className="pointer-events-none! absolute inset-x-0 top-28 bottom-[21rem] max-lg:hidden" />
           <div className="flex justify-center lg:absolute lg:top-3 lg:left-1/2 lg:-translate-x-1/2">
             <AgentStrip run={running ? null : run} mode={d.mode} />
           </div>
@@ -179,32 +190,54 @@ export function Dashboard() {
             ))}
           </div>
 
-          {/* Runways and gates: select one to close it. The 3D view has its own. */}
-          {view === "map" && (
-          <section
-            aria-label="Runways and gates"
-            className={cn(
-              PANEL,
-              "p-2 lg:absolute lg:right-0 lg:w-[21rem]",
-              clearOfOutcome ? "lg:bottom-[14rem]" : "lg:bottom-[11.75rem]",
-              running && "opacity-60",
-            )}
-          >
-            <AirportMap
+          {/* Result of the last try-to-break-it action, under the agent strip. */}
+          <BreakNotice
+            outcome={d.outcome}
+            className="z-30 flex justify-center lg:absolute lg:top-28 lg:left-1/2 lg:w-[min(28rem,100%)] lg:-translate-x-1/2"
+          />
+
+          {/* Every try-to-break-it control in one card: the runway diagram (or
+              a hint in 3D, where the scene is clickable) and the other actions. */}
+          <div className={cn(PANEL, "p-3 lg:absolute lg:right-0 lg:bottom-[4.25rem] lg:w-[22rem]", running && "opacity-80")}>
+            <BreakItDock
               run={run}
               overrides={d.overrides}
-              disabled={running || d.busy !== null || run === null}
-              onRunway={(id) => {
-                setTab(null);
-                d.closeRunway(id);
+              busy={d.busy}
+              disabled={running}
+              onUnsafe={(rule) => {
+                setTab("negotiation");
+                d.injectUnsafe(rule);
               }}
-              onGate={(id) => {
-                setTab(null);
-                d.blockGate(id);
+              onStale={d.changeAfterViewing}
+              onTamper={() => {
+                setTab("log");
+                d.tamperLog();
               }}
-            />
-          </section>
-          )}
+              onReset={d.reset}
+              onDisrupt={(kind, next, title) => {
+                setTab(null);
+                d.disrupt(kind, next, title);
+              }}
+            >
+              {view === "map" ? (
+                <AirportMap
+                  run={run}
+                  overrides={d.overrides}
+                  disabled={running || d.busy !== null || run === null}
+                  onRunway={(id) => {
+                    setTab(null);
+                    d.closeRunway(id);
+                  }}
+                  onGate={(id) => {
+                    setTab(null);
+                    d.blockGate(id);
+                  }}
+                />
+              ) : (
+                <SceneHint />
+              )}
+            </BreakItDock>
+          </div>
 
           {/* Drawer with the detail views */}
           {tab && (
@@ -212,9 +245,7 @@ export function Dashboard() {
               aria-label={TABS.find((t) => t.id === tab)?.label}
               className={cn(
                 PANEL,
-                "relative z-20 flex flex-col bg-card/95 animate-in fade-in slide-in-from-bottom-4 duration-200 lg:absolute lg:right-0 lg:top-3",
-                tab === "details" ? "lg:left-0" : "lg:-left-[20rem]",
-                clearOfOutcome ? "lg:bottom-[14rem]" : "lg:bottom-[11.75rem]",
+                "relative z-20 flex flex-col bg-card/95 animate-in fade-in slide-in-from-bottom-4 duration-200 lg:absolute lg:-left-[20rem] lg:right-0 lg:top-3 lg:bottom-[4.25rem]",
               )}
             >
               <div className="flex items-center justify-between border-b border-border px-4 py-2">
@@ -254,28 +285,8 @@ export function Dashboard() {
             </section>
           )}
 
-          <div className="z-10 flex flex-col items-center gap-2 lg:absolute lg:inset-x-0 lg:bottom-3">
-            <BreakItDock
-                run={run}
-                overrides={d.overrides}
-                busy={d.busy}
-                disabled={running}
-                outcome={d.outcome}
-                onDisrupt={(kind, next, title) => {
-                  setTab(null);
-                  d.disrupt(kind, next, title);
-                }}
-                onUnsafe={(rule) => {
-                  setTab("negotiation");
-                  d.injectUnsafe(rule);
-                }}
-                onStale={d.changeAfterViewing}
-                onTamper={() => {
-                  setTab("log");
-                  d.tamperLog();
-                }}
-                onReset={d.reset}
-              />
+          {/* The detail views, alone at the bottom. */}
+          <div className="z-10 flex justify-center lg:absolute lg:inset-x-0 lg:bottom-3">
             <nav
               aria-label="Views"
               className="flex items-center gap-0.5 rounded-xl border border-border bg-card/85 p-1 backdrop-blur"
@@ -285,13 +296,15 @@ export function Dashboard() {
                   key={t.id}
                   type="button"
                   aria-pressed={tab === t.id}
+                  title={t.label}
                   onClick={() => toggleTab(t.id)}
                   className={cn(
-                    "rounded-lg px-3 py-1.5 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                     tab === t.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
                   )}
                 >
-                  {t.label}
+                  <t.Icon aria-hidden className="size-4" />
+                  <span className="max-xl:sr-only">{t.label}</span>
                 </button>
               ))}
             </nav>

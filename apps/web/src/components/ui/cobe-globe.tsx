@@ -45,6 +45,8 @@ interface GlobeProps {
   focus?: [number, number] | null
   /** Zoom applied while `focus` is set. */
   focusScale?: number
+  /** Radians to tilt a focused place up from the centre, for a cropped view. */
+  focusLift?: number
 }
 
 const tagStyle = {
@@ -94,9 +96,10 @@ export function Globe({
   mapSamples = 16000,
   showLabels = true,
   highlightArc = null,
-  highlightColor = [1, 0.74, 0.32],
+  highlightColor = [0.72, 0.6, 1],
   focus = null,
   focusScale = 1,
+  focusLift = 0,
 }: GlobeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pointerInteracting = useRef<{ x: number; y: number } | null>(null)
@@ -110,6 +113,7 @@ export function Globe({
   // Read by the render loop, so changing them never rebuilds the globe.
   const focusRef = useRef(focus)
   const focusScaleRef = useRef(focusScale)
+  const focusLiftRef = useRef(focusLift)
   const shapesRef = useRef<{ markers: ReturnType<typeof toMarkers>; arcs: ReturnType<typeof toArcs> } | null>(null)
 
   function toMarkers() {
@@ -127,7 +131,8 @@ export function Globe({
   useEffect(() => {
     focusRef.current = focus
     focusScaleRef.current = focusScale
-  }, [focus, focusScale])
+    focusLiftRef.current = focusLift
+  }, [focus, focusScale, focusLift])
 
   useEffect(() => {
     shapesRef.current = { markers: toMarkers(), arcs: toArcs() }
@@ -227,7 +232,7 @@ export function Globe({
           // Ease towards the location: phi turns its longitude to the front,
           // theta tilts its latitude towards the viewer.
           const goalPhi = Math.PI - ((target[1] * Math.PI) / 180 - Math.PI / 2)
-          const goalTheta = (target[0] * Math.PI) / 180 - theta
+          const goalTheta = (target[0] * Math.PI) / 180 - theta - focusLiftRef.current
           const ease = reduced ? 1 : 0.08
           phi += angleDelta(phi + phiOffsetRef.current, goalPhi) * ease
           thetaOffsetRef.current += (Math.max(-0.4, Math.min(0.4, goalTheta)) - thetaOffsetRef.current) * ease

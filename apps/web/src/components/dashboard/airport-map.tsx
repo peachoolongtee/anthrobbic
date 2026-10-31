@@ -159,7 +159,7 @@ export function AirportMap({
               rx="3"
               className={cn(
                 "transition-colors",
-                r.closed ? "fill-[url(#closed-hatch)]" : "fill-[oklch(0.3_0.03_262)] group-hover:fill-[oklch(0.35_0.035_262)]",
+                r.closed ? "fill-[url(#closed-hatch)]" : "fill-[oklch(0.3_0.008_275)] group-hover:fill-[oklch(0.35_0.01_275)]",
                 assigned && !r.closed && "stroke-beacon",
                 "group-focus-visible:stroke-ring",
               )}

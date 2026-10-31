@@ -3,17 +3,19 @@ import type { Provenance } from "@/lib/api-types";
 import { PROVENANCE_LABEL } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 
+// Provenance is metadata, not status, so every kind shares one neutral tone
+// and is told apart by its word or letter. Synthetic gets a dashed outline.
 const TONE: Record<Provenance, string> = {
-  real: "bg-success-soft text-success",
-  derived: "bg-info-soft text-info",
-  synthetic: "bg-warning-soft text-warning",
+  real: "border border-transparent bg-muted text-foreground",
+  derived: "border border-transparent bg-muted text-muted-foreground",
+  synthetic: "border border-dashed border-muted-foreground/60 bg-transparent text-muted-foreground",
 };
 
 /** Says where a value came from. The word is always shown, never colour alone. */
 export function ProvenanceBadge({ provenance, className }: { provenance: Provenance; className?: string }) {
   const meta = PROVENANCE_LABEL[provenance];
   return (
-    <Badge variant="outline" title={meta.detail} className={cn("border-transparent", TONE[provenance], className)}>
+    <Badge variant="outline" title={meta.detail} className={cn(TONE[provenance], className)}>
       {meta.name}
     </Badge>
   );
@@ -29,7 +31,7 @@ export function ProvenanceMark({ provenance, className }: { provenance: Provenan
     <abbr
       title={`${meta.name}: ${meta.detail}`}
       className={cn(
-        "inline-grid size-4 place-items-center rounded-[3px] font-sans text-[10px] leading-none font-semibold no-underline",
+        "inline-grid size-[1.125rem] place-items-center rounded-[3px] font-sans text-xs leading-none font-semibold no-underline",
         TONE[provenance],
         className,
       )}

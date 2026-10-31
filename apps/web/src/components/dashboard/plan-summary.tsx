@@ -1,4 +1,20 @@
-import { CircleAlert, CircleCheck, CloudLightning, PlaneLanding, ScrollText } from "lucide-react";
+import {
+  CalendarClock,
+  CircleAlert,
+  CircleCheck,
+  Clock,
+  CloudLightning,
+  DoorOpen,
+  Hourglass,
+  PlaneLanding,
+  Repeat,
+  RotateCw,
+  ScrollText,
+  ShieldCheck,
+  ShieldX,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import type { Provenance, Run, ScenarioSummary } from "@/lib/api-types";
 import { CAUSE_LABEL, DOMAIN_LABEL, FAULT_LABEL, PATH_LABEL } from "@/lib/labels";
 import { cn } from "@/lib/utils";
@@ -7,6 +23,19 @@ import { ProvenanceMark } from "@/components/dashboard/provenance-badge";
 import { RouteCodes } from "@/components/dashboard/flight-list";
 
 const CAUSE_ICON = { weather: CloudLightning, late_aircraft: PlaneLanding } as const;
+/** An icon for each fact key; unknown keys fall back to their label. */
+const FACT_ICON: Record<string, LucideIcon> = { runway: PlaneLanding, gate: DoorOpen, handling: RotateCw };
+
+/** A small label shown as an icon, with the word on hover and for screen readers. */
+function IconLabel({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
+  return (
+    <span title={label} className="inline-flex text-muted-foreground">
+      <Icon aria-hidden className="size-4" />
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
 /** Facts already shown in the header, so the grid skips them. */
 const IN_HEADER = new Set(["arrival", "scheduled"]);
 
@@ -22,12 +51,13 @@ export function landingFact(card: Run["card"] | undefined): { clock: string; pro
   return slot && clock ? { clock, provenance: slot.provenance } : null;
 }
 
-function Pill({ ok, children }: { ok: boolean; children: React.ReactNode }) {
-  const Icon = ok ? CircleCheck : CircleAlert;
+function Pill({ ok, icon: Icon, title, children }: { ok: boolean; icon: LucideIcon; title: string; children: React.ReactNode }) {
+  const Mark = ok ? CircleCheck : CircleAlert;
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background/40 px-2 py-0.5 text-xs">
-      <Icon aria-hidden className={cn("size-3.5", ok ? "text-success" : "text-destructive")} />
+    <span title={title} className="inline-flex items-center gap-1 rounded-full border border-border bg-background/40 px-2 py-0.5 text-xs">
+      <Icon aria-hidden className="size-3.5 text-muted-foreground" />
       {children}
+      <Mark aria-hidden className={cn("size-3.5", ok ? "text-success" : "text-destructive")} />
     </span>
   );
 }
@@ -69,32 +99,42 @@ export function PlanSummary({
 
       <dl className="grid grid-cols-3 items-end gap-2 tabular-nums">
         <div>
-          <dt className="text-xs text-muted-foreground">Due</dt>
+          <dt><IconLabel icon={CalendarClock} label="Due" /></dt>
           <dd className="font-display text-lg font-semibold text-muted-foreground line-through decoration-1">
             {flight.scheduled_arrival}
           </dd>
         </div>
         <div>
-          <dt className="text-xs text-muted-foreground">Lands</dt>
+          <dt><IconLabel icon={Clock} label="Lands" /></dt>
           <dd className="flex items-center gap-1 font-display text-2xl font-semibold">
             {arrival?.clock ?? "—"}
             {arrival && <ProvenanceMark provenance={arrival.provenance} />}
           </dd>
         </div>
         <div className="text-right">
-          <dt className="text-xs text-muted-foreground">Late</dt>
+          <dt><IconLabel icon={Hourglass} label="Minutes late" /></dt>
           <dd className="font-display text-lg font-semibold text-beacon">+{flight.delay_minutes}</dd>
         </div>
       </dl>
 
       {run && (
         <div className="flex flex-wrap gap-1.5">
-          <Pill ok={run.path === "consensus"}>{PATH_LABEL[run.path]}</Pill>
-          <Pill ok={run.decision.kind === "DEAL"}>
+          <Pill ok={run.path === "consensus"} icon={Users} title={PATH_LABEL[run.path]}>
+            {PATH_LABEL[run.path]}
+          </Pill>
+          <Pill
+            ok={run.decision.kind === "DEAL"}
+            icon={run.decision.kind === "DEAL" ? ShieldCheck : ShieldX}
+            title={run.decision.kind === "DEAL" ? "Passes the rules checked" : "No-go: no recovery plan passes"}
+          >
             {run.decision.kind === "DEAL" ? "Passes the rules checked" : "No-go: no recovery plan passes"}
           </Pill>
           {run.turns.length > 0 && (
-            <span className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+            <span
+              title={`${run.turns.length} negotiation ${run.turns.length === 1 ? "turn" : "turns"} used`}
+              className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground tabular-nums"
+            >
+              <Repeat aria-hidden className="size-3.5" />
               {run.turns.length} {run.turns.length === 1 ? "turn" : "turns"}
             </span>
           )}
@@ -104,7 +144,7 @@ export function PlanSummary({
       {run && run.faults.length > 0 && (
         <ul className="space-y-1" aria-label="Faults">
           {run.faults.map((f, i) => (
-            <li key={i} title={f.message} className="flex items-center gap-1.5 text-xs text-warning">
+            <li key={i} title={f.message} className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <CircleAlert aria-hidden className="size-3.5 shrink-0" />
               {FAULT_LABEL[f.kind]}
               {f.domain ? `: ${DOMAIN_LABEL[f.domain]}` : ""}
@@ -118,7 +158,9 @@ export function PlanSummary({
         <dl className="grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-border bg-border">
           {facts.map((f) => (
             <div key={f.key} className="bg-card px-2.5 py-2">
-              <dt className="text-xs text-muted-foreground">{f.label}</dt>
+              <dt className="text-xs text-muted-foreground">
+                {FACT_ICON[f.key] ? <IconLabel icon={FACT_ICON[f.key]} label={f.label} /> : f.label}
+              </dt>
               <dd className="mt-0.5 flex items-start gap-1 font-display text-base leading-tight font-semibold">
                 <span className="min-w-0">{f.value}</span>
                 <ProvenanceMark provenance={f.provenance} className="shrink-0" />

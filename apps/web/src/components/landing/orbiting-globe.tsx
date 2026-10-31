@@ -12,42 +12,49 @@ export interface GlobeRoute {
   to: [number, number]
 }
 
-const NIGHT_BASE: [number, number, number] = [0.22, 0.29, 0.45]
-const SKY: [number, number, number] = [0.42, 0.72, 1]
-const BEACON: [number, number, number] = [1, 0.74, 0.32]
-const HALO: [number, number, number] = [0.16, 0.24, 0.42]
+const NIGHT_BASE: [number, number, number] = [0.26, 0.26, 0.3]
+const ROUTE: [number, number, number] = [0.62, 0.58, 0.78]
+const BEACON: [number, number, number] = [0.72, 0.6, 1]
+const HALO: [number, number, number] = [0.2, 0.19, 0.27]
 // Starts with North America facing the viewer.
 const START_PHI = Math.PI - ((-95 * Math.PI) / 180 - Math.PI / 2)
 
 // The contiguous US, where every route in the data lies.
 const US_CENTRE: [number, number] = [39, -97]
 
-type Orbit = { rx: number; ry: number; tilt: number; period: number; planes: number[] }
+type Layout = "square" | "horizon"
 
 /**
- * Orbits are ellipses around the centre. rx is a fraction of the box width
- * and ry of its height, so the same numbers fit a square box or a wide band.
- * `tilt` turns the ellipse; `period` is seconds per lap.
+ * Orbits are ellipses centred at (cx, cy). Every value is a fraction of the
+ * box: x values of its width, y values of its height, so the same numbers
+ * suit any size. `tilt` turns the ellipse; `period` is seconds per lap.
  */
-const SQUARE_ORBITS: Orbit[] = [
-  { rx: 0.47, ry: 0.12, tilt: -14, period: 22, planes: [0, 0.5] },
-  { rx: 0.43, ry: 0.17, tilt: 24, period: 30, planes: [0.2] },
-  { rx: 0.49, ry: 0.08, tilt: 5, period: 38, planes: [0.65, 0.9] },
-]
-const WIDE_ORBITS: Orbit[] = [
-  { rx: 0.44, ry: 0.3, tilt: -4, period: 26, planes: [0, 0.5] },
-  { rx: 0.33, ry: 0.44, tilt: 6, period: 34, planes: [0.2, 0.7] },
-  { rx: 0.48, ry: 0.16, tilt: 2, period: 42, planes: [0.4, 0.9] },
-]
+type Orbit = { cx: number; cy: number; rx: number; ry: number; tilt: number; period: number; planes: number[] }
+
+const ORBITS: Record<Layout, Orbit[]> = {
+  square: [
+    { cx: 0.5, cy: 0.5, rx: 0.47, ry: 0.12, tilt: -14, period: 22, planes: [0, 0.5] },
+    { cx: 0.5, cy: 0.5, rx: 0.43, ry: 0.17, tilt: 24, period: 30, planes: [0.2] },
+    { cx: 0.5, cy: 0.5, rx: 0.49, ry: 0.08, tilt: 5, period: 38, planes: [0.65, 0.9] },
+  ],
+  // Wide, flat orbits over the curve of the globe: the far half crosses the
+  // sky above it, the near half sweeps across its face.
+  horizon: [
+    { cx: 0.5, cy: 0.6, rx: 0.47, ry: 0.34, tilt: -3, period: 32, planes: [0, 0.5] },
+    { cx: 0.5, cy: 0.66, rx: 0.36, ry: 0.46, tilt: 4, period: 44, planes: [0.25, 0.75] },
+    { cx: 0.5, cy: 0.56, rx: 0.49, ry: 0.18, tilt: 1, period: 52, planes: [0.1, 0.6] },
+  ],
+}
 
 const planesOf = (orbits: Orbit[]) => orbits.flatMap((orbit, o) => orbit.planes.map((phase) => ({ orbit: o, phase })))
 
-function halfEllipse(rx: number, ry: number, front: boolean) {
-  const x0 = 50 - rx * 100
-  const x1 = 50 + rx * 100
-  return front
-    ? `M ${x1} 50 A ${rx * 100} ${ry * 100} 0 0 1 ${x0} 50`
-    : `M ${x0} 50 A ${rx * 100} ${ry * 100} 0 0 1 ${x1} 50`
+function halfEllipse(o: Orbit, front: boolean) {
+  const cx = o.cx * 100
+  const cy = o.cy * 100
+  const x0 = cx - o.rx * 100
+  const x1 = cx + o.rx * 100
+  const r = `${o.rx * 100} ${o.ry * 100}`
+  return front ? `M ${x1} ${cy} A ${r} 0 0 1 ${x0} ${cy}` : `M ${x0} ${cy} A ${r} 0 0 1 ${x1} ${cy}`
 }
 
 function OrbitLines({ front, orbits }: { front: boolean; orbits: Orbit[] }) {
@@ -62,8 +69,8 @@ function OrbitLines({ front, orbits }: { front: boolean; orbits: Orbit[] }) {
       {orbits.map((o, i) => (
         <path
           key={i}
-          d={halfEllipse(o.rx, o.ry, front)}
-          transform={`rotate(${o.tilt} 50 50)`}
+          d={halfEllipse(o, front)}
+          transform={`rotate(${o.tilt} ${o.cx * 100} ${o.cy * 100})`}
           fill="none"
           stroke="currentColor"
           strokeWidth={1}
@@ -77,26 +84,28 @@ function OrbitLines({ front, orbits }: { front: boolean; orbits: Orbit[] }) {
 }
 
 /**
- * The landing globe with small airliners circling it on tilted orbits. Routes
+ * A spinning globe with small airliners circling it on tilted orbits. Routes
  * are drawn as arcs; the active one is lit and turned to face the viewer.
- * `wide` lays it out as a band, with the globe filling the height. `framed`
- * holds the globe on the US instead of spinning, since every route is there.
+ * `horizon` makes the globe far wider than the box so only its top curve
+ * shows, fading into the page. `framed` holds it on the US instead of
+ * spinning.
  */
 export function OrbitingGlobe({
   routes,
   activeId = null,
-  wide = false,
+  layout = "square",
   framed = false,
   className = "",
 }: {
   routes: GlobeRoute[]
   activeId?: string | null
-  wide?: boolean
+  layout?: Layout
   framed?: boolean
   className?: string
 }) {
   const webgl = useWebGL()
-  const orbits = wide ? WIDE_ORBITS : SQUARE_ORBITS
+  const horizon = layout === "horizon"
+  const orbits = ORBITS[layout]
   const planes = useMemo(() => planesOf(orbits), [orbits])
   const active = routes.find((r) => r.id === activeId)
   const focus = useMemo<[number, number] | null>(
@@ -151,8 +160,8 @@ export function OrbitingGlobe({
         // downward, so the lower half (sin theta > 0) is nearer the viewer.
         const lx = o.rx * Math.cos(theta)
         const ly = o.ry * Math.sin(theta)
-        const x = (lx * cos - ly * sin) * w
-        const y = (lx * sin + ly * cos) * h
+        const x = (o.cx + lx * cos - ly * sin) * w
+        const y = (o.cy + lx * sin + ly * cos) * h
         const dx = -o.rx * Math.sin(theta)
         const dy = o.ry * Math.cos(theta)
         const heading = Math.atan2((dx * sin + dy * cos) * h, (dx * cos - dy * sin) * w)
@@ -173,15 +182,24 @@ export function OrbitingGlobe({
   }, [orbits, planes])
 
   return (
-    <div ref={boxRef} className={`relative isolate w-full ${wide ? "" : "aspect-square"} ${className}`}>
-      <div
-        className="pointer-events-none absolute top-1/2 left-1/2 aspect-square h-[90%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,var(--primary)_16%,transparent)_30%,transparent_70%)] blur-2xl"
-      />
+    <div
+      ref={boxRef}
+      className={`relative isolate w-full ${horizon ? "overflow-hidden" : "aspect-square"} ${className}`}
+    >
+      {horizon ? (
+        <div className="pointer-events-none absolute top-[4%] left-1/2 h-[70%] w-[80%] -translate-x-1/2 rounded-[50%] bg-[radial-gradient(ellipse_at_50%_60%,color-mix(in_oklch,var(--primary)_22%,transparent),transparent_65%)] blur-3xl" />
+      ) : (
+        <div className="pointer-events-none absolute top-1/2 left-1/2 aspect-square h-[90%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,var(--primary)_16%,transparent)_30%,transparent_70%)] blur-2xl" />
+      )}
       <OrbitLines front={false} orbits={orbits} />
-      {/* The globe: 72% of a square box, or 84% of a band's height. */}
+      {/* The globe: 72% of a square box; on the horizon, 86% of the box's
+          width with only its top curve inside the box. */}
       <div
-        className="absolute top-1/2 left-1/2 z-[1] aspect-square -translate-x-1/2 -translate-y-1/2"
-        style={{ height: wide ? "84%" : "72%" }}
+        className={
+          horizon
+            ? "absolute top-[16%] left-1/2 z-[1] aspect-square w-[86%] -translate-x-1/2"
+            : "absolute top-1/2 left-1/2 z-[1] aspect-square h-[72%] -translate-x-1/2 -translate-y-1/2"
+        }
       >
         {!webgl ? (
           <VisualFallback label="Globe" className="rounded-full" />
@@ -194,22 +212,25 @@ export function OrbitingGlobe({
           highlightArc={active ? active.id : null}
           highlightColor={BEACON}
           focus={focus}
-          focusScale={active ? 2.4 : 1.7}
-          className="h-full"
+          focusScale={horizon ? (active ? 1.6 : 1.15) : active ? 2.4 : 1.7}
+          // On the horizon only the top of the globe shows, so a focused
+          // place is tilted up into that part instead of the centre.
+          focusLift={horizon ? 0.55 : 0}
+          className={horizon ? "w-full" : "h-full"}
           dark={1}
           diffuse={1.2}
-          mapSamples={20000}
+          mapSamples={horizon ? 40000 : 20000}
           mapBrightness={7}
           baseColor={NIGHT_BASE}
           markerColor={BEACON}
-          arcColor={SKY}
+          arcColor={ROUTE}
           glowColor={HALO}
-          markerSize={0.02}
+          markerSize={horizon ? 0.012 : 0.02}
           arcHeight={0.2}
-          arcWidth={0.6}
+          arcWidth={horizon ? 0.4 : 0.6}
           phi={START_PHI}
-          theta={0.3}
-          speed={0.0025}
+          theta={horizon ? 0.12 : 0.3}
+          speed={horizon ? 0.0016 : 0.0025}
         />
         </VisualBoundary>
         )}
@@ -221,12 +242,16 @@ export function OrbitingGlobe({
             planeRefs.current[i] = el
           }}
           aria-hidden
-          className="pointer-events-none absolute top-1/2 left-1/2 -mt-3 -ml-3 size-6 text-beacon will-change-transform"
+          className="pointer-events-none absolute top-0 left-0 -mt-3 -ml-3 size-6 text-beacon will-change-transform"
         >
           <Airliner className="size-full drop-shadow-[0_0_6px_color-mix(in_oklch,var(--beacon)_60%,transparent)]" />
         </div>
       ))}
       <OrbitLines front orbits={orbits} />
+      {horizon && (
+        // Fade the globe's lower edge into the page.
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[3] h-2/5 bg-gradient-to-t from-background via-background/70 to-transparent" />
+      )}
     </div>
   )
 }

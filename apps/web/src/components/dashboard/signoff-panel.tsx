@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CircleCheck, CircleX, Hash } from "lucide-react";
+import { ArrowUpRight, CircleCheck, CircleX, Hash, Send, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -238,8 +238,10 @@ function SignoffForm({
       <FallbackNotice run={run} />
 
       <fieldset className="space-y-1.5" disabled={locked}>
-        <legend className="text-sm font-semibold">You decide</legend>
-        <p className="text-xs text-muted-foreground">The airline&rsquo;s own calls.</p>
+        <legend className="flex items-center gap-1.5 text-sm font-semibold" title="The airline's own calls">
+          <UserCheck aria-hidden className="size-4 text-muted-foreground" />
+          You decide
+        </legend>
         <ul className="space-y-0.5 text-sm">
           {card.airline_decisions.map((d) => (
             <li key={d.key}>
@@ -257,16 +259,22 @@ function SignoffForm({
       </fieldset>
 
       <fieldset className="space-y-1.5" disabled={locked}>
-        <legend className="text-sm font-semibold">You request</legend>
-        <p className="text-xs text-muted-foreground">
-          Others decide these. The pilot in command keeps fuel and safety authority.
-        </p>
+        <legend
+          className="flex items-center gap-1.5 text-sm font-semibold"
+          title="Others decide these. The pilot in command keeps fuel and safety authority."
+        >
+          <Send aria-hidden className="size-4 text-muted-foreground" />
+          You request
+        </legend>
         <ul className="space-y-0.5 text-sm">
           {card.requests.map((r) => (
             <li key={r.key}>
               <span className="text-muted-foreground">{r.label}: </span>
-              <span className="font-medium">{r.value}</span> <ProvenanceBadge provenance={r.provenance} className="align-middle" />
-              <span className="text-xs text-muted-foreground">to {r.to}</span>
+              <span className="font-medium">{r.value}</span> <ProvenanceBadge provenance={r.provenance} className="align-middle" />{" "}
+              <span title={`To ${r.to}`} className="inline-flex align-middle text-muted-foreground">
+                <ArrowUpRight aria-hidden className="size-3.5" />
+                <span className="sr-only">to {r.to}</span>
+              </span>
             </li>
           ))}
         </ul>

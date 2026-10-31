@@ -26,11 +26,11 @@ import { cn } from "@/lib/utils";
  * racetrack and a final leg short of the destination.
  */
 
-const NIGHT = "#0b1222";
-const LAND = "#141f36";
-const BORDER = "rgba(150, 180, 230, 0.16)";
-const BEACON = "#f5b544";
-const ROUTE_DIM = "rgba(150, 180, 230, 0.28)";
+const NIGHT = "#111215";
+const LAND = "#1a1b20";
+const BORDER = "rgba(180, 180, 200, 0.16)";
+const BEACON = "#a48bfa";
+const ROUTE_DIM = "rgba(180, 180, 200, 0.28)";
 
 const STYLE = {
   version: 8,

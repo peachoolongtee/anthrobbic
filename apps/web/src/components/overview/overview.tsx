@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, CloudLightning, PlaneLanding } from "lucide-react";
+import { ArrowUpRight, CloudLightning, Database, PlaneLanding, PlayCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import type { ScenarioSummary } from "@/lib/api-types";
 import { AIRPORTS, routeCodes } from "@/lib/airports";
@@ -46,18 +46,16 @@ function Panel({
   return (
     <section
       aria-label={title}
-      className={cn("flex min-w-0 flex-col rounded-2xl border border-border bg-card/70 p-5 backdrop-blur", className)}
+      className={cn("flex min-w-0 flex-col rounded-2xl border border-white/10 bg-card/70 p-5 backdrop-blur-xl backdrop-saturate-150 [box-shadow:inset_0_1px_0_0_rgb(255_255_255/0.06)]", className)}
     >
       <header className="mb-4 flex items-center gap-2">
         <h2 className="font-display text-lg font-medium">{title}</h2>
         {source && (
           <span
             title={source === "real" ? "Counted from the US DOT on-time records for 2015" : "From the demo flight list, not from the 2015 counts"}
-            className={cn(
-              "rounded px-1.5 py-0.5 text-[11px] font-medium",
-              source === "real" ? "bg-success-soft text-success" : "bg-info-soft text-info",
-            )}
+            className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground"
           >
+            {source === "real" ? <Database aria-hidden className="size-3.5" /> : <PlayCircle aria-hidden className="size-3.5" />}
             {source === "real" ? "US DOT 2015" : "Demo flights"}
           </span>
         )}
@@ -200,9 +198,8 @@ export function Overview() {
             <OrbitingGlobe
               routes={routes}
               activeId={activeId}
-              wide
-              framed
-              className="h-[24rem] sm:h-[32rem] lg:h-[min(66vh,44rem)]"
+              layout="horizon"
+              className="h-[22rem] sm:h-[28rem] lg:h-[min(62vh,40rem)]"
             />
           </div>
           <p className="pointer-events-none absolute right-1 bottom-2 z-10 max-w-48 text-right text-[11px] text-muted-foreground sm:max-w-none">
