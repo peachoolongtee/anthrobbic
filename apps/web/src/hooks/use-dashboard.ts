@@ -82,9 +82,12 @@ export function useDashboard() {
         .then((data) => {
           setScenarios({ status: "ready", data });
           if (selectedRef.current === null && data.length > 0) {
-            selectedRef.current = data[0].scenario_id;
-            setSelectedId(data[0].scenario_id);
-            void startRun(data[0].scenario_id, "recorded", {});
+            // A flight picked on the home page arrives as ?flight=<scenario_id>.
+            const linked = new URLSearchParams(window.location.search).get("flight");
+            const first = data.find((s) => s.scenario_id === linked) ?? data[0];
+            selectedRef.current = first.scenario_id;
+            setSelectedId(first.scenario_id);
+            void startRun(first.scenario_id, "recorded", {});
           }
         })
         .catch((err: unknown) => {

@@ -1,10 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Ban, CircleAlert, CircleCheck, Info, Wrench } from "lucide-react";
+import { CircleAlert, CircleCheck, FileWarning, Info, Loader2, RotateCcw, ShieldAlert, TimerReset } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { Run, RunOverrides } from "@/lib/api-types";
 import type { BreakKind, BreakOutcome } from "@/hooks/use-dashboard";
 import { UNSAFE_OPTIONS } from "@/lib/labels";
@@ -16,168 +15,93 @@ interface Props {
   busy: BreakKind | null;
   disabled: boolean;
   outcome: BreakOutcome | null;
-  onRunway: (id: string) => void;
-  onGate: (id: string) => void;
   onUnsafe: (ruleId: string) => void;
   onStale: () => void;
   onTamper: () => void;
   onReset: () => void;
 }
 
-/** Resources to offer: the API's airport list, else what the plan and overrides name. */
-function options(run: Run | null, kind: "runways" | "gates", closed: string[]): { id: string; closed: boolean }[] {
-  if (run?.airport) return run.airport[kind];
-  const ids = new Set<string>(closed);
-  if (run?.decision.kind === "DEAL") ids.add(kind === "runways" ? run.decision.package.runway_id : run.decision.package.gate_id);
-  return [...ids].map((id) => ({ id, closed: closed.includes(id) }));
-}
-
-/** A pressed toggle means the resource is closed: red, with an icon, never colour alone. */
-const CLOSED_STYLE =
-  "aria-pressed:border-destructive aria-pressed:bg-destructive aria-pressed:text-background aria-pressed:hover:bg-destructive/90";
-
 const TONE = {
-  ok: { icon: CircleCheck, cls: "border-success/40 bg-success-soft", iconCls: "text-success" },
-  bad: { icon: CircleAlert, cls: "border-destructive/40 bg-destructive-soft", iconCls: "text-destructive" },
-  info: { icon: Info, cls: "border-info/40 bg-info-soft", iconCls: "text-info" },
+  ok: { icon: CircleCheck, cls: "border-success/40", iconCls: "text-success" },
+  bad: { icon: CircleAlert, cls: "border-destructive/50", iconCls: "text-destructive" },
+  info: { icon: Info, cls: "border-info/40", iconCls: "text-info" },
 } as const;
 
+/**
+ * The try-to-break-it controls that are not on the map: inject an unsafe
+ * plan, change the airport behind the screen, tamper with the log, reset.
+ * Runways and gates are closed by selecting them on the map.
+ */
 export function BreakItDock(p: Props) {
   const [unsafe, setUnsafe] = useState<string>(UNSAFE_OPTIONS[0].value);
-  const closedRunways = p.overrides.closed_runways ?? [];
-  const closedGates = p.overrides.closed_gates ?? [];
-  const runways = options(p.run, "runways", closedRunways);
-  const gates = options(p.run, "gates", closedGates);
   const off = p.disabled || p.busy !== null || p.run === null;
-  const hasOverrides = closedRunways.length > 0 || closedGates.length > 0 || !!p.overrides.inject_unsafe;
+  const hasOverrides =
+    (p.overrides.closed_runways?.length ?? 0) > 0 ||
+    (p.overrides.closed_gates?.length ?? 0) > 0 ||
+    !!p.overrides.inject_unsafe;
   const tone = p.outcome ? TONE[p.outcome.tone] : null;
   const Icon = tone?.icon;
 
   return (
-    <section
-      aria-labelledby="break-heading"
-      className="shrink-0 border-t bg-card px-3 py-2 lg:sticky lg:bottom-0 lg:z-10"
-    >
-      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
-        <h2 id="break-heading" className="flex items-center gap-1.5 text-sm font-semibold">
-          <Wrench aria-hidden className="size-4" />
-          Try to break it
-        </h2>
-
-        <div className="flex items-center gap-1.5">
-          <span id="rwy-label" className="text-xs text-muted-foreground">
-            Close runway
-          </span>
-          <ToggleGroup
-            aria-labelledby="rwy-label"
-            multiple
-            variant="outline"
-            size="sm"
-            spacing={0}
-            value={closedRunways}
-            disabled={off}
-            onValueChange={(next) => {
-              const changed = next.find((v) => !closedRunways.includes(v)) ?? closedRunways.find((v) => !next.includes(v));
-              if (changed) p.onRunway(changed);
-            }}
-          >
-            {runways.map((r) => (
-              <ToggleGroupItem
-                key={r.id}
-                value={r.id}
-                aria-label={`Runway ${r.id}, ${r.closed ? "closed" : "open"}`}
-                className={CLOSED_STYLE}
-              >
-                {r.closed && <Ban aria-hidden className="size-3" />}
-                {r.id}
-                {r.closed && <span className="sr-only"> closed</span>}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <span id="gate-label" className="text-xs text-muted-foreground">
-            Block gate
-          </span>
-          <ToggleGroup
-            aria-labelledby="gate-label"
-            multiple
-            variant="outline"
-            size="sm"
-            spacing={0}
-            value={closedGates}
-            disabled={off}
-            onValueChange={(next) => {
-              const changed = next.find((v) => !closedGates.includes(v)) ?? closedGates.find((v) => !next.includes(v));
-              if (changed) p.onGate(changed);
-            }}
-          >
-            {gates.map((g) => (
-              <ToggleGroupItem
-                key={g.id}
-                value={g.id}
-                aria-label={`Gate ${g.id}, ${g.closed ? "blocked" : "free"}`}
-                className={CLOSED_STYLE}
-              >
-                {g.closed && <Ban aria-hidden className="size-3" />}
-                {g.id}
-                {g.closed && <span className="sr-only"> blocked</span>}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <Select items={UNSAFE_OPTIONS} value={unsafe} onValueChange={(v) => v && setUnsafe(v)} disabled={off}>
-            <SelectTrigger size="sm" aria-label="Unsafe plan to inject" className="w-34">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {UNSAFE_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button size="sm" variant="outline" disabled={off} onClick={() => p.onUnsafe(unsafe)}>
-            Inject
-          </Button>
-        </div>
-
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={off}
-          onClick={p.onStale}
-          title="Blocks the plan's gate on the server while this screen keeps showing the old plan. Then try to approve."
-        >
-          Change airport state
-        </Button>
-        <Button size="sm" variant="outline" disabled={off} onClick={p.onTamper}>
-          Tamper with log
-        </Button>
-        <Button size="sm" variant="ghost" disabled={off || !hasOverrides} onClick={p.onReset}>
-          Reset
-        </Button>
-      </div>
-
-      <div role="status" aria-live="polite" className="mt-1.5 min-h-7">
-        {p.busy !== null && <p className="text-sm text-muted-foreground">Running&hellip;</p>}
+    <section aria-label="Try to break it" className="flex flex-col items-center gap-2">
+      <div role="status" aria-live="polite" className="min-h-0">
+        {p.busy !== null && (
+          <p className="flex items-center gap-2 rounded-full border border-border bg-card/90 px-3 py-1 text-sm backdrop-blur">
+            <Loader2 aria-hidden className="size-4 animate-spin" />
+            Re-running
+          </p>
+        )}
         {p.busy === null && p.outcome && tone && Icon && (
-          <p className={cn("flex items-start gap-2 rounded-md border px-2.5 py-1 text-sm", tone.cls)}>
+          <p
+            className={cn(
+              "flex max-w-xl items-start gap-2 rounded-xl border bg-card/90 px-3 py-1.5 text-sm backdrop-blur",
+              tone.cls,
+            )}
+          >
             <Icon aria-hidden className={cn("mt-0.5 size-4 shrink-0", tone.iconCls)} />
             <span>
-              <strong>{p.outcome.title}.</strong> {p.outcome.detail}
+              <strong className="font-semibold">{p.outcome.title}.</strong>{" "}
+              <span className="text-muted-foreground">{p.outcome.detail}</span>
             </span>
           </p>
         )}
-        {p.busy === null && !p.outcome && (
-          <p className="text-xs text-muted-foreground">
-            Each control changes the situation and shows its result here.
-          </p>
-        )}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-center gap-1 rounded-xl border border-border bg-card/85 p-1 shadow-lg shadow-black/30 backdrop-blur">
+        <Select items={UNSAFE_OPTIONS} value={unsafe} onValueChange={(v) => v && setUnsafe(v)} disabled={off}>
+          <SelectTrigger size="sm" aria-label="Unsafe recovery plan to inject" className="w-34 border-transparent bg-transparent">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {UNSAFE_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button size="sm" variant="secondary" disabled={off} onClick={() => p.onUnsafe(unsafe)} title="Slip this unsafe recovery plan into the negotiation">
+          <ShieldAlert aria-hidden />
+          Inject
+        </Button>
+        <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={off}
+          onClick={p.onStale}
+          title="Block the recovery plan's gate on the server while this screen keeps the old recovery plan. Then try to approve."
+        >
+          <TimerReset aria-hidden />
+          Change behind
+        </Button>
+        <Button size="sm" variant="ghost" disabled={off} onClick={p.onTamper} title="Edit the decision log and check it">
+          <FileWarning aria-hidden />
+          Tamper log
+        </Button>
+        <Button size="icon-sm" variant="ghost" disabled={off || !hasOverrides} onClick={p.onReset} aria-label="Reset" title="Reset">
+          <RotateCcw aria-hidden />
+        </Button>
       </div>
     </section>
   );
