@@ -1,11 +1,14 @@
 "use client";
 
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { STARTS_LIVE } from "@/lib/api";
 import type { RunMode } from "@/lib/api-types";
 import { MODE_LABEL } from "@/lib/labels";
 import { APP_HEADER, AppNav } from "@/components/app-nav";
 
-const MODES: RunMode[] = ["off", "recorded", "live"];
+// A build that starts in Live offers Recorded only as the offline backup, so
+// Model off is left out. Every other build keeps all three.
+const MODES: RunMode[] = STARTS_LIVE ? ["live", "recorded"] : ["off", "recorded", "live"];
 
 /** Always on screen. Says which mode produced what is shown below it. */
 export function ModeBanner({

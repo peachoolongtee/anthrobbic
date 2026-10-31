@@ -8,6 +8,7 @@
   "scripts": {
     "dev:web": "pnpm --filter web dev",
     "dev:api": "uv --directory apps/api run uvicorn app.main:app --reload --port 8000",
+    "dev:api:live": "uv --directory apps/api run --env-file .env uvicorn app.main:app --reload --port 8000",
     "build": "pnpm --filter web build",
     "lint": "pnpm --filter web lint",
     "typecheck": "pnpm --filter web typecheck"
