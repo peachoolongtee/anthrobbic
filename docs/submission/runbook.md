@@ -21,12 +21,50 @@ Nothing loads a `.env` from the repo root. The root `.env.example` lists every v
 | `SUPABASE_URL` | `apps/api/.env` | A URL for a Supabase project | No. |
 | `SUPABASE_SECRET_KEY` | `apps/api/.env` | A server-only secret key | No. Never put it in the web app. |
 | `CORS_ORIGINS` | `apps/api/.env` | A comma-separated list of browser origins | Only if the web app is not on `http://localhost:3000`. That is the default. |
-| `ALLOW_LIVE` | The process environment, for the live moment | A switch. Only `1` allows live model runs | Only for the live moment (see "Start the API for the live moment"). Live runs spend money. |
+| `ALLOW_LIVE` | The process environment, for the live moment | A switch. Only `1` allows live model runs | Only for the Live demo (see "Start for the Live demo"). Live runs spend money. |
 | `FLIGHTS_CSV` | The process environment only | A file path | Only off this laptop. |
 
-Live mode also needs a model credential in the process environment. Everything except the live moment works with no key.
+Live mode also needs a model credential in the process environment. The wifi-off Recorded backup works with no key.
 
-## Start order
+## Start for the Live demo (the plan)
+
+The demo runs on Live. Use two terminal tabs, both at the repo root.
+
+1. API, with the key in the process environment and `ALLOW_LIVE=1`, from `apps/api/.env`. This command never prints the value:
+
+   ```bash
+   set -a; . apps/api/.env; set +a; ALLOW_LIVE=1 uv --directory apps/api run uvicorn app.main:app --port 8000
+   ```
+
+   The coordinator's test used this form. Relying on `.env` alone was not tested.
+
+2. Web, built so the flights page starts in Live:
+
+   ```bash
+   NEXT_PUBLIC_DEFAULT_RUN_MODE=live pnpm --filter web build
+   pnpm --filter web start
+   ```
+
+   With this setting the flights page runs only a flight someone picks, so loading it spends nothing. Unset, the page opens as it does in the backup below.
+
+3. Check the network before going on. Any HTTP status means it is reachable; no status means it is not:
+
+   ```bash
+   curl -sS -o /dev/null -w "%{http_code}\n" https://api.anthropic.com
+   ```
+
+4. Warm it without spending. Open `http://localhost:3000/dashboard/flights` once and wait for the map and the list. Do not pick a flight. Then open `http://localhost:3000` in the tab you will present from, skip the intro and stay there.
+
+**What it costs.** One run-through makes up to 6 model calls, about $0.15, because only beat 1 is Live. Every other flight, runway, gate, preset, **Inject**, **Reset every change** or **Make a new recovery plan** while the mode is Live can use up to 6 more.
+
+**Recovery.** If a Live run has not returned after 40 seconds or shows faults, click **Recorded**. It answers at once from the saved run, and the script has the wording. With no network, use the backup below.
+
+**Before handing the laptop over,** click **Recorded**. Judges trying flights in Live spend up to 6 calls per run. Reloading the page returns it to Live, though it runs nothing until a flight is picked. To be sure, restart the API without `ALLOW_LIVE`, so Live is refused and spends nothing.
+
+## Backup: the wifi-off Recorded demo
+
+Needs no key and no network. Build the web app without `NEXT_PUBLIC_DEFAULT_RUN_MODE`, then follow these steps. Use flights marked "Recorded" and the script's recorded wording in beat 2.
+
 
 The new dashboard has two pages: the overview at `/` and the flights page at `/dashboard/flights`. The overview, when it opens, asks the API for 50 flights and starts no runs, so it makes no model calls. The flights page asks for 200. Both need the API to be up, and the first list call after an API restart takes several seconds (7.8 seconds when measured). So the order matters. Use two terminal tabs, both at the repo root.
 
@@ -55,7 +93,7 @@ The new dashboard has two pages: the overview at `/` and the flights page at `/d
    pnpm --filter web start
    ```
 
-5. Open `http://localhost:3000` in the tab you will present from. Skip the intro (see below). Wait until the **Outcomes** panel on the overview shows its ring and counts, which means the 12 recorded runs finished. `[CHECK ON SCREEN]`
+5. Open `http://localhost:3000` in the tab you will present from. Skip the intro (see below). Wait until the **Arrivals** list shows flights.
 6. Do the wifi-off check (see below), then turn wifi back on or leave it off, as you plan to present.
 7. Click one flight and wait for the map, so the flights page and its map have loaded once. Then return to the overview and stay there.
 
@@ -120,22 +158,8 @@ Write the test output to a file and read the exit code before relying on it. A p
 ## What to expect today
 
 - **Model off** works with no key. A flight list loads, a run builds, sign-off and the log work.
-- **Recorded** replays saved model answers, and it is the default on the flights page and the only mode the overview uses. Leave the mode on Recorded unless you are at the live moment. Any change to runways or gates is not what was recorded, so the rules choose the plan, and the page lists "No recording" and says why.
-- **Live** is available only when the API is started with `ALLOW_LIVE=1` and a credential; otherwise it is refused. It is used once on stage, as the last part of the talk.
-
-## Start the API for the live moment
-
-Start the API with the key in the process environment and `ALLOW_LIVE=1`, from `apps/api/.env`, with this command. It never prints the value:
-
-```bash
-set -a; . apps/api/.env; set +a; ALLOW_LIVE=1 uv --directory apps/api run uvicorn app.main:app --port 8000
-```
-
-The coordinator's test used this form. Relying on `.env` alone was not tested.
-
-- Live needs internet. Check the network before going on. With no network, skip the live moment.
-- A rehearsal that clicks **Live** spends up to 6 calls, about $0.15. Rehearse without it where you can.
-- Leave the mode on **Recorded** otherwise. Recorded stays the default.
+- **Recorded** replays saved model answers, and it is the default on the flights page and the only mode the overview uses. It is the recovery from a Live run that fails, and the backup with no network. Any change to runways or gates is not what was recorded, so the rules choose the plan, and the page lists "No recording" and says why.
+- **Live** is available only when the API is started with `ALLOW_LIVE=1` and a credential; otherwise it is refused. The stage demo runs on it, in beat 1 only: see "Start for the Live demo".
 
 ## If a visual fails: the 30-second plan
 
