@@ -126,7 +126,13 @@ def test_wake_ignores_another_runway() -> None:
     other = OtherArrival(
         flight_id="X", wake_category=WakeCategory.SUPER, runway_id="28R", time_min=100
     )
-    verdict = _verdict(HarmCheck.WAKE_SPACING, other_arrivals=(other,))
+    independent = (
+        Runway(runway_id="28L", closed=False, parallel_group=None),
+        Runway(runway_id="28R", closed=False, parallel_group=None),
+    )
+    verdict = _verdict(
+        HarmCheck.WAKE_SPACING, other_arrivals=(other,), runways=independent
+    )
     assert verdict is HarmVerdict.CLEAR
 
 
@@ -211,7 +217,7 @@ def test_gate_ignores_other_gates() -> None:
 
 
 def test_closed_runway_and_taxiway_are_harm() -> None:
-    closed_runway = (Runway(runway_id="28L", closed=True),)
+    closed_runway = (Runway(runway_id="28L", closed=True, parallel_group=None),)
     closed_taxiway = (
         Taxiway(taxiway_id="T1", closed=True),
         Taxiway(taxiway_id="T2", closed=False),

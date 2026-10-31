@@ -21,8 +21,8 @@ from app.negotiation.utility import CostWeights
 from tests.negotiation.factories import make_package, make_scenario, random_scenario
 
 CLOSED_28L = (
-    Runway(runway_id="28L", closed=True),
-    Runway(runway_id="28R", closed=False),
+    Runway(runway_id="28L", closed=True, parallel_group=None),
+    Runway(runway_id="28R", closed=False, parallel_group=None),
 )
 # Gate-in at 110 is 10 min after this ends, so A1 needs the slot at 105.
 A1_BUSY = GateOccupancy(gate_id="A1", flight_id="O", start_min=20, end_min=100)
@@ -86,8 +86,8 @@ def test_human_moves_gate_rather_than_wait() -> None:
 
 def test_human_escalates_when_nothing_is_legal() -> None:
     all_closed = (
-        Runway(runway_id="28L", closed=True),
-        Runway(runway_id="28R", closed=True),
+        Runway(runway_id="28L", closed=True, parallel_group=None),
+        Runway(runway_id="28R", closed=True, parallel_group=None),
     )
     _, human = run_baselines(make_scenario(runways=all_closed))
     assert human.name is BaselineName.HUMAN_HEURISTIC

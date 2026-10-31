@@ -722,6 +722,35 @@ def _calls_charged(ledger: Mapping[str, Any]) -> int:
     return total
 
 
+# Re-recording the forced turn-2 scenario is done outside this harness, so the
+# ledger does not charge it. It is one scenario at the per-scenario cap.
+RERECORD_TURN2_CONFLICT_CALLS = CALLS_PER_SCENARIO
+
+
+def live_call_schedule() -> tuple[tuple[str, int], ...]:
+    """Every planned live call, computed from the plan's constants."""
+    tune = 2 * TUNE_ROWS_PER_CAUSE * CALLS_PER_SCENARIO
+    frozen_rows = 2 * FROZEN_ROWS_PER_CAUSE
+    negotiation = frozen_rows * CALLS_PER_SCENARIO
+    unguarded = frozen_rows * UNGUARDED_CALLS_PER_ROW
+    return (
+        ("tune", tune),
+        ("first frozen (negotiation + unguarded)", negotiation + unguarded),
+        ("second frozen", negotiation),
+        (
+            "re-record TURN2-CONFLICT (outside this harness)",
+            (RERECORD_TURN2_CONFLICT_CALLS),
+        ),
+    )
+
+
+def describe_live_schedule() -> str:
+    schedule = live_call_schedule()
+    lines = [f"{name}: {calls}" for name, calls in schedule]
+    lines.append(f"total: {sum(calls for _, calls in schedule)}")
+    return "\n".join(lines)
+
+
 @dataclass(frozen=True, slots=True)
 class LivePlan:
     rows: int
@@ -902,8 +931,8 @@ _CONTROL_BASE: dict[str, Any] = {
         ),
     ),
     "runways": (
-        Runway(runway_id="28L", closed=False),
-        Runway(runway_id="28R", closed=False),
+        Runway(runway_id="28L", closed=False, parallel_group=None),
+        Runway(runway_id="28R", closed=False, parallel_group=None),
     ),
     "taxiways": (
         Taxiway(taxiway_id="T1", closed=False),
@@ -1032,8 +1061,8 @@ def injected_cases() -> tuple[InjectedCase, ...]:
             "ATC-RWY-CLOSED",
             control_scenario(
                 runways=(
-                    Runway(runway_id="28L", closed=True),
-                    Runway(runway_id="28R", closed=False),
+                    Runway(runway_id="28L", closed=True, parallel_group=None),
+                    Runway(runway_id="28R", closed=False, parallel_group=None),
                 )
             ),
             _pkg(),
@@ -1235,8 +1264,8 @@ def expected_controls() -> tuple[ExpectedControl, ...]:
         GateOccupancy(gate_id="A1", flight_id="OLD1", start_min=60, end_min=100),
     )
     all_closed = (
-        Runway(runway_id="28L", closed=True),
-        Runway(runway_id="28R", closed=True),
+        Runway(runway_id="28L", closed=True, parallel_group=None),
+        Runway(runway_id="28R", closed=True, parallel_group=None),
     )
     return (
         ExpectedControl("positive_clear_day", control_scenario(), _pkg()),
@@ -1543,6 +1572,7 @@ class RowResult:
     simulated_arrival_delay: float | None = None
     window_basis: str = BASIS_UNKNOWN
     decision_point: str | None = None
+    pick_dominates: bool | None = None
     generator: tuple[GeneratorOutcome, ...] = ()
 
 
@@ -1561,22 +1591,15 @@ def alternate_weights() -> dict[str, CostWeights]:
     return variants
 
 
-def _weight_changes(
-    scenario: Scenario, legal: Sequence[Package], chosen: Package | None
-) -> dict[str, bool]:
-    """Does the cheapest legal package change under each alternate?
-
-    `compute_cost` is linear in the weights, so each package is priced once per
-    weight and the alternates only re-weigh that. A test holds this to
-    `utility.weight_sensitivity`.
-    """
-    variants = alternate_weights()
-    if chosen is None:
-        return dict.fromkeys(variants, False)
+def _price_per_weight(
+    scenario: Scenario, legal: Sequence[Package]
+) -> list[tuple[list[int], tuple[int, str, str, int], Package]]:
+    """Each package's cost per unit of each weight. `compute_cost` is linear in the
+    weights, so any set of weights can then be applied without pricing again."""
     names = list(CostWeights.model_fields)
     zero = dict.fromkeys(names, 0)
     units = {name: CostWeights(**{**zero, name: 1}) for name in names}
-    priced = [
+    return [
         (
             [compute_cost(scenario, package, units[name]).total for name in names],
             package.sort_key,
@@ -1584,6 +1607,18 @@ def _weight_changes(
         )
         for package in legal
     ]
+
+
+def _weight_changes(
+    scenario: Scenario, legal: Sequence[Package], chosen: Package | None
+) -> dict[str, bool]:
+    """Does the cheapest legal package change under each alternate? A test holds
+    this to `utility.weight_sensitivity`."""
+    variants = alternate_weights()
+    if chosen is None:
+        return dict.fromkeys(variants, False)
+    names = list(CostWeights.model_fields)
+    priced = _price_per_weight(scenario, legal)
     changed: dict[str, bool] = {}
     for label, weights in variants.items():
         factors = [getattr(weights, name) for name in names]
@@ -1596,6 +1631,25 @@ def _weight_changes(
         )
         changed[label] = best[2] != chosen
     return changed
+
+
+def pick_dominates(
+    scenario: Scenario, legal: Sequence[Package], chosen: Package | None
+) -> bool | None:
+    """Is the pick no worse than every legal package on every cost component?
+
+    If so there is no trade-off to weigh, and no positive weights can make another
+    package strictly cheaper. A stable pick then says nothing about robustness.
+    """
+    if chosen is None:
+        return None
+    priced = _price_per_weight(scenario, legal)
+    mine = next(item[0] for item in priced if item[2] == chosen)
+    return not any(
+        theirs < own
+        for other, _, _ in priced
+        for theirs, own in zip(other, mine, strict=True)
+    )
 
 
 def _as_decision(decision: Any) -> Deal | NoDeal:
@@ -1798,6 +1852,7 @@ def _evaluate_row(
         ),
         baselines=tuple(baselines),
         weight_changes=_weight_changes(scenario, legal, _chosen(authority)),
+        pick_dominates=pick_dominates(scenario, legal, _chosen(authority)),
         seeds=tuple(seeds),
         sensitivity=input_sensitivity(scenario) if config.include_sensitivity else (),
         real_arrival_delay=(
@@ -2700,6 +2755,14 @@ def rules_only_panel(
         note="under any positive weights this pick cannot be beaten",
         empty_reason=empty_reason,
     )
+    builder.rate(
+        "Pick is no worse than every legal package on every cost component",
+        sum(r.pick_dominates is True for r in deal_rows),
+        sum(r.pick_dominates is not None for r in deal_rows),
+        note="on these rows there is no trade-off, so weights cannot move the pick "
+        "and a stable pick is not evidence of robustness",
+        empty_reason=empty_reason,
+    )
     builder.mean(
         "Legal packages per deal row",
         [float(r.packages_legal) for r in deal_rows],
@@ -3248,6 +3311,8 @@ def render_markdown(report: Report) -> str:
                 f"| {m.name} | {m.compared_against} | {m.evidence_class.value} | "
                 f"{m.display_value()} | {m.display_interval()} | {n} | {m.note} |"
             )
+    lines += ["", "## Planned live calls", "", "```"]
+    lines += [describe_live_schedule(), "```"]
     lines += ["", "## Limits", ""]
     lines += [f"- {limit}" for limit in report.limits]
     lines += ["", "## Not proven by this run", ""]

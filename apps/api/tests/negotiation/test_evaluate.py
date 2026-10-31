@@ -420,13 +420,13 @@ def test_a_decider_that_reacts_to_unrelated_traffic_fails() -> None:
 
 
 def test_sensitivity_with_no_deal_is_not_reached() -> None:
-    closed = (Runway(runway_id="28L", closed=True),)
+    closed = (Runway(runway_id="28L", closed=True, parallel_group=None),)
     pairs = ev.input_sensitivity(ev.control_scenario(runways=closed))
     assert {p.status for p in pairs} == {ev.PairStatus.NOT_REACHED}
 
 
 def test_sensitivity_with_one_runway_cannot_close_another() -> None:
-    open_one = (Runway(runway_id="28L", closed=False),)
+    open_one = (Runway(runway_id="28L", closed=False, parallel_group=None),)
     pairs = {
         p.pair: p for p in ev.input_sensitivity(ev.control_scenario(runways=open_one))
     }
@@ -485,6 +485,62 @@ def test_weight_sensitivity_can_fire() -> None:
     variants = ev.alternate_weights()
     for name, weights in variants.items():
         assert fast[name] == weight_sensitivity(scenario, weights).changed, name
+
+
+def _legal(scenario: Scenario) -> list[Package]:
+    return [p for p in enumerate_packages(scenario) if not check_package(scenario, p)]
+
+
+def test_pick_dominates_when_nothing_is_better_on_any_component() -> None:
+    scenario = ev.control_scenario()
+    decision = decide(scenario)
+    assert isinstance(decision, Deal)
+    assert ev.pick_dominates(scenario, _legal(scenario), decision.package) is True
+
+
+def test_pick_does_not_dominate_when_a_real_trade_off_exists() -> None:
+    """Moving to B1 costs a gate move; waiting for A1 costs fuel. Neither wins on
+    every component, which is the case the weight sweep exists to expose."""
+    busy = (ev.GateOccupancy(gate_id="A1", flight_id="O", start_min=60, end_min=100),)
+    scenario = ev.control_scenario(gate_occupancies=busy)
+    decision = decide(scenario)
+    assert isinstance(decision, Deal)
+    assert ev.pick_dominates(scenario, _legal(scenario), decision.package) is False
+
+
+def test_pick_dominance_with_no_pick_is_none() -> None:
+    assert ev.pick_dominates(ev.control_scenario(), [], None) is None
+
+
+def test_live_schedule_is_the_planned_count() -> None:
+    assert dict(ev.live_call_schedule()) == {
+        "tune": 60,
+        "first frozen (negotiation + unguarded)": 140,
+        "second frozen": 120,
+        "re-record TURN2-CONFLICT (outside this harness)": 6,
+    }
+    assert sum(calls for _, calls in ev.live_call_schedule()) == 326
+    harness = sum(calls for _, calls in ev.live_call_schedule()[:3])
+    assert harness == ev.LIVE_CALL_CEILING
+
+
+def test_controls_reach_the_real_protocol_without_a_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """On the merged tree the gate controls must run, not report NOT_REACHED."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    backends = ev.load_backends()
+    assert backends.run_negotiation is not None
+    panel, failures = ev.controls_panel(_meta(), backends)
+    assert not failures
+    reached_only_by_a_person = {
+        "Hand-calculated scenarios checked by someone who did not write the code"
+    }
+    missed = {
+        m.name for m in panel.measures if m.status is ev.MeasureStatus.NOT_REACHED
+    }
+    assert missed == reached_only_by_a_person
 
 
 def test_alternate_weights_scale_each_weight_both_ways() -> None:
@@ -1518,6 +1574,19 @@ def test_the_command_runs_live_only_with_a_covering_confirmation(
     assert code == evaluate_command.EXIT_OK
     assert fake.modes["live"] == 10
     assert "Planned live calls: 60" in capsys.readouterr().out
+
+
+def test_the_command_prints_the_live_schedule_and_spends_nothing(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = FakeProtocol()
+    monkeypatch.setattr(ev, "load_backends", lambda: fake_backends(fake))
+    assert evaluate_command.main(["--print-live-plan"]) == evaluate_command.EXIT_OK
+    out = capsys.readouterr().out
+    assert "tune: 60" in out
+    assert "second frozen: 120" in out
+    assert "total: 326" in out
+    assert not fake.modes
 
 
 def test_the_command_exit_codes(

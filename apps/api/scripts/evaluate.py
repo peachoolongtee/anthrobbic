@@ -44,6 +44,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="run past the planned frozen runs or call ceiling; recorded as forced",
     )
     parser.add_argument(
+        "--print-live-plan",
+        action="store_true",
+        help="print every planned live call and exit; spends nothing",
+    )
+    parser.add_argument(
         "--regenerate-split",
         action="store_true",
         help="choose the split again; refused once a live run has used it",
@@ -70,6 +75,10 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     # Imported late so --help works anywhere, and after the path is set.
     from app.negotiation import evaluate as ev
+
+    if args.print_live_plan:
+        print(ev.describe_live_schedule())
+        return EXIT_OK
 
     if args.sample < 0 or args.synthetic_seeds < 1 or args.workers < 1:
         print("--sample must not be negative; seeds and workers must be positive")
