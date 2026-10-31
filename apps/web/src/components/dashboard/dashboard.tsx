@@ -185,7 +185,7 @@ export function Dashboard() {
             className={cn(
               PANEL,
               "p-2 lg:absolute lg:right-0 lg:w-[21rem]",
-              clearOfOutcome ? "lg:bottom-[11.5rem]" : "lg:bottom-[9.5rem]",
+              clearOfOutcome ? "lg:bottom-[14rem]" : "lg:bottom-[11.75rem]",
               running && "opacity-60",
             )}
           >
@@ -213,7 +213,7 @@ export function Dashboard() {
                 PANEL,
                 "relative z-20 flex flex-col bg-card/95 animate-in fade-in slide-in-from-bottom-4 duration-200 lg:absolute lg:right-0 lg:top-3",
                 tab === "details" ? "lg:left-0" : "lg:-left-[20rem]",
-                clearOfOutcome ? "lg:bottom-[11.5rem]" : "lg:bottom-[9.5rem]",
+                clearOfOutcome ? "lg:bottom-[14rem]" : "lg:bottom-[11.75rem]",
               )}
             >
               <div className="flex items-center justify-between border-b border-border px-4 py-2">
@@ -255,6 +255,10 @@ export function Dashboard() {
                 busy={d.busy}
                 disabled={running}
                 outcome={d.outcome}
+                onDisrupt={(kind, next, title) => {
+                  setTab(null);
+                  d.disrupt(kind, next, title);
+                }}
                 onUnsafe={(rule) => {
                   setTab("negotiation");
                   d.injectUnsafe(rule);

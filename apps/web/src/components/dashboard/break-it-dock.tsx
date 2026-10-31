@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Run, RunOverrides } from "@/lib/api-types";
 import type { BreakKind, BreakOutcome } from "@/hooks/use-dashboard";
+import { DISRUPTION_LABELS, planDisruptions, type DisruptionId } from "@/lib/disruptions";
 import { UNSAFE_OPTIONS } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +16,7 @@ interface Props {
   busy: BreakKind | null;
   disabled: boolean;
   outcome: BreakOutcome | null;
+  onDisrupt: (kind: "runway" | "gate", overrides: RunOverrides, title: string) => void;
   onUnsafe: (ruleId: string) => void;
   onStale: () => void;
   onTamper: () => void;
@@ -39,6 +41,12 @@ export function BreakItDock(p: Props) {
     (p.overrides.closed_runways?.length ?? 0) > 0 ||
     (p.overrides.closed_gates?.length ?? 0) > 0 ||
     !!p.overrides.inject_unsafe;
+  const presets = planDisruptions(p.run, p.overrides, p.run?.airport?.runways ?? []);
+  const presetIds = Object.keys(presets) as DisruptionId[];
+  const unavailable = presetIds.flatMap((id) => {
+    const d = presets[id];
+    return d.ok ? [] : [d.reason];
+  });
   const tone = p.outcome ? TONE[p.outcome.tone] : null;
   const Icon = tone?.icon;
 
@@ -66,6 +74,30 @@ export function BreakItDock(p: Props) {
           </p>
         )}
       </div>
+
+      <div role="group" aria-label="Disruption presets" className="flex flex-wrap items-center justify-center gap-1 rounded-xl border border-border bg-card/85 p-1 shadow-lg shadow-black/30 backdrop-blur">
+        {presetIds.map((id) => {
+          const d = presets[id];
+          return (
+            <Button
+              key={id}
+              size="sm"
+              variant="ghost"
+              disabled={off || !d.ok}
+              title={d.ok ? `${d.modelled}. The page says so when it runs.` : d.reason}
+              aria-describedby={!d.ok ? "preset-why" : undefined}
+              onClick={() => d.ok && p.onDisrupt(id === "equipment" ? "gate" : "runway", d.overrides, d.modelled)}
+            >
+              {DISRUPTION_LABELS[id]}
+            </Button>
+          );
+        })}
+      </div>
+      {!off && unavailable.length > 0 && (
+        <p id="preset-why" className="sr-only">
+          {unavailable.join(" ")}
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center justify-center gap-1 rounded-xl border border-border bg-card/85 p-1 shadow-lg shadow-black/30 backdrop-blur">
         <Select items={UNSAFE_OPTIONS} value={unsafe} onValueChange={(v) => v && setUnsafe(v)} disabled={off}>

@@ -300,6 +300,14 @@ export function useDashboard() {
     [overrides, breakWith],
   );
 
+  /** A preset: several existing overrides at once, with a title saying how it is modelled. */
+  const disrupt = useCallback(
+    (kind: "runway" | "gate", next: RunOverrides, title: string) => {
+      void breakWith(kind, next, title);
+    },
+    [breakWith],
+  );
+
   const injectUnsafe = useCallback(
     (ruleId: string) => {
       void breakWith("unsafe", { ...overrides, inject_unsafe: ruleId }, "Unsafe plan injected");
@@ -456,6 +464,7 @@ export function useDashboard() {
     tamper,
     closeRunway,
     blockGate,
+    disrupt,
     injectUnsafe,
     changeAfterViewing,
     tamperLog,
