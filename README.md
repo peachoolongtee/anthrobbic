@@ -21,7 +21,7 @@ Read from the code in this repo.
 - **Dashboard** (`apps/web`, Next.js): flight list, recovery plan, negotiation, log and evidence views, a sign-off panel, and a "Try to break it" bar.
 - **Evaluation** (`apps/api/app/negotiation/evaluate.py`, `scripts/evaluate.py`): one command prints the table, with an evidence class on each number.
 
-Run modes: **Model off** (rules only), **Recorded** (replays saved model answers) and **Live** (calls the model; refused unless `ALLOW_LIVE=1` and a credential is set).
+Run modes: **Model off** (rules only), **Recorded** (replays saved model answers) and **Live** (calls the model; available only when the API is started with `ALLOW_LIVE=1` and a credential).
 
 ## Design choices that matter for judging
 
