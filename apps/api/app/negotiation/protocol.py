@@ -511,6 +511,11 @@ class _Negotiation:
                 "rules_passed": passed,
             },
         )
+        if path == "consensus" and self.trace.faults:
+            # The sink broke on this very event, so the log has no `result` for a
+            # run that would otherwise read as clean consensus. The fallback runs
+            # with the sink already dropped; the fault stays on the result.
+            return self.to_fallback("fault")
         return NegotiationResult(
             decision=decision,
             path=path,

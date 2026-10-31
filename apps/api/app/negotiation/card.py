@@ -150,6 +150,45 @@ def reason_lines(codes: Sequence[str]) -> tuple[ReasonLine, ...]:
     return tuple(lines)
 
 
+# ------------------------------------------------------ how it was reached
+
+
+class Reached(StrEnum):
+    """How the plan came to be chosen. A fact the card must state."""
+
+    CONSENSUS = "consensus"
+    FALLBACK = "fallback"
+    FALLBACK_AFTER_FAULT = "fallback_after_fault"
+
+
+_REACHED_TEXT: Mapping[Reached, str] = MappingProxyType(
+    {
+        Reached.CONSENSUS: (
+            "Reached by agreement: all three domains accepted it, and code "
+            "re-checked every rule."
+        ),
+        Reached.FALLBACK: (
+            "Chosen by code, not by agreement: the domains did not agree within "
+            "the turn cap."
+        ),
+        Reached.FALLBACK_AFTER_FAULT: (
+            "Chosen by code after a system fault, not by agreement. A call "
+            "failed, was refused or could not be logged."
+        ),
+    }
+)
+
+
+def reached_from_result(path: str, faults: Sequence[object]) -> Reached:
+    """Read it from a protocol result's `path` and `faults`. Any fault means the
+    plan did not come cleanly, whatever the path says."""
+    if path not in ("consensus", "fallback"):
+        raise ValueError("only a consensus or fallback plan has a package card")
+    if faults:
+        return Reached.FALLBACK_AFTER_FAULT
+    return Reached.CONSENSUS if path == "consensus" else Reached.FALLBACK
+
+
 # ---------------------------------------------------- status and labels
 
 SCENARIO_DEFINED = "scenario_defined"
@@ -157,7 +196,9 @@ SCENARIO_DEFINED = "scenario_defined"
 STATUS_LABELS: Mapping[rv.Status, str] = MappingProxyType(
     {
         rv.Status.CONFIRMED: "Limit taken from the cited standard.",
-        rv.Status.SECONDARY: "Limit from a published study, not a rule.",
+        rv.Status.SECONDARY: (
+            "Limit from a secondary source, not checked against the primary rule text."
+        ),
         rv.Status.UNVERIFIED: "Limit not yet verified against its source.",
         rv.Status.ASSUMPTION: "Demo assumption, not a regulation.",
         rv.Status.POLICY: "Our demo policy, not a regulation.",
@@ -401,6 +442,7 @@ _AUTHORITY_NOTES = (
 # The facts `card_hash` covers. Reasons, state version and selection are not.
 HASHED_FIELDS = (
     "kind",
+    "how_reached",
     "package_name",
     "terms_hash",
     "headline",
@@ -441,6 +483,7 @@ class Card(FrozenModel):
     kind: Literal["DECISION"] = "DECISION"
     package_name: str
     terms_hash: str
+    how_reached: Reached
     headline: str
     authority: AuthoritySplit
     what_to_do: tuple[str, ...]
@@ -521,13 +564,16 @@ def decision_card(
     cost: CostBreakdown | None = None,
     violations: Sequence[Violation] = (),
     *,
+    how_reached: Reached,
     reason_codes: Sequence[str] = (),
     state_version: str | None = None,
 ) -> Card:
     """The card for one package at the given state.
 
-    `decision` is a `Deal` or a bare `Package`. A `NoDeal` has no package; use
-    `no_deal_card`. `violations` are those the rules report at this state.
+    `how_reached` is required: the card states how the plan was chosen, and it is
+    part of the card hash. `decision` is a `Deal` or a bare `Package`. A
+    `NoDeal` has no package; use `no_deal_card`. `violations` are those the
+    rules report at this state.
     """
     if isinstance(decision, Deal):
         package, cost = decision.package, cost if cost is not None else decision.cost
@@ -559,13 +605,17 @@ def decision_card(
             "Approval records that requests were issued. Nothing is executed.",
         )
         why = (
+            _REACHED_TEXT[how_reached],
             f"Every hard rule passes at the current state. Soft cost is "
             f"{cost.total} units.",
         )
     else:
         headline = f"{name}: do not sign off; {len(failing)} rule result(s) fail."
         todo = (f"Do not sign off {name}. Choose another package or hand the case on.",)
-        why = (f"{len(failing)} rule result(s) fail at the current state.",)
+        why = (
+            _REACHED_TEXT[how_reached],
+            f"{len(failing)} rule result(s) fail at the current state.",
+        )
 
     risks = [
         "ATC or the airport may refuse or change the requested slot and action.",
@@ -594,6 +644,7 @@ def decision_card(
     return Card(
         package_name=name,
         terms_hash=package.terms_hash,
+        how_reached=how_reached,
         headline=headline,
         authority=AuthoritySplit(
             airline_decides=airline, requests_only=requests, notes=_AUTHORITY_NOTES
@@ -805,6 +856,7 @@ def render(card: Card | NoDealCard, note: ModelNote | None = None) -> str:
     if isinstance(card, Card):
         out += [
             f"Package: {card.package_name} (terms {card.terms_hash})",
+            f"How reached: {card.how_reached.value}",
             f"Card hash: {card.card_hash}",
             "AUTHORITY",
             f"  The airline decides: {_terms(card.authority.airline_decides)}",

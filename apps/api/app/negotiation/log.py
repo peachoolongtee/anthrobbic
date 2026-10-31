@@ -2,10 +2,14 @@
 
 Each entry commits to the one before it, so editing, deleting, reordering or
 inserting an entry breaks the chain at a findable point. A chain on its own
-cannot catch a full rewrite: someone who recomputes every hash produces a log
-that verifies. Only a head recorded somewhere the rewriter cannot reach (an
-anchor) exposes that. Anchoring proves the entries up to the anchor are
+cannot catch a full rewrite (someone who recomputes every hash produces a log
+that verifies) or the removal of entries from the tail (what is left is still a
+valid chain). Only a head recorded somewhere the rewriter cannot reach (an
+anchor) exposes either. Anchoring proves the entries up to the anchor are
 unchanged; it says nothing about what was appended after it.
+
+A file log is also checked as bytes: every line must be the canonical JSON of
+its entry, so reformatting or duplicate keys fail even when the hashes hold.
 
 No wall-clock time is read here. A timestamp enters the hash only when the
 caller injects a clock, so tests and replays stay deterministic.
@@ -25,7 +29,14 @@ GENESIS_HASH = "0" * 64
 
 
 class LogIntegrityError(ValueError):
-    """The stored log does not verify, so nothing may be appended to it."""
+    """The stored log does not verify, so nothing may be appended to it.
+
+    `line` is the 0-based line of the file at fault, when one can be named.
+    """
+
+    def __init__(self, message: str, line: int | None = None) -> None:
+        super().__init__(message)
+        self.line = line
 
 
 class VerifyReason(StrEnum):
@@ -35,6 +46,9 @@ class VerifyReason(StrEnum):
     PREV_HASH_MISMATCH = "prev_hash_mismatch"  # chain link broken
     ENTRY_HASH_MISMATCH = "entry_hash_mismatch"  # entry content edited
     ANCHOR_NOT_FOUND = "anchor_not_found"  # rewritten, truncated or diverged
+    NON_CANONICAL_LINE = "non_canonical_line"  # file line is not canonical JSON
+    FILE_DIVERGED = "file_diverged"  # the file no longer matches what was written
+    LOG_FAILED = "log_failed"  # a failed write could not be rolled back
 
 
 def canonical_json(value: Any) -> str:
@@ -164,26 +178,73 @@ def verify_entries(
     return VerifyResult(True, None, VerifyReason.OK)
 
 
+def _load(path: Path) -> tuple[tuple[LogEntry, ...], int | None]:
+    """Parse a JSONL log. Also returns the 0-based index of the first line that
+    is not the canonical JSON of its entry, or None."""
+    if not path.exists():
+        return (), None
+    entries: list[LogEntry] = []
+    non_canonical: int | None = None
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        for index, raw in enumerate(handle):
+            line = raw[:-1] if raw.endswith("\n") else raw
+            if not line.strip():
+                raise LogIntegrityError(f"line {index + 1} is blank", index)
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise LogIntegrityError(f"line {index + 1} is not JSON", index) from exc
+            if not isinstance(data, dict):
+                raise LogIntegrityError(f"line {index + 1} is not an object", index)
+            try:
+                entries.append(LogEntry.from_dict(data))
+                canonical = canonical_json(data) + "\n" == raw
+            except (LogIntegrityError, TypeError, ValueError) as exc:
+                raise LogIntegrityError(
+                    f"line {index + 1} is malformed", index
+                ) from exc
+            if not canonical and non_canonical is None:
+                non_canonical = index
+    return tuple(entries), non_canonical
+
+
 def load_entries(path: Path) -> tuple[LogEntry, ...]:
     """Read a JSONL log without verifying it, so a tampered copy can be shown.
 
     A line that is not a JSON object raises `LogIntegrityError`.
     """
-    if not path.exists():
-        return ()
-    entries: list[LogEntry] = []
-    with path.open("r", encoding="utf-8") as handle:
-        for number, line in enumerate(handle, start=1):
-            if not line.strip():
-                raise LogIntegrityError(f"line {number} is blank")
-            try:
-                data = json.loads(line)
-            except json.JSONDecodeError as exc:
-                raise LogIntegrityError(f"line {number} is not JSON") from exc
-            if not isinstance(data, dict):
-                raise LogIntegrityError(f"line {number} is not an object")
-            entries.append(LogEntry.from_dict(data))
-    return tuple(entries)
+    return _load(path)[0]
+
+
+def verify_file(
+    path: Path,
+    anchored_head: str | None = None,
+    expected: Sequence[LogEntry] | None = None,
+) -> VerifyResult:
+    """Verify the file itself: the chain, the anchor, canonical lines and,
+    when `expected` is given, that the file still holds exactly those entries."""
+    try:
+        entries, non_canonical = _load(path)
+    except LogIntegrityError as exc:
+        return VerifyResult(False, exc.line, VerifyReason.MALFORMED_ENTRY)
+    result = verify_entries(entries, anchored_head)
+    if not result.valid:
+        return result
+    if non_canonical is not None:
+        return VerifyResult(False, non_canonical, VerifyReason.NON_CANONICAL_LINE)
+    if expected is not None and tuple(expected) != entries:
+        shared = min(len(expected), len(entries))
+        first = next((i for i in range(shared) if expected[i] != entries[i]), shared)
+        return VerifyResult(False, first, VerifyReason.FILE_DIVERGED)
+    return result
+
+
+def _stat_key(path: Path) -> tuple[int, int] | None:
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return None
+    return stat.st_size, stat.st_mtime_ns
 
 
 def _plain(payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -216,8 +277,12 @@ class EvidenceLog:
     """An append-only hash chain, in memory or in a JSONL file.
 
     With a path, existing entries are loaded and verified; a file that does not
-    verify raises `LogIntegrityError` rather than being extended. One process
-    may write a file at a time.
+    verify raises `LogIntegrityError` rather than being extended. Before each
+    append the file is re-verified if its size or modification time moved since
+    this log last wrote it, so a live edit stops further appends; `verify()`
+    always reads the whole file. A write that fails is rolled back by
+    truncation; if even that fails the log refuses all further appends. One
+    process may write a file at a time.
     """
 
     def __init__(
@@ -227,15 +292,17 @@ class EvidenceLog:
         self._clock = clock
         self._lock = threading.Lock()
         self._entries: list[LogEntry] = []
+        self._failed: str | None = None
+        self._known_stat: tuple[int, int] | None = None
         if path is not None:
-            loaded = load_entries(path)
-            result = verify_entries(loaded)
+            result = verify_file(path)
             if not result.valid:
                 raise LogIntegrityError(
                     f"{path} does not verify: {result.reason} at seq "
                     f"{result.first_bad_seq}"
                 )
-            self._entries = list(loaded)
+            self._entries = list(load_entries(path))
+            self._known_stat = _stat_key(path)
 
     @property
     def head(self) -> str:
@@ -251,6 +318,11 @@ class EvidenceLog:
             raise ValueError("kind must be a non-empty string")
         plain = _plain(payload)
         with self._lock:
+            if self._failed is not None:
+                raise LogIntegrityError(
+                    f"log is unusable after a failed write: {self._failed}"
+                )
+            self._check_file_unchanged()
             seq = len(self._entries)
             prev_hash = self.head
             ts = self._clock() if self._clock is not None else None
@@ -267,14 +339,40 @@ class EvidenceLog:
             self._entries.append(entry)
             return entry
 
+    def _check_file_unchanged(self) -> None:
+        if self._path is None or _stat_key(self._path) == self._known_stat:
+            return
+        result = verify_file(self._path, expected=self._entries)
+        if not result.valid:
+            raise LogIntegrityError(
+                f"{self._path} changed and does not verify: {result.reason} at "
+                f"seq {result.first_bad_seq}"
+            )
+        self._known_stat = _stat_key(self._path)
+
     def _write(self, entry: LogEntry) -> None:
         assert self._path is not None
         line = canonical_json(entry.as_dict()) + "\n"
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        with self._path.open("a", encoding="utf-8") as handle:
-            handle.write(line)
-            handle.flush()
-            os.fsync(handle.fileno())
+        size = self._path.stat().st_size if self._path.exists() else 0
+        try:
+            with self._path.open("a", encoding="utf-8", newline="") as handle:
+                handle.write(line)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except BaseException as exc:
+            # The caller is told this failed, so the file must not say it worked.
+            try:
+                os.truncate(self._path, size)
+            except OSError:
+                self._failed = type(exc).__name__
+            raise
+        self._known_stat = _stat_key(self._path)
 
     def verify(self, anchored_head: str | None = None) -> VerifyResult:
-        return verify_entries(self.entries, anchored_head)
+        """Verify what is stored: the file when there is one, not memory."""
+        if self._failed is not None:
+            return VerifyResult(False, len(self._entries), VerifyReason.LOG_FAILED)
+        if self._path is None:
+            return verify_entries(self.entries, anchored_head)
+        return verify_file(self._path, anchored_head, expected=self._entries)
