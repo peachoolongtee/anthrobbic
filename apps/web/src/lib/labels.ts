@@ -44,6 +44,10 @@ export const PROVENANCE_LABEL: Record<Provenance, { name: string; detail: string
 
 export const RULE_STATUS_LABEL: Record<RuleStatus, { name: string; detail: string }> = {
   confirmed: { name: "Regulation", detail: "Confirmed against the published rule" },
+  organiser_workbook: {
+    name: "Challenge workbook limit",
+    detail: "A synthetic planning limit from the organisers' workbook. Not a regulation",
+  },
   secondary: { name: "Published study", detail: "From a published study, not a rule" },
   unverified: { name: "Unverified", detail: "Not yet verified against its source" },
   policy: { name: "Policy, not regulation", detail: "Our own limit, shaped on a regulation. It is not the regulation." },

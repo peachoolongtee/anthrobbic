@@ -82,6 +82,7 @@ PILOT_SPEC = AgentSpec(
         "hold_burn_kg_per_min",
         "alternate_fuel_kg",
         "destination_forecast",
+        "crew_report_min",
     ),
     reply_model=PilotReply,
     public_reasons=_PUBLIC_REASONS,

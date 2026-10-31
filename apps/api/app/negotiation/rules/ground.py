@@ -14,6 +14,7 @@ from app.negotiation.rules.shared import gates_with_id, own_flight_is_ambiguous
 GATE_OVERLAP = "GND-GATE-OVERLAP"
 GATE_SIZE = "GND-GATE-SIZE"
 TURNAROUND = "GND-TURNAROUND"
+GATE_NOTICE = "GND-GATE-NOTICE"
 
 
 def _violation(
@@ -59,9 +60,12 @@ def gate_in_min(scenario: Scenario, package: Package) -> int | None:
 
 
 def turnaround_min(scenario: Scenario) -> rv.RuleValue | None:
-    """Minimum turnaround for this aircraft's size class."""
-    size = scenario.aircraft_size.value
-    return None if size is None else rv.turnaround(size)
+    """The destination airport's minimum turnaround (workbook), or None when it
+    is unknown or not positive."""
+    value = scenario.min_turnaround_min.value
+    if value is None or value <= 0:
+        return None
+    return rv.airport_min_turnaround(value)
 
 
 def gate_stay_end_min(scenario: Scenario, package: Package) -> int | None:
@@ -105,7 +109,7 @@ def check_gate_overlap(scenario: Scenario, package: Package) -> tuple[Violation,
     if taxi is not None:
         missing.append(_missing(GATE_OVERLAP, "taxi-in time", source, taxi))
     if stay is None:
-        missing.append(_missing(GATE_OVERLAP, "aircraft size", source))
+        missing.append(_missing(GATE_OVERLAP, "airport minimum turnaround", source))
     if occupancies is None:
         missing.append(_missing(GATE_OVERLAP, "gate occupancies", source))
     if gates is None:
@@ -219,7 +223,7 @@ def check_turnaround(scenario: Scenario, package: Package) -> tuple[Violation, .
     if taxi is not None:
         missing.append(_missing(TURNAROUND, "taxi-in time", source, taxi))
     if stay is None:
-        missing.append(_missing(TURNAROUND, "aircraft size", source))
+        missing.append(_missing(TURNAROUND, "airport minimum turnaround", source))
     if depart is None or start is None or stay is None:
         return tuple(missing)
 
@@ -233,6 +237,43 @@ def check_turnaround(scenario: Scenario, package: Package) -> tuple[Violation, .
                 rv.reference(stay),
                 available,
                 stay.value,
+                "min",
+            ),
+        )
+    return ()
+
+
+def check_gate_notice(scenario: Scenario, package: Package) -> tuple[Violation, ...]:
+    """A gate other than the planned one must be decided in time.
+
+    The change has to be decided at least the notice period before arrival.
+    Notice is the arrival slot less the scenario's decision time; `observed` is
+    that notice and `limit` the minimum, both in minutes. Keeping the planned
+    gate needs no notice. Unknown planned gate or decision time fails closed.
+    """
+    notice = rv.rule_value(rv.GATE_CHANGE_NOTICE_MIN)
+    source = rv.reference(notice)
+    planned = scenario.planned_gate.value
+    decided = scenario.decision_time_min.value
+    missing: list[Violation] = []
+    if planned is None:
+        missing.append(_missing(GATE_NOTICE, "planned gate", source))
+    if decided is None:
+        missing.append(_missing(GATE_NOTICE, "decision time", source))
+    if planned is None or decided is None:
+        return tuple(missing)
+    if package.gate_id == planned:
+        return ()
+    lead = package.slot.time_min - decided
+    if lead < notice.value:
+        return (
+            _violation(
+                GATE_NOTICE,
+                f"gate change to {package.gate_id} decided {lead} min before "
+                f"arrival; the workbook needs {notice.value} min",
+                source,
+                lead,
+                notice.value,
                 "min",
             ),
         )
@@ -263,5 +304,14 @@ RULES: tuple[Rule, ...] = (
         description="Minimum turnaround before a hard next leg",
         public_reason=PublicReason.SCHEDULE_LIMIT,
         check=check_turnaround,
+    ),
+    Rule(
+        rule_id=GATE_NOTICE,
+        domain=Domain.GROUND,
+        source="challenge workbook: gate change notice, 20 minutes before arrival",
+        description="A gate change must be decided at least the notice period "
+        "before arrival",
+        public_reason=PublicReason.SCHEDULE_LIMIT,
+        check=check_gate_notice,
     ),
 )

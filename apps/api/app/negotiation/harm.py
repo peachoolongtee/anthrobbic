@@ -11,6 +11,12 @@ shows up as a disagreement rather than passing twice:
 - gate: padded intervals, not a clear-gap formula
 - closed resources: every matching record, not the first one found
 - slot: inside the window and on the grid, from the package alone
+- gate notice and crew duty: from the scenario's times alone
+
+The challenge workbook limits this module judges against are copied below as
+its own constants, not read from `rule_values`, so a slip in the table shows up
+as a disagreement. `tests/negotiation/test_harm.py` holds the copy equal to the
+table, which is the alarm for drift in either.
 
 A shared misreading of the plan still passes both. A disagreement is a finding
 to report, never something to reconcile quietly.
@@ -33,6 +39,13 @@ from app.negotiation.contracts import (
     WeatherPeriod,
 )
 
+# Own copy of the workbook values (fuel_and_crew sheet), in the units used here.
+_FINAL_RESERVE_HOLD_MIN = 30  # minutes of holding fuel
+_CONTINGENCY_PERCENT_OF_TRIP = 5
+_GATE_CHANGE_NOTICE_MIN = 20  # minutes before arrival
+_CREW_MAX_DUTY_MIN = 13 * 60  # from report time
+_MINUTES_IN_HOUR = 60
+
 
 class HarmCheck(StrEnum):
     WAKE_SPACING = "wake_spacing"
@@ -41,6 +54,8 @@ class HarmCheck(StrEnum):
     GATE_OVERLAP = "gate_overlap"
     CLOSED_RESOURCE = "closed_resource"
     SLOT_VALIDITY = "slot_validity"
+    GATE_NOTICE = "gate_notice"
+    CREW_DUTY = "crew_duty"
 
 
 class HarmVerdict(StrEnum):
@@ -148,27 +163,21 @@ def _weather_is_good(period: WeatherPeriod) -> bool:
 
 
 def _throughput(scenario: Scenario, package: Package) -> HarmFinding:
-    """The cap follows the forecast at this arrival. Without good weather known at
-    that minute, the instrument cap applies."""
+    """The airport's cap on movements per hour, counted minute by minute over
+    every 60-minute window that holds this arrival. Arrivals on every runway
+    count together; departures are not in the scenario."""
     check = HarmCheck.THROUGHPUT
     traffic = scenario.other_arrivals.value
-    runways = scenario.runways.value
-    if traffic is None or runways is None:
-        return _finding(check, HarmVerdict.UNKNOWN, "traffic unknown")
+    cap = scenario.airport_ops_per_hour.value
+    if traffic is None or cap is None or cap <= 0:
+        return _finding(check, HarmVerdict.UNKNOWN, "traffic or airport cap unknown")
 
     eta = package.slot.time_min
-    forecast = scenario.destination_forecast.value or ()
-    at_eta = [p for p in forecast if p.start_min <= eta <= p.end_min]
-    visual = bool(at_eta) and all(_weather_is_good(p) for p in at_eta)
-    cap = rv.rule_value(
-        rv.RUNWAY_HOURLY_ARRIVALS_VFR if visual else rv.RUNWAY_HOURLY_ARRIVALS_IFR
-    ).value
-
-    hour = rv.rule_value(rv.MINUTES_PER_HOUR).value
-    same_runway = _same_runway_ids(runways, package.slot.runway_id)
-    times = [f.time_min for f in traffic if f.runway_id in same_runway]
-    for window_start in range(eta - hour + 1, eta + 1):
-        count = 1 + sum(window_start <= t < window_start + hour for t in times)
+    times = [f.time_min for f in traffic]
+    for window_start in range(eta - _MINUTES_IN_HOUR + 1, eta + 1):
+        count = 1 + sum(
+            window_start <= t < window_start + _MINUTES_IN_HOUR for t in times
+        )
         if count > cap:
             return _finding(
                 check,
@@ -199,43 +208,47 @@ def _needs_alternate(scenario: Scenario, package: Package) -> bool:
 
 
 def _fuel_margin(scenario: Scenario, package: Package) -> HarmFinding:
+    """Minutes of holding fuel left after the trip, any hold or vectoring, any
+    alternate and the contingency, against the 30-minute final reserve."""
     check = HarmCheck.FUEL_MARGIN
     on_board = scenario.fuel_on_board_kg.value
     trip = scenario.trip_fuel_kg.value
-    cruise = scenario.cruise_burn_kg_per_min.value
+    hold = scenario.hold_burn_kg_per_min.value
     earliest = scenario.earliest_arrival_min.value
-    if on_board is None or trip is None or cruise is None or earliest is None:
+    if on_board is None or trip is None or hold is None or earliest is None:
         return _finding(check, HarmVerdict.UNKNOWN, "fuel input unknown")
-    if cruise <= 0 or on_board < 0 or trip < 0:
+    if hold <= 0 or on_board < 0 or trip <= 0:
         return _finding(check, HarmVerdict.UNKNOWN, "fuel input cannot be real")
 
     extra_minutes = max(package.slot.time_min - earliest, 0)
     if package.action is FlightPlanAction.HOLD:
-        rate = scenario.hold_burn_kg_per_min.value
-        if rate is None or rate < 0:
-            return _finding(check, HarmVerdict.UNKNOWN, "hold burn unknown")
+        rate = hold
     elif package.action is FlightPlanAction.VECTOR:
+        cruise = scenario.cruise_burn_kg_per_min.value
+        if cruise is None or cruise <= 0:
+            return _finding(check, HarmVerdict.UNKNOWN, "cruise burn unknown")
         rate = cruise
     else:
         rate = 0
 
-    usable = on_board - trip - extra_minutes * rate
+    usable = Fraction(on_board - trip - extra_minutes * rate)
+    usable -= Fraction(trip * _CONTINGENCY_PERCENT_OF_TRIP, 100)
     if _needs_alternate(scenario, package):
         alternate = scenario.alternate_fuel_kg.value
-        if alternate is None or alternate < 0:
+        if alternate is None or alternate <= 0:
             return _finding(check, HarmVerdict.UNKNOWN, "alternate fuel unknown")
         usable -= alternate
 
-    endurance = Fraction(usable, cruise)
-    reserve = rv.rule_value(rv.FUEL_RESERVE_MIN).value
-    if endurance < reserve:
+    endurance = usable / hold
+    if endurance < _FINAL_RESERVE_HOLD_MIN:
         return _finding(
             check,
             HarmVerdict.HARM,
-            f"{float(endurance):.1f} min of cruise left; needs {reserve} min",
+            f"{float(endurance):.1f} min of holding fuel left; needs "
+            f"{_FINAL_RESERVE_HOLD_MIN} min",
         )
     return _finding(
-        check, HarmVerdict.CLEAR, f"{float(endurance):.1f} min of cruise left"
+        check, HarmVerdict.CLEAR, f"{float(endurance):.1f} min of holding fuel left"
     )
 
 
@@ -244,14 +257,14 @@ def _gate_overlap(scenario: Scenario, package: Package) -> HarmFinding:
     any known next departure, since the aircraft stays until it leaves."""
     check = HarmCheck.GATE_OVERLAP
     taxi = scenario.taxi_in_min.value
-    size = scenario.aircraft_size.value
+    turnaround = scenario.min_turnaround_min.value
     occupancies = scenario.gate_occupancies.value
-    if taxi is None or size is None or occupancies is None:
+    if taxi is None or turnaround is None or occupancies is None:
         return _finding(check, HarmVerdict.UNKNOWN, "gate input unknown")
 
     buffer = rv.rule_value(rv.GATE_BUFFER_MIN).value
     arrive = package.slot.time_min + taxi
-    leave = arrive + rv.turnaround(size).value
+    leave = arrive + turnaround
     departure = scenario.next_departure_min.value
     if departure is not None and departure > leave:
         leave = departure
@@ -331,6 +344,44 @@ def _slot_validity(scenario: Scenario, package: Package) -> HarmFinding:
     return _finding(check, HarmVerdict.CLEAR, "slot is in the window and on the grid")
 
 
+def _gate_notice(scenario: Scenario, package: Package) -> HarmFinding:
+    """A gate other than the planned one needs the notice before arrival."""
+    check = HarmCheck.GATE_NOTICE
+    planned = scenario.planned_gate.value
+    decided = scenario.decision_time_min.value
+    if planned is None or decided is None:
+        return _finding(check, HarmVerdict.UNKNOWN, "planned gate or decision time")
+    if package.gate_id == planned:
+        return _finding(check, HarmVerdict.CLEAR, "planned gate kept")
+    notice = package.slot.time_min - decided
+    if notice < _GATE_CHANGE_NOTICE_MIN:
+        return _finding(
+            check,
+            HarmVerdict.HARM,
+            f"gate change decided {notice} min before arrival; needs "
+            f"{_GATE_CHANGE_NOTICE_MIN}",
+        )
+    return _finding(check, HarmVerdict.CLEAR, f"{notice} min of notice")
+
+
+def _crew_duty(scenario: Scenario, package: Package) -> HarmFinding:
+    """Hours on duty at gate-in, from the report time."""
+    check = HarmCheck.CREW_DUTY
+    report = scenario.crew_report_min.value
+    taxi = scenario.taxi_in_min.value
+    if report is None or taxi is None or taxi < 0:
+        return _finding(check, HarmVerdict.UNKNOWN, "report time or taxi-in unknown")
+    on_duty = package.slot.time_min + taxi - report
+    if on_duty > _CREW_MAX_DUTY_MIN:
+        return _finding(
+            check,
+            HarmVerdict.HARM,
+            f"crew on duty {on_duty} min at gate-in; the maximum is "
+            f"{_CREW_MAX_DUTY_MIN}",
+        )
+    return _finding(check, HarmVerdict.CLEAR, f"{on_duty} min on duty at gate-in")
+
+
 def inspect_package(scenario: Scenario, package: Package) -> HarmReport:
     """Judge one final package, returning a verdict for every check."""
     return HarmReport(
@@ -341,6 +392,8 @@ def inspect_package(scenario: Scenario, package: Package) -> HarmReport:
             _gate_overlap(scenario, package),
             _closed_resource(scenario, package),
             _slot_validity(scenario, package),
+            _gate_notice(scenario, package),
+            _crew_duty(scenario, package),
         )
     )
 
@@ -353,6 +406,8 @@ RULES_COVERED: dict[HarmCheck, tuple[str, ...]] = {
     HarmCheck.FUEL_MARGIN: ("PLT-FUEL-POLICY",),
     HarmCheck.GATE_OVERLAP: ("GND-GATE-OVERLAP",),
     HarmCheck.CLOSED_RESOURCE: ("ATC-RWY-CLOSED", "ATC-TWY-CLOSED"),
+    HarmCheck.GATE_NOTICE: ("GND-GATE-NOTICE",),
+    HarmCheck.CREW_DUTY: ("PLT-CREW-DUTY",),
 }
 # The fuel rule also rejects impossible actions and incoherent delays, which are
 # not fuel harm. Only its kilogram violations (and missing data) are comparable.

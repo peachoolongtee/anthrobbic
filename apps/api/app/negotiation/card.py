@@ -38,7 +38,6 @@ from app.negotiation.contracts import (
     ViolationCause,
 )
 from app.negotiation.rules import ALL_RULES
-from app.negotiation.rules.shared import airport_conditions
 
 # ---------------------------------------------------------------- names
 
@@ -99,9 +98,11 @@ _RULE_REJECTIONS: Mapping[str, str] = {
     "ATC-WAKE-SEP": "Rejected: too little wake separation behind another arrival.",
     "ATC-RWY-CLOSED": "Rejected: the arrival runway is closed or unknown.",
     "ATC-TWY-CLOSED": "Rejected: the taxiway serving the gate is closed or unknown.",
-    "ATC-RWY-THROUGHPUT": "Rejected: too many arrivals in an hour on the runway.",
+    "ATC-RWY-THROUGHPUT": "Rejected: too many arrivals in an hour at the airport.",
     "ATC-SLOT-WINDOW": "Rejected: the arrival slot is outside the planning window.",
-    "PLT-FUEL-POLICY": "Rejected: landing fuel falls below the policy reserve.",
+    "PLT-FUEL-POLICY": "Rejected: landing fuel falls below the workbook reserve.",
+    "PLT-CREW-DUTY": "Rejected: the flight crew would exceed their maximum duty.",
+    "GND-GATE-NOTICE": "Rejected: a gate change would come with too little notice.",
     "GND-GATE-OVERLAP": "Rejected: the gate stay overlaps another flight.",
     "GND-GATE-SIZE": "Rejected: the aircraft does not fit the gate.",
     "GND-TURNAROUND": "Rejected: not enough turnaround time for the next leg.",
@@ -129,6 +130,12 @@ REASON_CODES: Mapping[str, str] = MappingProxyType(
         "NOTE_WEATHER_TREND": "A weather note changes the expected conditions.",
         "FALLBACK_NO_CONSENSUS": "Chosen by code: the domains did not agree.",
         "FALLBACK_AFTER_FAULT": "Chosen by code after a fault, not by consensus.",
+        "FALLBACK_PACKAGE_BOUND": (
+            "Chosen by code: too many candidate packages to offer the agents."
+        ),
+        "FALLBACK_NOTHING_TO_OFFER": (
+            "Decided by code: no package passed every rule to offer the agents."
+        ),
         "FALLBACK_LOWEST_COST": "Chosen by code: lowest soft cost among legal ones.",
         UNRECOGNISED_CODE: "A reason code was given that this system does not know.",
     }
@@ -212,6 +219,7 @@ STATUS_LABELS: Mapping[rv.Status, str] = MappingProxyType(
         rv.Status.UNVERIFIED: "Limit not yet verified against its source.",
         rv.Status.ASSUMPTION: "Demo assumption, not a regulation.",
         rv.Status.POLICY: "Our demo policy, not a regulation.",
+        rv.Status.WORKBOOK: "Challenge workbook limit (synthetic, not a regulation).",
     }
 )
 SCENARIO_DEFINED_LABEL = "Limit is set by the scenario data, not by a regulation."
@@ -255,9 +263,11 @@ RULE_REQUIREMENTS: Mapping[str, str] = MappingProxyType(
         "ATC-WAKE-SEP": "Spacing behind the aircraft ahead",
         "ATC-RWY-CLOSED": "An open arrival runway",
         "ATC-TWY-CLOSED": "An open taxiway to the gate",
-        "ATC-RWY-THROUGHPUT": "Arrivals per hour on the runway",
+        "ATC-RWY-THROUGHPUT": "Arrivals per hour at the airport",
         "ATC-SLOT-WINDOW": "An arrival slot inside the planning window",
-        "PLT-FUEL-POLICY": "Fuel at landing against the reserve policy",
+        "PLT-FUEL-POLICY": "Fuel at landing against the workbook reserve",
+        "PLT-CREW-DUTY": "Flight crew inside their maximum duty",
+        "GND-GATE-NOTICE": "A gate change decided in time",
         "GND-GATE-OVERLAP": "A gate that is free for the turnaround",
         "GND-GATE-SIZE": "A gate that fits the aircraft",
         "GND-TURNAROUND": "Time to turn the aircraft round",
@@ -268,9 +278,11 @@ RULE_BREACHES: Mapping[str, str] = MappingProxyType(
         "ATC-WAKE-SEP": "Lands too close behind the aircraft ahead",
         "ATC-RWY-CLOSED": "Uses a closed runway",
         "ATC-TWY-CLOSED": "Uses a gate that is occupied or blocked",
-        "ATC-RWY-THROUGHPUT": "Puts too many arrivals on the runway in an hour",
+        "ATC-RWY-THROUGHPUT": "Puts too many arrivals into the airport in an hour",
         "ATC-SLOT-WINDOW": "Lands outside the planning window or off the slot grid",
-        "PLT-FUEL-POLICY": "Lands with less fuel than the reserve policy allows",
+        "PLT-FUEL-POLICY": "Lands with less fuel than the workbook reserve allows",
+        "PLT-CREW-DUTY": "Keeps the flight crew on duty past their maximum",
+        "GND-GATE-NOTICE": "Changes gate with too little notice",
         "GND-GATE-OVERLAP": "Uses a gate that is occupied or blocked",
         "GND-GATE-SIZE": "Uses a gate too small for the aircraft",
         "GND-TURNAROUND": "Leaves too little time to turn the aircraft round",
@@ -320,21 +332,22 @@ def _basis(
     table; the text itself is never shown."""
     if violation is not None:
         key = violation.source.split("=", 1)[0]
+        if key == rv.AIRPORT_OPS_KEY and violation.limit is not None:
+            return rv.airport_ops_per_hour(violation.limit)
+        if key == rv.AIRPORT_TURNAROUND_KEY and violation.limit is not None:
+            return rv.airport_min_turnaround(violation.limit)
         if key in rv.RULE_VALUES:
             return rv.RULE_VALUES[key]
     if rule_id in _DEFAULT_BASIS:
         return rv.RULE_VALUES[_DEFAULT_BASIS[rule_id]]
     if scenario is None:
         return None
-    if rule_id == "ATC-RWY-THROUGHPUT" and package is not None:
-        # The same function the rule uses: the cap follows the forecast at ETA.
-        return rv.runway_hourly_arrivals(
-            airport_conditions(
-                scenario.destination_forecast.value, package.slot.time_min
-            )
-        )
-    if rule_id == "GND-TURNAROUND" and scenario.aircraft_size.value is not None:
-        return rv.turnaround(scenario.aircraft_size.value)
+    ops = scenario.airport_ops_per_hour.value
+    if rule_id == "ATC-RWY-THROUGHPUT" and ops is not None:
+        return rv.airport_ops_per_hour(ops)
+    turnaround = scenario.min_turnaround_min.value
+    if rule_id == "GND-TURNAROUND" and turnaround is not None:
+        return rv.airport_min_turnaround(turnaround)
     return None
 
 
@@ -649,6 +662,11 @@ def decision_card(
         for line in lines
     ):
         risks.append("Some limits are our demo policy or assumptions, not regulations.")
+    if any(line.basis_status == rv.Status.WORKBOOK.value for line in lines):
+        risks.append(
+            "Some limits come from the challenge workbook: synthetic planning "
+            "limits, not regulations."
+        )
     risks.append("The rules are a subset of real ATC procedure.")
 
     return Card(

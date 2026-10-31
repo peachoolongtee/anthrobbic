@@ -84,6 +84,11 @@ BASELINE: dict[str, Any] = {
     "next_leg_turnaround_hard": True,
     "ground_shift_end_min": 300,
     "connections": (Connection(passengers=20, departure_min=150),),
+    # Workbook limits for a small hub, and times that bind nothing by default.
+    "decision_time_min": 50,  # 50 minutes before the baseline arrival
+    "crew_report_min": 0,  # 110 minutes on duty at the baseline gate-in
+    "airport_ops_per_hour": 36,
+    "min_turnaround_min": 35,
 }
 
 BASELINE_PACKAGE = Package(
@@ -138,6 +143,10 @@ _UNKNOWN_CANDIDATES = (
     "ground_shift_end_min",
     "connections",
     "planned_gate",
+    "decision_time_min",
+    "crew_report_min",
+    "airport_ops_per_hour",
+    "min_turnaround_min",
 )
 
 
@@ -193,7 +202,9 @@ def random_scenario(seed: int, small: bool = False) -> Scenario:
     trip = rng.randrange(2_000, 6_000)
     cruise = rng.randrange(30, 80)
     alternate = rng.choice([800, 1_200, 1_500])
-    reserve = 45 * cruise + alternate
+    hold = rng.choice([40, 109])
+    # Workbook reserve: 30 min of holding fuel, 5% of trip (rounded up), alternate.
+    reserve = 30 * hold + -(-trip * 5 // 100) + alternate
     weather_start = earliest - 120 + rng.choice([0, 0, 0, 90])  # sometimes a gap
     forecast = tuple(
         WeatherPeriod(
@@ -218,7 +229,7 @@ def random_scenario(seed: int, small: bool = False) -> Scenario:
         "fuel_on_board_kg": trip + reserve + rng.randrange(-300, 1_200),
         "trip_fuel_kg": trip,
         "cruise_burn_kg_per_min": cruise,
-        "hold_burn_kg_per_min": rng.randrange(20, 90),
+        "hold_burn_kg_per_min": hold,
         "alternate_fuel_kg": alternate,
         "runways": runways,
         "taxiways": taxiways,
@@ -236,6 +247,10 @@ def random_scenario(seed: int, small: bool = False) -> Scenario:
             )
             for _ in range(rng.randrange(0, 4))
         ),
+        "decision_time_min": earliest - rng.randrange(-5, 80),
+        "crew_report_min": earliest + 10 - rng.randrange(60, 800),
+        "airport_ops_per_hour": rng.choice([20, 36, 60, 90]),
+        "min_turnaround_min": rng.choice([35, 45]),
     }
     for name in _UNKNOWN_CANDIDATES:
         if rng.random() < 0.03:

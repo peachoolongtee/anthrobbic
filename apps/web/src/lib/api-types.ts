@@ -12,6 +12,7 @@ export type Cause = "weather" | "late_aircraft";
 /** The basis of a rule's limit, from rule_values.py and card.py. */
 export type RuleStatus =
   | "confirmed"
+  | "organiser_workbook"
   | "secondary"
   | "unverified"
   | "policy"

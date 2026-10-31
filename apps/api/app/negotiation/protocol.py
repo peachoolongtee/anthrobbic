@@ -80,6 +80,34 @@ NOTES_SEED: Final = 0
 
 UNGUARDED_ARM: Final = "unguarded_baseline"
 
+# Why the fallback decided, in plain words, for the log and the card. The event
+# carries both the stable trigger and this sentence.
+FALLBACK_REASONS: Final[dict[str, str]] = {
+    "turn_cap_no_agreement": (
+        f"The three agents did not agree on one package within {MAX_TURNS} turns, "
+        "so code chose the cheapest package that passes every rule."
+    ),
+    "fault": (
+        "A fault stopped the negotiation (a model error, a refusal or a rule "
+        "breach), so code chose the cheapest package that passes every rule."
+    ),
+    "llm_off": (
+        "The model was switched off for this run, so code chose the cheapest "
+        "package that passes every rule."
+    ),
+    "package_bound": (
+        "There were too many candidate packages to offer the agents, so code "
+        "chose the cheapest package that passes every rule."
+    ),
+    "nothing_to_offer": (
+        "No package passed every rule to offer the agents, so code decided and "
+        "reports why nothing could go ahead."
+    ),
+}
+FALLBACK_REASON_DEFAULT: Final = (
+    "The agents did not settle the case, so code decided from the rules."
+)
+
 type Mode = Literal["off", "recorded", "live"]
 type _Path = Literal["consensus", "fallback", "no_go"]
 _MODES: Final[tuple[Mode, ...]] = ("off", "recorded", "live")
@@ -540,7 +568,13 @@ class _Negotiation:
 
     def to_fallback(self, trigger: str) -> NegotiationResult:
         """The deterministic decision, labelled with why it ran. Never clean."""
-        self.trace.emit("fallback", {"trigger": trigger})
+        self.trace.emit(
+            "fallback",
+            {
+                "trigger": trigger,
+                "reason": FALLBACK_REASONS.get(trigger, FALLBACK_REASON_DEFAULT),
+            },
+        )
         try:
             decision = fallback.decide(self.scenario)
             if (

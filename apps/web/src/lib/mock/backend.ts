@@ -108,17 +108,19 @@ function rule(
   return { rule_id: id, domain, label, message, source, observed, limit, unit, direction, status, cause };
 }
 
-const SRC_WAKE = "FAA JO 7110.65 para 5-5-4 (legacy classes)";
-const SRC_FUEL = "Airline policy, shaped on 14 CFR 121.639";
+const SRC_WAKE = "Challenge workbook (synthetic), simplified from FAA JO 7110.65 para 5-5-4";
+const SRC_FUEL = "Challenge workbook (synthetic): 30 minutes of holding fuel plus 5% of trip fuel";
+const SRC_CAP = "Challenge workbook (synthetic): runway movements per hour for the airport";
+const SRC_TURN = "Challenge workbook (synthetic): minimum turnaround for the airport";
 const SRC_ASSUMED = "Assumption: demo default, not from a regulation";
 
 function passingRules(offset: number): RuleResult[] {
   return [
-    rule("ATC-WAKE-SEP", "atc", "Spacing behind the aircraft ahead", "confirmed", 6, 5, "NM", "at_least", SRC_WAKE, "Lands too close behind the aircraft ahead"),
-    rule("ATC-RWY-THROUGHPUT", "atc", "Arrivals per hour on the runway", "assumption", 26 + offset, 30, "arrivals/h", "at_most", SRC_ASSUMED, "Puts too many arrivals on the runway in an hour"),
-    rule("PLT-FUEL-POLICY", "pilot", "Fuel left at landing", "policy", 57 - offset * 3, 45, "min", "at_least", SRC_FUEL, "Lands with less fuel than the reserve policy allows"),
-    rule("GND-GATE-OVERLAP", "ground", "Gap before the next aircraft at the gate", "assumption", 25, 20, "min", "at_least", SRC_ASSUMED, "Uses a gate that is occupied or blocked"),
-    rule("GND-TURNAROUND", "ground", "Time to turn the aircraft round", "assumption", 48, 45, "min", "at_least", SRC_ASSUMED, "Leaves too little time to turn the aircraft round"),
+    rule("ATC-WAKE-SEP", "atc", "Spacing behind the aircraft ahead", "organiser_workbook", 6, 5, "NM", "at_least", SRC_WAKE, "Lands too close behind the aircraft ahead"),
+    rule("ATC-RWY-THROUGHPUT", "atc", "Arrivals per hour at the airport", "organiser_workbook", 26 + offset, 36, "arrivals/h", "at_most", SRC_CAP, "Puts too many arrivals into the airport in an hour"),
+    rule("PLT-FUEL-POLICY", "pilot", "Fuel left at landing", "organiser_workbook", 57 - offset * 3, 30, "min", "at_least", SRC_FUEL, "Lands with less fuel than the workbook reserve allows"),
+    rule("GND-GATE-OVERLAP", "ground", "Gap before the next aircraft at the gate", "assumption", 25, 15, "min", "at_least", SRC_ASSUMED, "Uses a gate that is occupied or blocked"),
+    rule("GND-TURNAROUND", "ground", "Time to turn the aircraft round", "organiser_workbook", 48, 35, "min", "at_least", SRC_TURN, "Leaves too little time to turn the aircraft round"),
   ];
 }
 
@@ -132,7 +134,7 @@ function airport(closedRunways: string[], closedGates: string[]): AirportState {
 const UNSAFE: Record<string, { label: string; rule: RuleResult }> = {
   "PLT-FUEL-POLICY": {
     label: "Land at the earliest slot with no hold, 31 min of fuel left",
-    rule: rule("PLT-FUEL-POLICY", "pilot", "Fuel left at landing", "policy", 31, 45, "min", "at_least", SRC_FUEL, "Lands with less fuel than the reserve policy allows"),
+    rule: rule("PLT-FUEL-POLICY", "pilot", "Fuel left at landing", "organiser_workbook", 31, 30, "min", "at_least", SRC_FUEL, "Lands with less fuel than the workbook reserve allows"),
   },
   "ATC-RWY-CLOSED": {
     label: "Use a closed runway",
@@ -140,11 +142,11 @@ const UNSAFE: Record<string, { label: string; rule: RuleResult }> = {
   },
   "ATC-WAKE-SEP": {
     label: "Land 3 NM behind a heavy aircraft",
-    rule: rule("ATC-WAKE-SEP", "atc", "Spacing behind the aircraft ahead", "confirmed", 3, 5, "NM", "at_least", SRC_WAKE, "Lands too close behind the aircraft ahead"),
+    rule: rule("ATC-WAKE-SEP", "atc", "Spacing behind the aircraft ahead", "organiser_workbook", 3, 5, "NM", "at_least", SRC_WAKE, "Lands too close behind the aircraft ahead"),
   },
   "GND-GATE-OVERLAP": {
     label: "Park at an occupied gate",
-    rule: rule("GND-GATE-OVERLAP", "ground", "Gap before the next aircraft at the gate", "assumption", 0, 20, "min", "at_least", SRC_ASSUMED, "Uses a gate that is occupied or blocked"),
+    rule: rule("GND-GATE-OVERLAP", "ground", "Gap before the next aircraft at the gate", "assumption", 0, 15, "min", "at_least", SRC_ASSUMED, "Uses a gate that is occupied or blocked"),
   },
 };
 
@@ -169,7 +171,7 @@ function build(
       label: `Runway 27L, ${clock(base - 12)}, gate B12, no hold`,
       removed_in_turn: 1,
       violations: [
-        rule("PLT-FUEL-POLICY", "pilot", "Fuel left at landing", "policy", 41, 45, "min", "at_least", SRC_FUEL, "Lands with less fuel than the reserve policy allows"),
+        rule("PLT-FUEL-POLICY", "pilot", "Fuel left at landing", "organiser_workbook", 41, 30, "min", "at_least", SRC_FUEL, "Lands with less fuel than the workbook reserve allows"),
       ],
     });
     removed.push({
@@ -177,7 +179,7 @@ function build(
       label: `Runway 27R, ${clock(base + 2)}, gate B14, vector`,
       removed_in_turn: 1,
       violations: [
-        rule("ATC-WAKE-SEP", "atc", "Spacing behind the aircraft ahead", "confirmed", 4, 5, "NM", "at_least", SRC_WAKE, "Lands too close behind the aircraft ahead"),
+        rule("ATC-WAKE-SEP", "atc", "Spacing behind the aircraft ahead", "organiser_workbook", 4, 5, "NM", "at_least", SRC_WAKE, "Lands too close behind the aircraft ahead"),
       ],
     });
   }
@@ -219,7 +221,7 @@ function build(
       kind: "NO_GO",
       reason_type: "SYSTEM_FAULT",
       binding_rules: [
-        rule("PLT-FUEL-POLICY", "pilot", "Fuel left at landing", "policy", null, 45, "min", "at_least", SRC_FUEL, "Cannot check fuel left at landing: fuel on board is unknown", "missing_data"),
+        rule("PLT-FUEL-POLICY", "pilot", "Fuel left at landing", "organiser_workbook", null, 30, "min", "at_least", SRC_FUEL, "Cannot check fuel left at landing: fuel on board is unknown", "missing_data"),
       ],
       packages_considered: 24,
       nearest_package: null,
@@ -351,7 +353,7 @@ function build(
         ...(closedRunways.length || closedGates.length ? ["Plans using a closed runway or a blocked gate were removed first."] : []),
       ],
       risks: [
-        { text: "Fuel left at landing is the tightest margin. A longer hold would break the fuel policy.", rule_id: "PLT-FUEL-POLICY" },
+        { text: "Fuel left at landing is the tightest margin. A longer hold would break the fuel reserve.", rule_id: "PLT-FUEL-POLICY" },
         ...(next ? [{ text: `Any further delay reaches ${next.flight_id}, the same aircraft's next flight.` }] : []),
         { text: "Weather or traffic can change before the slot is confirmed. Sign-off checks the rules again." },
       ],

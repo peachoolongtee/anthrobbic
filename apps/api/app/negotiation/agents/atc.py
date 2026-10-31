@@ -79,6 +79,7 @@ ATC_SPEC = AgentSpec(
         "taxiways",
         "other_arrivals",
         "connections",
+        "airport_ops_per_hour",
     ),
     reply_model=AtcReply,
     public_reasons=_PUBLIC_REASONS,
