@@ -487,9 +487,9 @@ def test_the_recheck_gate_fires_when_a_consensus_fails_the_rules(
 def test_a_consensus_outside_the_enumerated_set_is_refused(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Off the slot grid, so it passes every rule but code never enumerated it."""
+    """A hold with no delay passes every rule, but code never enumerates one."""
     scenario = make_scenario(gate_occupancies=())
-    rogue = make_package(time_min=102, runway_id="28R", action=FlightPlanAction.VECTOR)
+    rogue = make_package(time_min=100, runway_id="28R", action=FlightPlanAction.HOLD)
     assert not check_package(scenario, rogue)
     assert rogue not in enumerate_packages(scenario)
     real_split = protocol._split_legal
