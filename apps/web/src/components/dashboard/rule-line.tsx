@@ -4,16 +4,20 @@ import type { RuleResult } from "@/lib/api-types";
 import { RULE_STATUS_LABEL } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 
-function limitText(rule: RuleResult): string {
-  if (rule.limit === null) return "unknown";
+function limitText(rule: RuleResult, result: "held" | "broken"): string {
+  if (rule.limit === null) return result === "held" ? "not reported" : "unknown";
   const prefix = rule.direction === "at_least" ? "at least " : rule.direction === "at_most" ? "at most " : "";
   return `${prefix}${rule.limit} ${rule.unit}`.trim();
 }
 
 const STATUS_TONE: Record<NonNullable<RuleResult["status"]>, string> = {
   confirmed: "bg-success-soft text-success",
+  secondary: "bg-muted text-muted-foreground",
+  unverified: "bg-warning-soft text-warning",
   policy: "bg-warning-soft text-warning",
   assumption: "bg-muted text-muted-foreground",
+  scenario_defined: "bg-muted text-muted-foreground",
+  unknown: "bg-warning-soft text-warning",
 };
 
 /**
@@ -38,7 +42,7 @@ export function RuleLine({ rule, result }: { rule: RuleResult; result: "held" | 
             {result === "broken" ? rule.message : (rule.label ?? rule.message)}
           </span>
           {status && rule.status && (
-            <Badge variant="outline" title={status.detail} className={cn("border-transparent", STATUS_TONE[rule.status])}>
+            <Badge variant="outline" title={rule.status_label ?? status.detail} className={cn("border-transparent", STATUS_TONE[rule.status])}>
               {status.name}
             </Badge>
           )}
@@ -47,12 +51,16 @@ export function RuleLine({ rule, result }: { rule: RuleResult; result: "held" | 
           <div className="flex gap-1">
             <dt className="text-muted-foreground">Observed</dt>
             <dd className="font-semibold text-foreground">
-              {rule.observed === null ? "unknown" : `${rule.observed} ${rule.unit}`}
+              {rule.observed === null
+                ? result === "held"
+                  ? "not reported"
+                  : "unknown"
+                : `${rule.observed} ${rule.unit}`}
             </dd>
           </div>
           <div className="flex gap-1">
             <dt className="text-muted-foreground">Limit</dt>
-            <dd className="font-medium text-foreground">{limitText(rule)}</dd>
+            <dd className="font-medium text-foreground">{limitText(rule, result)}</dd>
           </div>
           <div className="flex gap-1">
             <dt className="text-muted-foreground">Source</dt>

@@ -43,8 +43,12 @@ export const PROVENANCE_LABEL: Record<Provenance, { name: string; detail: string
 
 export const RULE_STATUS_LABEL: Record<RuleStatus, { name: string; detail: string }> = {
   confirmed: { name: "Regulation", detail: "Confirmed against the published rule" },
+  secondary: { name: "Published study", detail: "From a published study, not a rule" },
+  unverified: { name: "Unverified", detail: "Not yet verified against its source" },
   policy: { name: "Policy, not regulation", detail: "Our own limit, shaped on a regulation. It is not the regulation." },
   assumption: { name: "Assumption", detail: "A demo default that is not from a regulation" },
+  scenario_defined: { name: "Set by the scenario", detail: "The limit comes from the scenario data, not a regulation" },
+  unknown: { name: "Basis unknown", detail: "The basis of this limit is not known" },
 };
 
 export const PATH_LABEL: Record<RunPath, string> = {
@@ -56,10 +60,22 @@ export const PATH_LABEL: Record<RunPath, string> = {
 export const FAULT_LABEL: Record<FaultKind, string> = {
   model_off: "Model off",
   missing_key: "No model key",
+  auth_failure: "Model key refused",
+  rate_limit: "Rate limited",
   timeout: "Timed out",
+  wall_clock_cap: "Time limit reached",
+  connection_error: "Could not reach the model",
   malformed_output: "Unreadable answer",
+  max_tokens: "Answer cut off",
+  hallucinated_package: "Named a plan not offered",
   api_error: "Model error",
   refusal: "Agent refused",
+  recording_miss: "No recording",
+  consensus_recheck_failed: "Agreed plan failed the re-check",
+  package_bound: "Too many candidate plans",
+  scenario_data: "Scenario data problem",
+  sink_failure: "Log write failed",
+  internal_error: "Internal error",
   turn_cap: "Turn limit reached",
   missing_data: "Missing data",
 };

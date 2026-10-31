@@ -93,7 +93,7 @@ export function LogView({
         </p>
         <p className="font-mono text-xs break-all">
           <span className="font-sans font-medium">Log head </span>
-          {logHead}
+          {log.head ?? logHead}
         </p>
       </div>
       <Table>

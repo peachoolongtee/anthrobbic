@@ -24,7 +24,7 @@ export function SignoffPanel({
   onNewPlan: () => void;
 }) {
   return (
-    <Card size="sm" aria-labelledby="signoff-heading" role="region">
+    <Card size="sm" aria-labelledby="signoff-heading" role="region" className="overflow-visible">
       <CardHeader>
         <CardTitle id="signoff-heading">Sign off</CardTitle>
       </CardHeader>
@@ -67,7 +67,7 @@ function SignoffForm({
   // After any refusal the plan on screen is out of date until a new one is made.
   const stale = signoff.status === "done" && !approved;
   const loading = signoff.status === "loading";
-  const modelOff = run.faults.some((f) => f.kind === "model_off");
+  const modelOff = run.fallback_trigger === "llm_off" || run.faults.some((f) => f.kind === "model_off");
 
   return (
     <form
@@ -127,21 +127,26 @@ function SignoffForm({
           ) : (
             <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
           )}
-          <span>Chosen by the rule-based fallback. The agents did not agree.</span>
+          <span>
+            Chosen by the rule-based fallback. {modelOff ? "The model is off, so the agents did not run." : "The agents did not agree."}
+          </span>
         </p>
       )}
-      <Button type="submit" disabled={none || stale || loading || approved} className="w-full">
-        {loading ? "Checking the rules again..." : approved ? "Approved" : "Approve"}
-      </Button>
-      {!approved && (
-        <p className="text-xs text-muted-foreground">
-          {stale
-            ? "This plan is out of date. Make a new recovery plan to approve again."
-            : none
-              ? "Tick at least one box to approve."
-              : "Sign-off checks the plan, the airport, the rules and this plan summary again before anything is issued."}
-        </p>
-      )}
+      {/* Stays on screen while the rest of the panel scrolls. */}
+      <div className="sticky bottom-0 space-y-1 bg-card py-2">
+        <Button type="submit" disabled={none || stale || loading || approved} className="w-full">
+          {loading ? "Checking the rules again..." : approved ? "Approved" : "Approve"}
+        </Button>
+        {!approved && (
+          <p className="text-xs text-muted-foreground">
+            {stale
+              ? "This plan is out of date. Make a new recovery plan to approve again."
+              : none
+                ? "Tick at least one box to approve."
+                : "Sign-off checks the plan, the airport, the rules and this plan summary again before anything is issued."}
+          </p>
+        )}
+      </div>
     </form>
   );
 }

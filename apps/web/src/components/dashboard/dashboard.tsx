@@ -41,7 +41,7 @@ export function Dashboard() {
     <div className="flex min-h-screen flex-col lg:h-screen">
       <ModeBanner mode={d.mode} onModeChange={d.setMode} disabled={running || d.selectedId === null} />
 
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[14rem_minmax(0,1fr)_18rem]">
+      <div className="grid min-h-0 flex-1 lg:grid-cols-[14rem_minmax(0,1fr)_18rem] lg:grid-rows-[minmax(0,1fr)]">
         <aside className="flex min-h-0 flex-col border-b p-3 max-lg:max-h-[28rem] lg:border-r lg:border-b-0">
           <FlightList
             scenarios={d.scenarios}

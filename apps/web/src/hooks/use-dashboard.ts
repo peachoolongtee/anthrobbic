@@ -84,7 +84,10 @@ export function useDashboard() {
           if (selectedRef.current === null && data.length > 0) {
             selectedRef.current = data[0].scenario_id;
             setSelectedId(data[0].scenario_id);
-            void startRun(data[0].scenario_id, "recorded", {});
+            // Open on replay only when this row has saved answers to replay.
+            const first: RunMode = data[0].has_recording === false ? "off" : "recorded";
+            setModeState(first);
+            void startRun(data[0].scenario_id, first, {});
           }
         })
         .catch((err: unknown) => {
@@ -164,7 +167,7 @@ export function useDashboard() {
                 kind,
                 tone: "ok",
                 title: "Caught before it could be chosen",
-                detail: `${first.violations.map((v) => v.rule_id).join(", ")} removed it. It is listed under Plans the rules removed.`,
+                detail: `${[...new Set(first.violations.map((v) => v.rule_id))].join(", ")} removed it. It is listed under Plans the rules removed.`,
               }
             : {
                 kind,
@@ -237,6 +240,8 @@ export function useDashboard() {
     setBusy("stale");
     try {
       await api.changeState(run.run_id, { closed_gates: [gate] });
+      // The next plan must be made for the airport as it is now.
+      setOverrides((o) => ({ ...o, closed_gates: [...new Set([...(o.closed_gates ?? []), gate])] }));
       setOutcome({
         kind: "stale",
         tone: "info",
