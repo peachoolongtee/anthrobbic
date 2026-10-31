@@ -4,6 +4,9 @@ No agent state lives here. Every call is stateless and carries only what its
 `AgentSpec` allow-lists, so there is no shared conversation to leak through.
 Nothing in this module decides legality: packages reach an agent already legal,
 and a reply can only pick among them.
+
+The SDK is imported only inside the functions that reach a model, so importing
+the protocol, or running with the LLM off, never loads it.
 """
 
 import html
@@ -15,7 +18,6 @@ from enum import StrEnum
 from time import perf_counter
 from typing import Any, Final, Protocol
 
-import anthropic
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
 from app.negotiation.contracts import (
@@ -319,7 +321,15 @@ def _render_feedback(feedback: TurnFeedback) -> str:
     return f"<code_feedback>\n{_dump(body)}\n</code_feedback>"
 
 
+def default_client() -> ModelClient:
+    import anthropic
+
+    return anthropic.Anthropic()
+
+
 def schema_for(reply_model: type[BaseModel]) -> dict[str, Any]:
+    import anthropic
+
     return anthropic.transform_schema(reply_model)
 
 
@@ -341,6 +351,8 @@ _KEY_SHAPE = re.compile(r"sk-ant-[A-Za-z0-9_-]+")
 
 def _safe_detail(exc: Exception) -> str:
     """The exception's class and status. A 400's message helps, scrubbed."""
+    import anthropic
+
     parts = [type(exc).__name__]
     status = getattr(exc, "status_code", None)
     if status is not None:
@@ -355,6 +367,8 @@ def _send(client: ModelClient, request: ModelRequest) -> Any:
 
     Most specific first: `APITimeoutError` is a subclass of `APIConnectionError`.
     """
+    import anthropic
+
     try:
         configured = client.with_options(
             timeout=REQUEST_TIMEOUT_S, max_retries=MAX_RETRIES

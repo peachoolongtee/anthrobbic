@@ -26,7 +26,6 @@ from enum import StrEnum
 from time import monotonic
 from typing import Any, Final, Literal, Protocol
 
-import anthropic
 from pydantic import JsonValue
 
 from app.negotiation import fallback
@@ -48,6 +47,7 @@ from app.negotiation.agents.base import (
     build_user_message,
     call_agent,
     clean_model_note,
+    default_client,
     invoke_model,
     render_notes,
 )
@@ -284,7 +284,7 @@ def _resolve_client(mode: Mode, client: ModelClient | None) -> ModelClient:
         return RecordingClient()
     if not any(os.environ.get(name) for name in _CREDENTIAL_VARIABLES):
         raise AgentFault(FaultKind.MISSING_KEY, "no credential in the environment")
-    return anthropic.Anthropic()
+    return default_client()
 
 
 def _fault_for(exc: Exception, domain: Domain | None, turn: int | None) -> Fault:
@@ -485,6 +485,15 @@ class _Negotiation:
             rules_passed=passed,
         )
 
+    def _over_bound(self) -> bool:
+        return any(f.kind is FaultKind.PACKAGE_BOUND for f in self.trace.faults)
+
+    def _note_over_bound(self) -> None:
+        if not self._over_bound():
+            self.trace.fault(
+                Fault(kind=FaultKind.PACKAGE_BOUND, detail="candidate set over bound")
+            )
+
     def to_fallback(self, trigger: str) -> NegotiationResult:
         """The deterministic decision, labelled with why it ran. Never clean."""
         self.trace.emit("fallback", {"trigger": trigger})
@@ -493,14 +502,13 @@ class _Negotiation:
             if (
                 isinstance(decision, NoDeal)
                 and decision.reason_type is NoDealReason.SYSTEM_FAULT
+                and not self._over_bound()
             ):
                 self.trace.fault(
                     Fault(kind=FaultKind.SCENARIO_DATA, detail=decision.reason)
                 )
         except PackageBoundError as exc:
-            self.trace.fault(
-                Fault(kind=FaultKind.PACKAGE_BOUND, detail="candidate set over bound")
-            )
+            self._note_over_bound()
             decision = _system_fault(str(exc))
         except Exception as exc:
             self.trace.fault(_fault_for(exc, None, None))
@@ -517,6 +525,7 @@ class _Negotiation:
         try:
             packages = enumerate_packages(scenario)
         except PackageBoundError:
+            self._note_over_bound()
             return self.to_fallback("package_bound")
 
         legal, removed, violations = _split_legal(scenario, packages)
@@ -707,23 +716,27 @@ class _Negotiation:
 
     def _conclude(self, turn: int, package: Package) -> NegotiationResult:
         self.agents_agreed = True
+        # Both gates run afresh here: `Consensus` itself only records the outcome.
         violations = check_package(self.scenario, package)
+        enumerated = package in enumerate_packages(self.scenario)
         self.trace.emit(
             "verdict",
             {
                 "check": "consensus_rules",
                 "turn": turn,
                 "package_id": package.terms_hash,
-                "passed": not violations,
+                "passed": enumerated and not violations,
+                "enumerated": enumerated,
                 "violations": [v.rule_id for v in violations],
             },
         )
-        if violations:
+        if violations or not enumerated:
+            failed = sorted({v.rule_id for v in violations})
             self.trace.fault(
                 Fault(
                     kind=FaultKind.CONSENSUS_RECHECK_FAILED,
                     turn=turn,
-                    detail=",".join(sorted({v.rule_id for v in violations})),
+                    detail=",".join(failed) or "package not in the enumerated set",
                 )
             )
             return self.to_fallback("fault")

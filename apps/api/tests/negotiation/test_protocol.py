@@ -3,6 +3,9 @@
 import ast
 import inspect
 import json
+import os
+import subprocess
+import sys
 import threading
 from pathlib import Path
 from typing import Any
@@ -17,6 +20,7 @@ from app.negotiation.contracts import (
     Connection,
     Deal,
     Domain,
+    FlightPlanAction,
     Gate,
     GateOccupancy,
     NoDeal,
@@ -366,6 +370,48 @@ def test_the_recheck_gate_fires_when_a_consensus_fails_the_rules(
     assert result.decision.package != illegal
 
 
+def test_a_consensus_outside_the_enumerated_set_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Off the slot grid, so it passes every rule but code never enumerated it."""
+    scenario = make_scenario(gate_occupancies=())
+    rogue = make_package(time_min=102, runway_id="28R", action=FlightPlanAction.VECTOR)
+    assert not check_package(scenario, rogue)
+    assert rogue not in enumerate_packages(scenario)
+    real_split = protocol._split_legal
+
+    def leaky(scenario_: Scenario, packages: Any) -> Any:
+        _, removed, violations = real_split(scenario_, packages)
+        return [rogue], removed, violations
+
+    monkeypatch.setattr(protocol, "_split_legal", leaky)
+    sink = ListSink()
+    result = run_negotiation(
+        scenario, "live", sink=sink, client=ScriptedClient(accept_all)
+    )
+    assert result.path == "fallback"
+    assert [f.kind for f in result.faults] == [FaultKind.CONSENSUS_RECHECK_FAILED]
+    assert isinstance(result.decision, Deal)
+    assert result.decision.package != rogue
+    assert "consensus" not in sink.kinds()
+
+
+def test_decide_reporting_over_bound_itself_still_names_one_fault(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`decide` is moving from raising to returning a SYSTEM_FAULT `NoDeal`."""
+    gates = tuple(
+        Gate(gate_id=f"G{i}", taxiway_id="T1", max_size=AircraftSize.WIDE_BODY)
+        for i in range(120)
+    )
+    scenario = make_scenario(gates=gates, latest_arrival_min=300)
+    returned = protocol._system_fault("over bound")
+    monkeypatch.setattr(protocol.fallback, "decide", lambda _s: returned)
+    result = run_negotiation(scenario, "live", client=ScriptedClient(accept_all))
+    assert result.path == "no_deal"
+    assert [f.kind for f in result.faults] == [FaultKind.PACKAGE_BOUND]
+
+
 def test_an_unexpected_error_does_not_escape(monkeypatch: pytest.MonkeyPatch) -> None:
     def boom(*_: Any) -> None:
         raise RuntimeError("bug")
@@ -399,6 +445,27 @@ def test_off_needs_no_key_and_makes_no_call(monkeypatch: pytest.MonkeyPatch) -> 
     assert not result.agents_agreed
     assert result.decision == fallback.decide(scenario)
     assert ("fallback", {"trigger": "llm_off"}) in sink.entries
+
+
+def test_off_never_loads_the_sdk() -> None:
+    script = """
+import sys
+from app.negotiation.protocol import run_negotiation, run_unguarded
+from tests.negotiation.factories import make_scenario
+run_negotiation(make_scenario(), "off")
+run_unguarded(make_scenario(), "off")
+print("anthropic" in sys.modules)
+"""
+    api_root = Path(protocol.__file__).resolve().parents[2]
+    done = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=api_root,
+        env={**os.environ, "PYTHONPATH": str(api_root)},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert done.stdout.strip() == "False"
 
 
 def test_unknown_mode_is_rejected() -> None:
