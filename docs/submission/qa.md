@@ -71,7 +71,7 @@ No. Approving is not executing. The screen says "Nothing has been executed." The
 
 ## 15. Can the log be forged?
 
-A single edit is caught. A full rewrite is not, unless the head is compared with a copy kept elsewhere. We record the head on the sign-off, so you can compare. The "Tamper with log" button shows a caught edit on a copy.
+A single edit is caught. A full rewrite is not, unless the head is compared with a copy kept elsewhere. We record the head on the sign-off, so you can compare. The "Tamper log" button `[CHECK ON SCREEN]` shows a caught edit on a copy.
 
 ## 16. Why 2015 US data?
 
