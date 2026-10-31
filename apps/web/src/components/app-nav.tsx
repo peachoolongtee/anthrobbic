@@ -30,7 +30,7 @@ export function AppNav() {
         className="flex items-center gap-2 rounded-md font-display text-base font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <Airliner className="size-5 -rotate-45 text-beacon-bright" />
-        <span className="max-md:sr-only">Magic Airbus</span>
+        <span className="max-md:sr-only">Magic Airbuzz</span>
       </Link>
       <nav aria-label="Pages" className="flex items-center gap-0.5 rounded-full border border-border bg-card/60 p-0.5">
         {LINKS.map((l) => {
