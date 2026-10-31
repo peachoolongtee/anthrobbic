@@ -4,7 +4,6 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   CircleAlert,
   CircleCheck,
-  ChevronDown,
   FileWarning,
   Info,
   Loader2,
@@ -12,7 +11,6 @@ import {
   RotateCcw,
   ShieldAlert,
   TimerReset,
-  Wrench,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -28,9 +26,6 @@ interface Props {
   overrides: RunOverrides;
   busy: BreakKind | null;
   disabled: boolean;
-  /** Closed by default, so the card does not cover the route on the map. */
-  open: boolean;
-  onToggle: () => void;
   onDisrupt: (kind: "runway" | "gate", overrides: RunOverrides, title: string) => void;
   /** Where runways and gates are closed: the diagram, or a hint for the 3D view. */
   children?: ReactNode;
@@ -42,9 +37,10 @@ interface Props {
 }
 
 /**
- * Every try-to-break-it control in one card: close runways and gates on the
- * diagram, inject an unsafe recovery plan, change the airport behind the
- * screen, tamper with the log, or reset. Results show in BreakNotice.
+ * Every try-to-break-it control, shown in the Try to break it drawer: close
+ * runways and gates on the diagram, inject an unsafe recovery plan, change the
+ * airport behind the screen, tamper with the log, or reset. Results show in
+ * BreakNotice and on the approach view.
  */
 export function BreakItDock(p: Props) {
   const [unsafe, setUnsafe] = useState<string>(UNSAFE_OPTIONS[0].value);
@@ -61,36 +57,9 @@ export function BreakItDock(p: Props) {
   });
 
   return (
-    <section aria-labelledby="break-heading" className={cn("space-y-2", p.className)}>
-      <header className="flex items-center gap-2">
-        <h2 id="break-heading" className="text-sm font-semibold">
-          <button
-            type="button"
-            aria-expanded={p.open}
-            aria-controls="break-controls"
-            onClick={p.onToggle}
-            className="flex items-center gap-2 rounded-md outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <Wrench aria-hidden className="size-4 text-muted-foreground" />
-            Try to break it
-            <ChevronDown aria-hidden className={cn("size-4 text-muted-foreground transition-transform motion-reduce:transition-none", !p.open && "rotate-180")} />
-          </button>
-        </h2>
-        {p.busy !== null && <Loader2 aria-label="Re-running" className="size-4 animate-spin text-muted-foreground" />}
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          disabled={off || !hasOverrides}
-          onClick={p.onReset}
-          aria-label="Reset every change"
-          title="Reset every change"
-          className="ml-auto"
-        >
-          <RotateCcw aria-hidden />
-        </Button>
-      </header>
-
-      <div id="break-controls" hidden={!p.open} className="space-y-2">
+    <section aria-label="Try to break it" className={cn("grid gap-4 lg:grid-cols-[minmax(0,1fr)_17rem]", p.className)}>
+      <div className="min-w-0 space-y-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Disrupt the airport</h3>
         <div role="group" aria-label="Disruption presets" className="flex flex-wrap items-center gap-1">
           {presetIds.map((id) => {
             const d = presets[id];
@@ -114,10 +83,12 @@ export function BreakItDock(p: Props) {
             {unavailable.join(" ")}
           </p>
         )}
+        <div className="h-64">{p.children}</div>
+      </div>
 
-        {p.children}
-
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2">
+      <div className="flex min-w-0 flex-col gap-2 lg:border-l lg:border-border lg:pl-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Attack the decision</h3>
+        <div className="flex flex-wrap items-center gap-1.5">
           <Select items={UNSAFE_OPTIONS} value={unsafe} onValueChange={(v) => v && setUnsafe(v)} disabled={off}>
             <SelectTrigger size="sm" aria-label="Unsafe recovery plan to inject" className="min-w-0 flex-1">
               <SelectValue />
@@ -135,20 +106,25 @@ export function BreakItDock(p: Props) {
             Inject
           </Button>
         </div>
-        <div className="grid grid-cols-2 gap-1.5">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={off}
-            onClick={p.onStale}
-            title="Block this recovery plan's gate on the server while the screen keeps the old plan. Then try to approve."
-          >
-            <TimerReset aria-hidden />
-            Late change
-          </Button>
-          <Button size="sm" variant="outline" disabled={off} onClick={p.onTamper} title="Edit the decision log, then check it">
-            <FileWarning aria-hidden />
-            Tamper log
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={off}
+          onClick={p.onStale}
+          title="Block this recovery plan's gate on the server while the screen keeps the old plan. Then try to approve."
+        >
+          <TimerReset aria-hidden />
+          Late change
+        </Button>
+        <Button size="sm" variant="outline" disabled={off} onClick={p.onTamper} title="Edit the decision log, then check it">
+          <FileWarning aria-hidden />
+          Tamper log
+        </Button>
+        <div className="mt-auto flex items-center gap-2 border-t border-border pt-2">
+          {p.busy !== null && <Loader2 aria-label="Re-running" className="size-4 animate-spin text-muted-foreground" />}
+          <Button size="sm" variant="ghost" disabled={off || !hasOverrides} onClick={p.onReset} className="ml-auto">
+            <RotateCcw aria-hidden />
+            Reset every change
           </Button>
         </div>
       </div>
