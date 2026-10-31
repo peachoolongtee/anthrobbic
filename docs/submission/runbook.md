@@ -66,7 +66,7 @@ The demo runs on Live. Use two terminal tabs, both at the repo root.
 Needs no key and no network. Build the web app without `NEXT_PUBLIC_DEFAULT_RUN_MODE`, then follow these steps. Use flights marked "Recorded" and the script's recorded wording in beat 2.
 
 
-The new dashboard has two pages: the overview at `/` and the flights page at `/dashboard/flights`. The overview, when it opens, asks the API for 50 flights and makes one recorded run of each flight with saved answers (19 today). Those replay, so they make no model calls, whatever the mode. The flights page asks for 200. Both need the API to be up, and the first list call after an API restart takes several seconds (7.8 seconds when measured). So the order matters. Use two terminal tabs, both at the repo root.
+The new dashboard has two pages: the overview at `/` and the flights page at `/dashboard/flights`. The overview, when it opens, asks the API for 50 flights and makes one recorded run of each flight with saved answers (19 today). Those replay, so they make no model calls, whatever the mode, and the **Arrivals** table takes a few seconds to fill on the first load (about 8 when measured). The flights page asks for 200. Both need the API to be up, and the first list call after an API restart takes several seconds (7.8 seconds when measured). So the order matters. Use two terminal tabs, both at the repo root.
 
 1. API (port 8000):
 
