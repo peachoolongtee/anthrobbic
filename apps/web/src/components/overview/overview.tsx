@@ -3,19 +3,20 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, CloudLightning, Database, PlaneLanding, PlayCircle } from "lucide-react";
+import { ArrowUpRight, Database, PlayCircle } from "lucide-react";
+import { motion } from "motion/react";
 import { api } from "@/lib/api";
-import type { ScenarioSummary } from "@/lib/api-types";
-import { useEligibleCount } from "@/hooks/use-eligible-count";
+import type { Run, ScenarioSummary } from "@/lib/api-types";
+import { OUTCOME, outcomeOf, type Outcome } from "@/lib/outcome";
 import { AIRPORTS, routeCodes } from "@/lib/airports";
-import { CAUSE_LABEL } from "@/lib/labels";
+import { EASE_OUT, RISE, STAGGER } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import stats from "@/lib/flight-stats.json";
-import { AppNav } from "@/components/app-nav";
+import { APP_HEADER, AppNav } from "@/components/app-nav";
+import { CountUp } from "@/components/count-up";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OrbitingGlobe, type GlobeRoute } from "@/components/landing/orbiting-globe";
-
-const CAUSE_ICON = { weather: CloudLightning, late_aircraft: PlaneLanding } as const;
+import { ArrivalsTable } from "@/components/overview/arrivals-table";
 
 const CAUSES: { key: keyof typeof stats.causeMinutes; label: string }[] = [
   { key: "late_aircraft", label: "Late aircraft" },
@@ -24,12 +25,6 @@ const CAUSES: { key: keyof typeof stats.causeMinutes; label: string }[] = [
   { key: "air_system", label: "Air system" },
   { key: "security", label: "Security" },
 ];
-
-const fmt = new Intl.NumberFormat("en-US");
-
-function flightHref(id: string) {
-  return `/dashboard/flights?flight=${encodeURIComponent(id)}`;
-}
 
 const LIST_LIMIT = 50;
 /** The globe stays readable, and stays as cheap to draw as it was. */
@@ -44,12 +39,13 @@ function Panel({
 }: {
   title: string;
   action?: React.ReactNode;
-  source?: "real" | "demo";
+  source?: "real" | "demo" | "runs";
   className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <section
+    <motion.section
+      variants={RISE}
       aria-label={title}
       className={cn("flex min-w-0 flex-col rounded-2xl border border-white/10 bg-card/70 p-5 backdrop-blur-xl backdrop-saturate-150 [box-shadow:inset_0_1px_0_0_rgb(255_255_255/0.06)]", className)}
     >
@@ -57,17 +53,23 @@ function Panel({
         <h2 className="font-display text-lg font-medium">{title}</h2>
         {source && (
           <span
-            title={source === "real" ? "Counted from the US DOT on-time records for 2015" : "From the demo flight list, not from the 2015 counts"}
+            title={
+              source === "real"
+                ? "Counted from the US DOT on-time records for 2015"
+                : source === "runs"
+                  ? "From one recorded run of each demo flight: saved answers replay, no model is called"
+                  : "From the demo flight list, not from the 2015 counts"
+            }
             className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground"
           >
             {source === "real" ? <Database aria-hidden className="size-3.5" /> : <PlayCircle aria-hidden className="size-3.5" />}
-            {source === "real" ? "US DOT 2015" : "Demo flights"}
+            {source === "real" ? "US DOT 2015" : source === "runs" ? "Recorded runs" : "Demo flights"}
           </span>
         )}
         <div className="ml-auto">{action}</div>
       </header>
       {children}
-    </section>
+    </motion.section>
   );
 }
 
@@ -84,16 +86,19 @@ function Donut({ parts, total }: { parts: { label: string; n: number; stroke: st
   return (
     <svg viewBox="0 0 160 160" className="size-44" role="img" aria-label={parts.map((p) => `${p.label} ${p.n}`).join(", ")}>
       <circle cx="80" cy="80" r={r} fill="none" strokeWidth="16" className="stroke-muted" />
-      {segments.map(({ label, n, len, start, stroke }) =>
+      {/* Each segment draws itself round the ring, after the ones before it. */}
+      {segments.map(({ label, n, len, start, stroke }, i) =>
         n === 0 ? null : (
-          <circle
+          <motion.circle
             key={label}
             cx="80"
             cy="80"
             r={r}
             fill="none"
             strokeWidth="16"
-            strokeDasharray={`${Math.max(len - 3, 0)} ${c}`}
+            initial={{ strokeDasharray: `0 ${c}` }}
+            animate={{ strokeDasharray: `${Math.max(len - 3, 0)} ${c}` }}
+            transition={{ ...EASE_OUT, duration: 0.9, delay: 0.25 + i * 0.15 }}
             strokeDashoffset={-start}
             transform="rotate(-90 80 80)"
             className={stroke}
@@ -101,7 +106,7 @@ function Donut({ parts, total }: { parts: { label: string; n: number; stroke: st
         ),
       )}
       <text x="80" y="78" textAnchor="middle" className="fill-foreground font-display text-[34px] font-semibold">
-        {total}
+        <CountUp value={total} as="tspan" />
       </text>
       <text x="80" y="100" textAnchor="middle" className="fill-muted-foreground text-[11px]">
         flights
@@ -116,36 +121,92 @@ function Bar({ label, value, max, tone = "bg-primary", suffix }: { label: string
       <div className="flex items-baseline justify-between gap-2 text-sm">
         <span className="truncate">{label}</span>
         <span className="font-display font-semibold tabular-nums">
-          {fmt.format(value)}
+          <CountUp value={value} />
           {suffix}
         </span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-        <div className={cn("h-full rounded-full", tone)} style={{ width: `${max ? (value / max) * 100 : 0}%` }} />
+        {/* Grows from the left when it scrolls into view. */}
+        <motion.div
+          className={cn("h-full origin-left rounded-full", tone)}
+          style={{ width: `${max ? (value / max) * 100 : 0}%` }}
+          initial={{ scaleX: 0 }}
+          whileInView={{ scaleX: 1 }}
+          viewport={{ once: true }}
+          transition={{ ...EASE_OUT, duration: 0.8 }}
+        />
       </div>
     </div>
   );
 }
 
+/** The flights this page runs: a flight with no saved answers has no recorded outcome to show. */
+function ranOf(list: ScenarioSummary[]): ScenarioSummary[] {
+  const recorded = list.filter((f) => f.has_recording === true);
+  return recorded.length > 0 ? recorded : list.slice(0, GLOBE_FLIGHTS);
+}
+
 export function Overview() {
   const [flights, setFlights] = useState<ScenarioSummary[] | null>(null);
+  const [runs, setRuns] = useState<Record<string, Run | null>>({});
   const [failed, setFailed] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const router = useRouter();
   const pressAt = useRef<{ x: number; y: number } | null>(null);
-  const eligible = useEligibleCount();
 
   useEffect(() => {
     let live = true;
-    // The flight list only. The overview starts no runs, so it spends no model calls and writes no logs.
+    // The system document asks for each flight's outcome here. Each flight with
+    // saved answers runs once in recorded mode: they replay, so no model is
+    // called, but each run writes its evidence log like any other run.
     api
       .listScenarios({ limit: LIST_LIMIT })
-      .then((list) => live && setFlights(list))
+      .then((list) => {
+        if (!live) return;
+        setFlights(list);
+        for (const flight of ranOf(list)) {
+          api
+            .createRun({ scenario_id: flight.scenario_id, mode: "recorded", overrides: {} })
+            .then((run) => live && setRuns((r) => ({ ...r, [flight.scenario_id]: run })))
+            .catch(() => live && setRuns((r) => ({ ...r, [flight.scenario_id]: null })));
+        }
+      })
       .catch(() => live && setFailed(true));
     return () => {
       live = false;
     };
   }, []);
+
+  const outcomes = useMemo(
+    () => Object.fromEntries(Object.entries(runs).map(([id, run]) => [id, run ? outcomeOf(run) : "failed"])) as Record<string, Outcome>,
+    [runs],
+  );
+  const ran = useMemo(() => ranOf(flights ?? []), [flights]);
+  const finished = flights !== null && ran.every((f) => f.scenario_id in runs);
+
+  // Outcomes in the document's order, leaving out ones no flight had.
+  const outcomeParts = useMemo(
+    () =>
+      (["agreed", "fallback", "no_go", "fault", "failed"] as Outcome[])
+        .map((o) => ({ key: o, label: OUTCOME[o].label, n: Object.values(outcomes).filter((x) => x === o).length, stroke: OUTCOME[o].stroke, dot: OUTCOME[o].dot }))
+        .filter((p) => p.n > 0 || p.key === "agreed" || p.key === "fallback" || p.key === "no_go"),
+    [outcomes],
+  );
+
+  // Every rule that removed a plan, most often first.
+  const removedByRule = useMemo(() => {
+    const m = new Map<string, { label: string; count: number }>();
+    for (const run of Object.values(runs)) {
+      run?.removed_packages.forEach((p) =>
+        p.violations.forEach((v) => {
+          const cur = m.get(v.rule_id) ?? { label: v.label ?? v.rule_id, count: 0 };
+          cur.count++;
+          m.set(v.rule_id, cur);
+        }),
+      );
+    }
+    return [...m.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 5);
+  }, [runs]);
 
   const routes = useMemo<GlobeRoute[]>(
     () =>
@@ -158,42 +219,35 @@ export function Overview() {
     [flights],
   );
 
-  const byCause = useMemo(
-    () => [
-      { label: CAUSE_LABEL.weather, n: flights?.filter((f) => f.cause === "weather").length ?? 0, stroke: "stroke-info", dot: "bg-info" },
-      { label: CAUSE_LABEL.late_aircraft, n: flights?.filter((f) => f.cause === "late_aircraft").length ?? 0, stroke: "stroke-primary", dot: "bg-primary" },
-    ],
-    [flights],
-  );
-
-  // Flights with saved model answers first, then by scheduled arrival.
-  const sorted = flights
-    ? [...flights].sort(
-        (a, b) => Number(b.has_recording === true) - Number(a.has_recording === true) || a.scheduled_arrival.localeCompare(b.scheduled_arrival),
-      )
-    : null;
   const causeMax = Math.max(...CAUSES.map((c) => stats.causeMinutes[c.key]));
   const destMax = stats.topDestinations[0]?.count ?? 0;
   const routeMax = stats.topRoutes[0]?.count ?? 0;
-  const pct = (n: number) => `${Math.round((n / stats.eligible) * 100)}%`;
+  const pct = (n: number) => Math.round((n / stats.eligible) * 100);
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border bg-background/70 px-4 backdrop-blur sm:px-6">
+      <header className={`sticky top-0 ${APP_HEADER}`}>
         <AppNav />
       </header>
 
-      <main className="mx-auto grid max-w-[100rem] gap-4 p-4 sm:p-6 lg:grid-cols-12">
+      {/* The globe and each panel rise into place one after another. */}
+      <motion.main
+        variants={STAGGER}
+        initial="hidden"
+        animate="shown"
+        className="mx-auto grid max-w-[100rem] gap-4 p-4 sm:p-6 lg:grid-cols-12"
+      >
         {/* Centre stage: the globe across the full width. Clicking it opens the flights page. */}
-        <section aria-label="Demo flights on the globe" className="relative lg:col-span-12">
+        <motion.section variants={RISE} aria-label="Demo flights on the globe" className="relative lg:col-span-12">
           <div className="pointer-events-none absolute top-1 left-1 z-10">
             <h1 className="font-display text-2xl font-medium">Demo flights</h1>
             <p className="text-sm text-muted-foreground tabular-nums">
-              {flights ? `${flights.length} flights listed, ${flights.reduce((n, f) => n + f.delay_minutes, 0)} min of delay in all` : "\u00a0"}
+              {flights ? `${flights.length} flights, ${flights.reduce((n, f) => n + f.delay_minutes, 0)} min of delay in all` : "\u00a0"}
             </p>
           </div>
           <div
             className="relative cursor-pointer"
+            title="Illustration. The planes circle the routes for show; they are not live positions."
             onPointerDown={(e) => (pressAt.current = { x: e.clientX, y: e.clientY })}
             onClick={(e) => {
               // A drag spins the globe; only a still click opens the flights page.
@@ -208,9 +262,6 @@ export function Overview() {
               className="h-[22rem] sm:h-[28rem] lg:h-[min(62vh,40rem)]"
             />
           </div>
-          <p className="pointer-events-none absolute right-1 bottom-2 z-10 max-w-48 text-right text-[11px] text-muted-foreground sm:max-w-none">
-            Illustration. The planes circle {routes.length} of these routes for show; they are not live positions.
-          </p>
           <div className="absolute inset-x-0 bottom-2 z-10 flex justify-center">
             <Link
               href="/dashboard/flights"
@@ -220,84 +271,35 @@ export function Overview() {
               <ArrowUpRight aria-hidden className="size-4" />
             </Link>
           </div>
-        </section>
+        </motion.section>
 
         {/* The demo flights, in order. Pointing at one lights it on the globe. */}
         <Panel title="Arrivals" source="demo" className="lg:col-span-12">
           {failed ? (
             <p className="text-sm text-muted-foreground">The planning service did not answer.</p>
-          ) : sorted && sorted.length === 0 ? (
+          ) : !flights ? (
+            <Skeleton className="h-64 w-full" />
+          ) : flights.length === 0 ? (
             <p className="text-sm text-muted-foreground">There are no demo flights.</p>
           ) : (
-            <>
-            {sorted && (
-              <p className="mb-2 text-xs text-muted-foreground tabular-nums">
-                Showing {sorted.length}
-                {eligible !== null ? ` of ${eligible.toLocaleString("en-US")} eligible` : ""} flights.{" "}
-                <Link href="/dashboard/flights" className="underline underline-offset-2 hover:text-beacon">
-                  Find any flight
-                </Link>{" "}
-                on the Flights page covers them all.
-              </p>
-            )}
-            {/* Scrolls inside itself, so a longer list leaves the page the same length. */}
-            <ol
-              className="-mx-2 grid max-h-[15.5rem] gap-1 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6"
-              onMouseLeave={() => setActiveId(null)}
-            >
-              {!sorted && Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="mx-2 h-16" />)}
-              {sorted?.map((flight) => {
-                const Icon = CAUSE_ICON[flight.cause];
-                return (
-                  <li key={flight.scenario_id}>
-                    <Link
-                      href={flightHref(flight.scenario_id)}
-                      onMouseEnter={() => setActiveId(flight.scenario_id)}
-                      onFocus={() => setActiveId(flight.scenario_id)}
-                      onBlur={() => setActiveId(null)}
-                      className={cn(
-                        "grid grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-x-3 rounded-xl px-2 py-2 outline-none transition-colors hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring",
-                        activeId === flight.scenario_id && "bg-accent/60",
-                      )}
-                    >
-                      <span className="row-span-2 grid size-12 place-items-center rounded-full bg-secondary font-display text-xs font-semibold tabular-nums">
-                        {flight.scheduled_arrival}
-                      </span>
-                      <span className="font-display text-base font-medium whitespace-nowrap">
-                        {flight.route.replace(" to ", " → ")}
-                      </span>
-                      <span className="justify-self-end font-display font-semibold text-beacon tabular-nums">
-                        +{flight.delay_minutes}
-                        <span className="sr-only"> minutes of delay</span>
-                      </span>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">{flight.flight_id}</span>
-                      <span className="inline-flex items-center gap-1 justify-self-end text-xs text-muted-foreground whitespace-nowrap">
-                        <Icon aria-hidden className="size-3.5" />
-                        {CAUSE_LABEL[flight.cause]}
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ol>
-            </>
+            <ArrivalsTable flights={flights} outcomes={outcomes} ranIds={ran.map((f) => f.scenario_id)} activeId={activeId} onActive={setActiveId} />
           )}
         </Panel>
 
-        {/* The demo flights split by cause of delay */}
-        <Panel title="Demo flights by cause" source="demo" className="lg:col-span-4">
+        {/* Outcome mix across the demo flights, filled in as each run finishes */}
+        <Panel title="Outcomes" source="runs" className="lg:col-span-4">
           {failed ? (
             <p className="text-sm text-muted-foreground">The planning service did not answer.</p>
-          ) : !flights ? (
+          ) : !flights || !finished ? (
             <Skeleton className="mx-auto size-44 rounded-full" />
           ) : flights.length === 0 ? (
             <p className="text-sm text-muted-foreground">There are no demo flights.</p>
           ) : (
             <div className="flex flex-1 flex-col items-center gap-4">
-              <Donut parts={byCause} total={flights.length} />
+              <Donut parts={outcomeParts} total={ran.length} />
               <ul className="grid w-full gap-1.5">
-                {byCause.map((c) => (
-                  <li key={c.label} className="flex items-center gap-2 rounded-xl border border-border bg-background/40 px-3 py-2 text-sm">
+                {outcomeParts.map((c) => (
+                  <li key={c.key} className="flex items-center gap-2 rounded-xl border border-border bg-background/40 px-3 py-2 text-sm">
                     <span aria-hidden className={cn("size-2.5 rounded-full", c.dot)} />
                     <span className="truncate text-muted-foreground">{c.label}</span>
                     <span className="ml-auto font-display text-base font-semibold tabular-nums">{c.n}</span>
@@ -305,6 +307,26 @@ export function Overview() {
                 ))}
               </ul>
             </div>
+          )}
+        </Panel>
+
+        {/* Runs: what the safety rules removed */}
+        <Panel title="Rules that removed plans" source="runs" className="lg:col-span-4">
+          {failed ? (
+            <p className="text-sm text-muted-foreground">The planning service did not answer.</p>
+          ) : !finished ? (
+            <Skeleton className="h-32 w-full" />
+          ) : removedByRule.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No plan broke a rule on these flights.</p>
+          ) : (
+            <ul className="space-y-4">
+              {removedByRule.map(([id, r]) => (
+                <li key={id}>
+                  <Bar label={r.label} value={r.count} max={removedByRule[0][1].count} tone="bg-destructive/80" />
+                  <span className="mt-1 block font-mono text-xs text-muted-foreground">{id}</span>
+                </li>
+              ))}
+            </ul>
           )}
         </Panel>
 
@@ -317,7 +339,6 @@ export function Overview() {
               </li>
             ))}
           </ul>
-          <p className="mt-auto pt-4 text-xs text-muted-foreground">Delayed arrivals per route, US DOT 2015</p>
         </Panel>
 
         <Panel title="Airports with most delayed arrivals" source="real" className="lg:col-span-4">
@@ -332,25 +353,29 @@ export function Overview() {
         </Panel>
 
         {/* Real: the dataset in four numbers, and delay hours by cause */}
-        <Panel title="US DOT 2015 delayed arrivals" source="real" className="lg:col-span-12">
+        <Panel title="US DOT 2015 delayed arrivals" source="real" className="lg:col-span-8">
           <div className="grid gap-4 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-            <div className="space-y-2">
+            <div>
               <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {[
-                  { label: "Delayed arrivals", value: fmt.format(stats.eligible) },
-                  { label: "Average arrival delay", value: `${stats.avgEligibleArrivalDelay} min` },
-                  { label: "Late aircraft over 20 min", value: pct(stats.eligibleLateAircraft) },
-                  { label: "Weather over 15 min", value: pct(stats.eligibleWeather) },
+                  { label: "Delayed arrivals", value: stats.eligible, suffix: "" },
+                  { label: "Average arrival delay", value: stats.avgEligibleArrivalDelay, suffix: " min" },
+                  { label: "Late aircraft over 20 min", value: pct(stats.eligibleLateAircraft), suffix: "%" },
+                  { label: "Weather over 15 min", value: pct(stats.eligibleWeather), suffix: "%" },
                 ].map((t) => (
-                  <div key={t.label} className="flex flex-col justify-between rounded-xl border border-border bg-background/40 p-3">
+                  <motion.div
+                    key={t.label}
+                    whileHover={{ y: -2 }}
+                    className="flex flex-col justify-between rounded-xl border border-border bg-background/40 p-3 transition-colors hover:border-primary/40"
+                  >
                     <dt className="text-xs text-muted-foreground">{t.label}</dt>
-                    <dd className="mt-6 font-display text-2xl font-semibold tabular-nums">{t.value}</dd>
-                  </div>
+                    <dd className="mt-6 font-display text-2xl font-semibold tabular-nums">
+                      <CountUp value={t.value} />
+                      {t.suffix}
+                    </dd>
+                  </motion.div>
                 ))}
               </dl>
-              <p className="text-xs text-muted-foreground">
-                The two shares are of these arrivals. A flight can be in both, so they add up to more than 100%.
-              </p>
             </div>
             <ul className="space-y-3">
               {CAUSES.slice(0, 3).map((c) => (
@@ -364,17 +389,10 @@ export function Overview() {
                   />
                 </li>
               ))}
-              <li className="text-xs text-muted-foreground">Hours of delay by cause, added up over these arrivals</li>
             </ul>
           </div>
         </Panel>
-
-        <p className="text-xs text-muted-foreground lg:col-span-12">
-          Source: US DOT on-time records, 2015, the organiser file flights.csv. {fmt.format(stats.eligible)} flown
-          arrivals with weather delay over 15 min or late-aircraft delay over 20 min, October left out. Counted from the
-          file, not estimated. Demo flights: the sample list shown on the Flights page, not a count from this file.
-        </p>
-      </main>
+      </motion.main>
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { CloudLightning, CornerDownRight, Layers, PlaneLanding, Search } from "lucide-react";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { AnimatePresence, motion } from "motion/react";
 import type { Cause, ScenarioSummary } from "@/lib/api-types";
 import { useEligibleCount } from "@/hooks/use-eligible-count";
 import { CAUSE_LABEL } from "@/lib/labels";
@@ -17,6 +17,12 @@ type ScenarioLoad =
   | { status: "ready"; data: ScenarioSummary[] };
 
 const CAUSE_ICON = { weather: CloudLightning, late_aircraft: PlaneLanding } as const;
+
+const CAUSE_FILTERS: { value: Cause | "all"; label: string; Icon: typeof Layers }[] = [
+  { value: "all", label: "All", Icon: Layers },
+  { value: "weather", label: CAUSE_LABEL.weather, Icon: CAUSE_ICON.weather },
+  { value: "late_aircraft", label: CAUSE_LABEL.late_aircraft, Icon: CAUSE_ICON.late_aircraft },
+];
 
 function codes(route: string): [string, string] {
   const [a, b] = route.split(" to ");
@@ -98,34 +104,46 @@ export function FlightList({
             className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
         </label>
-        <ToggleGroup
-          aria-label="Filter by cause of delay"
-          variant="outline"
-          size="sm"
-          spacing={0}
-          value={[cause]}
-          onValueChange={(v) => {
-            const next = v[0] as Cause | "all" | undefined;
-            if (next && next !== cause) onCauseChange(next);
-          }}
-        >
-          <ToggleGroupItem value="all" aria-label="All causes" title="All">
-            <Layers aria-hidden />
-          </ToggleGroupItem>
-          <ToggleGroupItem value="weather" aria-label="Weather" title="Weather">
-            <CloudLightning aria-hidden />
-          </ToggleGroupItem>
-          <ToggleGroupItem value="late_aircraft" aria-label="Late aircraft" title="Late aircraft">
-            <PlaneLanding aria-hidden />
-          </ToggleGroupItem>
-        </ToggleGroup>
+      </div>
+
+      {/* Cause of delay, named in words. One pill slides to the chosen cause. */}
+      <div
+        role="radiogroup"
+        aria-label="Filter by cause of delay"
+        className="grid grid-cols-[auto_1fr_1fr] gap-0.5 rounded-lg border border-border bg-card/60 p-0.5"
+      >
+        {CAUSE_FILTERS.map(({ value, label, Icon }) => {
+          const on = cause === value;
+          return (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              onClick={() => on || onCauseChange(value)}
+              className={cn(
+                "relative flex h-7 items-center justify-center gap-1.5 rounded-md px-2.5 text-xs font-medium whitespace-nowrap outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                on ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {on && (
+                <motion.span
+                  layoutId="cause-filter"
+                  aria-hidden
+                  className="absolute inset-0 rounded-md border border-primary/50 bg-primary/15"
+                />
+              )}
+              <Icon aria-hidden className={cn("relative size-3.5", on && "text-primary")} />
+              <span className="relative">{label}</span>
+            </button>
+          );
+        })}
       </div>
 
       {scenarios.status === "ready" && (
         <p className="text-xs text-muted-foreground tabular-nums">
           Showing {scenarios.data.length.toLocaleString("en-US")}
-          {eligible !== null ? ` of ${eligible.toLocaleString("en-US")} eligible` : ""} flights. The filter covers only these;
-          Find any flight covers them all.
+          {eligible !== null ? ` of ${eligible.toLocaleString("en-US")}` : ""} flights
         </p>
       )}
 
@@ -152,21 +170,35 @@ export function FlightList({
         )}
         {rows.length > 0 && (
           <ul className="space-y-1.5">
+            {/* Cards a filter removes fade out while the rest glide together. */}
+            <AnimatePresence initial={false} mode="popLayout">
             {rows.map((s) => {
               const selected = s.scenario_id === selectedId;
               const Icon = CAUSE_ICON[s.cause];
               return (
-                <li key={s.scenario_id}>
-                  <button
+                <motion.li
+                  key={s.scenario_id}
+                  layout="position"
+                  initial={{ opacity: 0, scale: 0.97 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.97 }}
+                >
+                  <motion.button
                     type="button"
                     onClick={() => onSelect(s.scenario_id)}
+                    whileTap={{ scale: 0.985 }}
                     aria-pressed={selected}
                     aria-label={`${s.flight_id}, ${s.route}, due ${s.scheduled_arrival}, ${s.delay_minutes} minutes late, ${CAUSE_LABEL[s.cause]}`}
-                    className={cn(
-                      "w-full rounded-xl border bg-card/70 px-3 py-2.5 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
-                      selected ? "border-beacon ring-1 ring-beacon" : "border-border",
-                    )}
+                    className="relative w-full rounded-xl border border-border bg-card/70 px-3 py-2.5 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
                   >
+                    {/* One ring, shared by every card, so it slides to the flight you pick. */}
+                    {selected && (
+                      <motion.span
+                        layoutId="flight-selected"
+                        aria-hidden
+                        className="pointer-events-none absolute -inset-px rounded-xl border border-beacon ring-1 ring-beacon"
+                      />
+                    )}
                     <div className="flex items-center gap-2 text-sm">
                       <Icon aria-hidden className="size-3.5 text-muted-foreground" />
                       <span className="font-medium">{s.flight_id}</span>
@@ -197,10 +229,11 @@ export function FlightList({
                         </span>
                       )}
                     </div>
-                  </button>
-                </li>
+                  </motion.button>
+                </motion.li>
               );
             })}
+            </AnimatePresence>
           </ul>
         )}
       </div>

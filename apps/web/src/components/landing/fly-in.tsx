@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Airliner } from "@/components/landing/airliner"
 
 const SEEN_KEY = "arrival-recovery:intro-seen"
@@ -36,7 +36,9 @@ export function FlyIn() {
   const planeRef = useRef<HTMLDivElement>(null)
   const trailRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
+  // A layout effect, so a skipped cover is hidden before the browser paints:
+  // coming back to the overview from another page must not flash it.
+  useLayoutEffect(() => {
     // Decide once per mount: React runs effects twice in development, and the
     // second run would otherwise find the flag the first one just set.
     if (decision.current === null) {

@@ -12,10 +12,10 @@ export interface GlobeRoute {
   to: [number, number]
 }
 
-const NIGHT_BASE: [number, number, number] = [0.26, 0.26, 0.3]
-const ROUTE: [number, number, number] = [0.62, 0.58, 0.78]
-const BEACON: [number, number, number] = [0.72, 0.6, 1]
-const HALO: [number, number, number] = [0.2, 0.19, 0.27]
+const NIGHT_BASE: [number, number, number] = [0.24, 0.24, 0.24]
+const ROUTE: [number, number, number] = [0.85, 0.55, 0.7]
+const BEACON: [number, number, number] = [1, 0.24, 0.62]
+const HALO: [number, number, number] = [0.22, 0.08, 0.15]
 // Starts with North America facing the viewer.
 const START_PHI = Math.PI - ((-95 * Math.PI) / 180 - Math.PI / 2)
 
@@ -76,7 +76,7 @@ function OrbitLines({ front, orbits }: { front: boolean; orbits: Orbit[] }) {
           strokeWidth={1}
           strokeDasharray="2 6"
           vectorEffect="non-scaling-stroke"
-          className={front ? "text-primary/45" : "text-primary/20"}
+          className={front ? "text-beacon-bright/45" : "text-beacon-bright/20"}
         />
       ))}
     </svg>
@@ -187,9 +187,9 @@ export function OrbitingGlobe({
       className={`relative isolate w-full ${horizon ? "overflow-hidden" : "aspect-square"} ${className}`}
     >
       {horizon ? (
-        <div className="pointer-events-none absolute top-[4%] left-1/2 h-[70%] w-[80%] -translate-x-1/2 rounded-[50%] bg-[radial-gradient(ellipse_at_50%_60%,color-mix(in_oklch,var(--primary)_22%,transparent),transparent_65%)] blur-3xl" />
+        <div className="pointer-events-none absolute top-[4%] left-1/2 h-[70%] w-[80%] -translate-x-1/2 rounded-[50%] bg-[radial-gradient(ellipse_at_50%_60%,color-mix(in_oklch,var(--beacon-bright)_22%,transparent),transparent_65%)] blur-3xl" />
       ) : (
-        <div className="pointer-events-none absolute top-1/2 left-1/2 aspect-square h-[90%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,var(--primary)_16%,transparent)_30%,transparent_70%)] blur-2xl" />
+        <div className="pointer-events-none absolute top-1/2 left-1/2 aspect-square h-[90%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,color-mix(in_oklch,var(--beacon-bright)_16%,transparent)_30%,transparent_70%)] blur-2xl" />
       )}
       <OrbitLines front={false} orbits={orbits} />
       {/* The globe: 72% of a square box; on the horizon, 86% of the box's
@@ -242,9 +242,9 @@ export function OrbitingGlobe({
             planeRefs.current[i] = el
           }}
           aria-hidden
-          className="pointer-events-none absolute top-0 left-0 -mt-3 -ml-3 size-6 text-beacon will-change-transform"
+          className="pointer-events-none absolute top-0 left-0 -mt-3 -ml-3 size-6 text-beacon-bright will-change-transform"
         >
-          <Airliner className="size-full drop-shadow-[0_0_6px_color-mix(in_oklch,var(--beacon)_60%,transparent)]" />
+          <Airliner className="size-full drop-shadow-[0_0_6px_color-mix(in_oklch,var(--beacon-bright)_60%,transparent)]" />
         </div>
       ))}
       <OrbitLines front orbits={orbits} />

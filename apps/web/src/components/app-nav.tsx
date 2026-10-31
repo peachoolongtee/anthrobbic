@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { FlaskConical } from "lucide-react";
+import { motion } from "motion/react";
 import { IS_MOCK } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Airliner } from "@/components/landing/airliner";
@@ -11,6 +12,13 @@ const LINKS = [
   { href: "/", label: "Overview" },
   { href: "/dashboard/flights", label: "Flights" },
 ];
+
+/**
+ * The bar that holds AppNav. Both pages use exactly this height and padding,
+ * so the brand and the page links stay put when you switch pages.
+ */
+export const APP_HEADER =
+  "z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border bg-background/70 px-4 backdrop-blur";
 
 /** Brand, the two dashboard pages, and the sample-data tag. */
 export function AppNav() {
@@ -21,8 +29,8 @@ export function AppNav() {
         href="/"
         className="flex items-center gap-2 rounded-md font-display text-base font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <Airliner className="size-5 -rotate-45 text-beacon" />
-        <span className="max-md:sr-only">Arrival recovery</span>
+        <Airliner className="size-5 -rotate-45 text-beacon-bright" />
+        <span className="max-md:sr-only">Magic Airbus</span>
       </Link>
       <nav aria-label="Pages" className="flex items-center gap-0.5 rounded-full border border-border bg-card/60 p-0.5">
         {LINKS.map((l) => {
@@ -33,11 +41,21 @@ export function AppNav() {
               href={l.href}
               aria-current={on ? "page" : undefined}
               className={cn(
-                "rounded-full px-3 py-1 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
-                on ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground",
+                "relative rounded-full px-3 py-1 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                on ? "text-background" : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {l.label}
+              {/* Each page draws its own header, so the pill fades in rather than
+                  gliding from the other header's position, which jumped. */}
+              {on && (
+                <motion.span
+                  aria-hidden
+                  initial={{ opacity: 0, scale: 0.92 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="absolute inset-0 rounded-full bg-foreground"
+                />
+              )}
+              <span className="relative">{l.label}</span>
             </Link>
           );
         })}

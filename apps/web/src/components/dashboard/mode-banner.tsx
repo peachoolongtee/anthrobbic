@@ -3,7 +3,7 @@
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { RunMode } from "@/lib/api-types";
 import { MODE_LABEL } from "@/lib/labels";
-import { AppNav } from "@/components/app-nav";
+import { APP_HEADER, AppNav } from "@/components/app-nav";
 
 const MODES: RunMode[] = ["off", "recorded", "live"];
 
@@ -18,7 +18,7 @@ export function ModeBanner({
   disabled: boolean;
 }) {
   return (
-    <header className="relative z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border bg-background/70 px-3 backdrop-blur">
+    <header className={`relative ${APP_HEADER}`}>
       <AppNav />
       <span role="status" className="sr-only">
         Current mode: {MODE_LABEL[mode].name}. {MODE_LABEL[mode].detail}

@@ -17,11 +17,11 @@ import { landingFact } from "@/components/dashboard/plan-summary";
  * scene says so. Select a runway or gate to close it.
  */
 
-const NIGHT = "#111215";
-const ASPHALT = "#2b2d34";
-const ASPHALT_HOVER = "#3a3c46";
-const MARKING = "#d6d7de";
-const BEACON = "#a48bfa";
+const NIGHT = "#0a0a0a";
+const ASPHALT = "#2b2b2b";
+const ASPHALT_HOVER = "#3c3c3c";
+const MARKING = "#d8d8d8";
+const BEACON = "#cd7a9b";
 const DANGER = "#f87171";
 const HULL = "#e6e7ec";
 
@@ -347,7 +347,7 @@ export function AirportScene({
         <color attach="background" args={[NIGHT]} />
         <fog attach="fog" args={[NIGHT, 130, 260]} />
         <ambientLight intensity={0.9} />
-        <hemisphereLight args={["#d9d4ff", "#111215", 0.5]} />
+        <hemisphereLight args={["#f0dde5", "#0a0a0a", 0.5]} />
         <directionalLight position={[30, 60, 40]} intensity={1.9} castShadow />
 
         {/* Ground and a faint grid */}

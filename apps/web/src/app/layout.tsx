@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
+import { MotionProvider } from "@/components/motion-provider";
 
 // Atkinson Hyperlegible keeps look-alike characters apart (0 and O, 1, l and
 // I, B and 8), which matters when reading flight numbers, gates and runways.
@@ -21,13 +22,15 @@ const mono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Arrival recovery",
+  title: "Magic Airbus",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`dark ${sans.variable} ${mono.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <MotionProvider>{children}</MotionProvider>
+      </body>
     </html>
   );
 }
