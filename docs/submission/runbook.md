@@ -28,7 +28,7 @@ Live mode also needs a model credential in the process environment. Everything e
 
 ## Start order
 
-The new dashboard has two pages: the overview at `/` and the flights page at `/dashboard/flights`. The overview, when it opens, asks the API for 12 flights and makes a recorded run for each. Those runs use saved answers and make no model calls, but they need the API to be up and warm. So the order matters. Use two terminal tabs, both at the repo root. This is written from the code of `origin/feat/frontend` and has not been run on that build. `[CHECK ON SCREEN]`
+The new dashboard has two pages: the overview at `/` and the flights page at `/dashboard/flights`. The overview, when it opens, asks the API for 50 flights and starts no runs, so it makes no model calls. The flights page asks for 200. Both need the API to be up, and the first list call after an API restart takes several seconds (7.8 seconds when measured). So the order matters. Use two terminal tabs, both at the repo root.
 
 1. API (port 8000):
 
@@ -46,7 +46,7 @@ The new dashboard has two pages: the overview at `/` and the flights page at `/d
 
    You should see `{"status":"ok"}`.
 
-3. Load the flight list once (next section), for the 12-flight overview and the 50-flight flights page.
+3. Load the flight list once (next section), for the 50-flight overview and the 200-flight flights page.
 
 4. Web (port 3000), from a production build, not `pnpm dev:web`, which compiles each page on first use and leaves the map blank for several seconds:
 
