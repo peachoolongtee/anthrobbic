@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUpRight, CircleCheck, CircleX, Hash, Send, UserCheck } from "lucide-react";
+import { CircleCheck, CircleX, Hash, Send, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,9 +10,18 @@ import { Input } from "@/components/ui/input";
 import type { Card as PlanCardData, PackageTerm, Run } from "@/lib/api-types";
 import type { DecisionState, SignoffState } from "@/hooks/use-dashboard";
 import { DECIDED_BY } from "@/hooks/use-dashboard";
-import { FINAL_DECISION_LABEL, TERM_LABEL, changedFieldLabel, isApproved, refusalBanner, signoffStatusLabel } from "@/lib/labels";
+import {
+  FINAL_DECISION_LABEL,
+  TERM_LABEL,
+  changedFieldLabel,
+  isApproved,
+  plainTerm,
+  refusalBanner,
+  shortRecipient,
+  signoffStatusLabel,
+} from "@/lib/labels";
 import { FallbackNotice } from "@/components/dashboard/fallback-notice";
-import { ProvenanceBadge } from "@/components/dashboard/provenance-badge";
+import { ProvenanceMark } from "@/components/dashboard/provenance-badge";
 import { RuleList } from "@/components/dashboard/rule-line";
 
 export function SignoffPanel({
@@ -247,12 +256,16 @@ function SignoffForm({
           You decide
         </legend>
         <ul className="space-y-0.5 text-sm">
-          {card.airline_decisions.map((d) => (
-            <li key={d.key}>
-              <span className="text-muted-foreground">{d.label}: </span>
-              <span className="font-medium">{d.value}</span> <ProvenanceBadge provenance={d.provenance} className="align-middle" />
-            </li>
-          ))}
+          {card.airline_decisions.map((d) => {
+            const t = plainTerm(d.key, d.label, d.value);
+            return (
+              <li key={d.key} className="flex items-center gap-1.5">
+                <span className="text-muted-foreground">{t.label}</span>
+                <span className="font-medium">{t.value}</span>
+                <ProvenanceMark provenance={d.provenance} />
+              </li>
+            );
+          })}
         </ul>
       </fieldset>
 
@@ -265,16 +278,19 @@ function SignoffForm({
           You request
         </legend>
         <ul className="space-y-0.5 text-sm">
-          {card.requests.map((r) => (
-            <li key={r.key}>
-              <span className="text-muted-foreground">{r.label}: </span>
-              <span className="font-medium">{r.value}</span> <ProvenanceBadge provenance={r.provenance} className="align-middle" />{" "}
-              <span title={`To ${r.to}`} className="inline-flex align-middle text-muted-foreground">
-                <ArrowUpRight aria-hidden className="size-3.5" />
-                <span className="sr-only">to {r.to}</span>
-              </span>
-            </li>
-          ))}
+          {card.requests.map((r) => {
+            const t = plainTerm(r.key, r.label, r.value);
+            return (
+              <li key={r.key} className="flex flex-wrap items-center gap-x-1.5">
+                <span className="text-muted-foreground">{t.label}</span>
+                <span className="font-medium">{t.value}</span>
+                <ProvenanceMark provenance={r.provenance} />
+                <span className="text-xs text-muted-foreground" title={`To ${r.to}`}>
+                  to {shortRecipient(r.to)}
+                </span>
+              </li>
+            );
+          })}
         </ul>
       </fieldset>
 
@@ -285,13 +301,13 @@ function SignoffForm({
             <div className="flex items-start gap-2">
               <Checkbox id="approve-decisions" checked={decide} disabled={locked} onCheckedChange={(v) => setDecide(v)} className="mt-0.5" />
               <label htmlFor="approve-decisions" className="font-medium">
-                I approve these decisions
+                Approve my decisions
               </label>
             </div>
             <div className="flex items-start gap-2">
               <Checkbox id="send-requests" checked={request} disabled={locked} onCheckedChange={(v) => setRequest(v)} className="mt-0.5" />
               <label htmlFor="send-requests" className="font-medium">
-                Send these requests
+                Send the requests
               </label>
             </div>
           </div>
@@ -326,8 +342,8 @@ function SignoffForm({
               : refused
                 ? "This plan cannot be approved here."
                 : none
-                  ? "Tick at least one box to approve."
-                  : "Sign-off checks the plan, the airport, the rules and this plan summary again before anything is issued."}
+                  ? "Tick a box to approve."
+                  : "The rules are checked again before anything is sent."}
           </p>
         )}
       </div>
@@ -433,7 +449,10 @@ function TermList({ title, items }: { title: string; items: PackageTerm[] }) {
       <ul className="list-disc pl-5">
         {items.map((t) => (
           <li key={t.name}>
-            {TERM_LABEL[t.name] ?? t.name}: {t.value}
+            {(() => {
+              const p = plainTerm(t.name, TERM_LABEL[t.name] ?? t.name, t.value);
+              return `${p.label}: ${p.value}`;
+            })()}
           </li>
         ))}
       </ul>

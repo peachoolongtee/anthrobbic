@@ -17,7 +17,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { Provenance, Run, ScenarioSummary } from "@/lib/api-types";
-import { CAUSE_LABEL, DOMAIN_LABEL, FAULT_LABEL, PATH_LABEL } from "@/lib/labels";
+import { ACTION_LABEL, CAUSE_LABEL, DOMAIN_LABEL, FAULT_LABEL, PATH_LABEL } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ProvenanceMark } from "@/components/dashboard/provenance-badge";
@@ -104,7 +104,7 @@ export function PlanSummary({
         f.key === "slot" && run?.decision.kind === "DEAL"
           ? { ...f, label: "Runway", value: run.decision.package.runway_id }
           : f.key === "action"
-            ? { ...f, label: "Action" }
+            ? { ...f, label: "Approach", value: ACTION_LABEL[f.value] ?? f.value }
             : f,
       ) ?? [];
   const deal = run?.decision.kind === "DEAL" ? run.decision : null;
@@ -112,8 +112,8 @@ export function PlanSummary({
   // A system fault judged no plan illegal, so it must not read as "no plan passes".
   const noGoLabel =
     run?.decision.kind === "NO_GO" && run.decision.reason_type === "SYSTEM_FAULT"
-      ? "No-go: system fault"
-      : "No-go: no recovery plan passes";
+      ? "No plan: system fault"
+      : "No plan passes the rules";
 
   return (
     <section aria-label="Recovery plan" className="space-y-3">
@@ -131,13 +131,10 @@ export function PlanSummary({
 
       {/* Before and after: the time the flight was scheduled to land, and the
           time it lands with this recovery plan, joined by the change between them. */}
-      <div role="group" aria-label="Arrival, before and after" className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 rounded-xl border border-border bg-background/40 p-3 tabular-nums">
+      <div role="group" aria-label="Due and landing time" className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 rounded-xl border border-border bg-background/40 p-3 tabular-nums">
         <div>
-          <p className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">Before</p>
+          <IconLabel icon={CalendarClock} label="Due" />
           <p className="font-display text-xl font-semibold text-muted-foreground">{flight.scheduled_arrival}</p>
-          <div>
-            <IconLabel icon={CalendarClock} label="Scheduled" />
-          </div>
         </div>
 
         <div aria-hidden className="flex flex-col items-center gap-0.5 px-1">
@@ -151,14 +148,13 @@ export function PlanSummary({
         </div>
 
         <div className="text-right">
-          <p className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">After</p>
+          <div className="flex justify-end">
+            <IconLabel icon={Clock} label={arrival ? "Lands" : "No plan"} />
+          </div>
           <p className="flex items-center justify-end gap-1 font-display text-2xl font-semibold">
             {arrival?.clock ?? "—"}
             {arrival && <ProvenanceMark provenance={arrival.provenance} />}
           </p>
-          <div className="flex justify-end">
-            <IconLabel icon={Clock} label={arrival ? "With this plan" : "No plan"} />
-          </div>
         </div>
         {change !== null && (
           <span className="sr-only">
@@ -170,20 +166,19 @@ export function PlanSummary({
       {run && (
         <div className="flex flex-wrap gap-1.5">
           <Pill ok={run.path === "consensus"} icon={Users} title={PATH_LABEL[run.path]}>
-            {PATH_LABEL[run.path]}
+            {run.path === "consensus" && run.turns.length > 0
+              ? `Agents agreed in ${run.turns.length} ${run.turns.length === 1 ? "turn" : "turns"}`
+              : PATH_LABEL[run.path]}
           </Pill>
           <Pill
             ok={run.decision.kind === "DEAL"}
             icon={run.decision.kind === "DEAL" ? ShieldCheck : ShieldX}
-            title={run.decision.kind === "DEAL" ? "Passes the rules checked" : noGoLabel}
+            title={run.decision.kind === "DEAL" ? "Every safety rule passes" : noGoLabel}
           >
-            {run.decision.kind === "DEAL" ? "Passes the rules checked" : noGoLabel}
+            {run.decision.kind === "DEAL" ? "Safety rules pass" : noGoLabel}
           </Pill>
-          {run.turns.length > 0 && (
-            <span
-              title={`${run.turns.length} negotiation ${run.turns.length === 1 ? "turn" : "turns"} used`}
-              className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground tabular-nums"
-            >
+          {run.path !== "consensus" && run.turns.length > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground tabular-nums">
               <Repeat aria-hidden className="size-3.5" />
               {run.turns.length} {run.turns.length === 1 ? "turn" : "turns"}
             </span>
@@ -221,13 +216,13 @@ export function PlanSummary({
       )}
 
       {facts.length > 0 && (
-        <p className="text-[11px] text-muted-foreground">R real, D derived from the file, S synthetic.</p>
+        <p className="text-xs text-muted-foreground">R real, D derived, S synthetic</p>
       )}
 
       {run && (
         <Button variant="ghost" size="sm" onClick={onDetails} className="-ml-2 text-muted-foreground">
           <ScrollText aria-hidden />
-          {deal ? `Why, risks and ${deal.packages_legal} of ${deal.packages_considered} recovery plans` : "Why this is a no-go"}
+          {deal ? `Why this plan (${deal.packages_legal} of ${deal.packages_considered} passed)` : "Why no plan passed"}
         </Button>
       )}
     </section>

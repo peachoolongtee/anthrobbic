@@ -283,9 +283,39 @@ export function changedFieldLabel(name: string, kind: "state" | "summary"): stri
 
 export const TERM_LABEL: Record<string, string> = {
   gate_id: "Gate",
-  slot: "Arrival slot",
-  action: "Delay handling",
+  slot: "Landing",
+  action: "Approach",
 };
+
+/** How the plan absorbs the delay, in plain words. */
+export const ACTION_LABEL: Record<string, string> = {
+  direct: "Straight in",
+  hold: "Hold, then land",
+  vector: "Longer route",
+  ground_delay: "Wait on the ground",
+};
+
+/** Who a request goes to, in short form. */
+export function shortRecipient(to: string): string {
+  return to.replace(/Air traffic control/i, "ATC").replace(/pilot in command/i, "pilot");
+}
+
+/**
+ * A recovery-plan term in plain words, for display only. The signed card keeps
+ * the API's wording; this rewrites "runway R2 at minute 1380 (23:00)" as
+ * "Runway R2 at 23:00" and "direct" as "Straight in".
+ */
+export function plainTerm(key: string, label: string, value: string): { label: string; value: string } {
+  const slot = /^runway (\S+) at minute \d+(?: \((\d\d:\d\d)\))?$/.exec(value);
+  if (key === "slot" || slot) {
+    return { label: TERM_LABEL.slot, value: slot ? `Runway ${slot[1]}${slot[2] ? ` at ${slot[2]}` : ""}` : value };
+  }
+  if (key === "action" || label === "Flight-plan action") {
+    return { label: TERM_LABEL.action, value: ACTION_LABEL[value] ?? value.replaceAll("_", " ") };
+  }
+  if (key === "gate_id") return { label: TERM_LABEL.gate_id, value };
+  return { label, value };
+}
 
 /**
  * A plan named in plain words: "Gate G1, runway R2, 21:05, direct", from the API's
