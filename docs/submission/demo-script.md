@@ -1,14 +1,12 @@
 # Demo script: 3 minutes, five beats, new dashboard design
 
-Autonomous SG 2026, Airbus track, Challenge 2. Read aloud at 150 words a minute. The spoken text is 332 words in total (about 133 seconds of speech, counting each `[RESULT]` as two words), which leaves about 47 seconds for the clicks. Each beat has its own word budget in its heading. Rehearse once with a timer.
+Autonomous SG 2026, Airbus track, Challenge 2. Read aloud at 150 words a minute. The spoken text is 344 words in total (about 138 seconds of speech), which leaves about 42 seconds for the clicks. Each beat has its own word budget in its heading. Rehearse once with a timer.
 
 Every click and screen text below was checked on the integrated design at 1280x720, on the real API with the real dataset, the saved WN4832 answers, and every non-local request aborted. The results are at the end.
 
 ## Marks used in this file
 
-- `[RESULT]` is a number from a rules-only evaluation run. No figure is typed in the spoken text. Read it from `apps/api/eval_results/latest_off_none.md` before the talk (table at the end), copy it exactly, and say its commit, mode and seed.
-- `[LIVE RESULT]` needs a live model run that has not happened. Do not say it until the screen shows it.
-- `[IF MERGED]` is a feature still being built. Skip it unless it is on screen.
+- Every number in the spoken text is copied from `apps/api/eval_results/`. The table at the end names each file and row.
 
 ## Before you go on stage
 
@@ -20,7 +18,7 @@ Follow `runbook.md` first. Then:
 
 ## Beat 1. The user (0:00 to 0:20). Budget 50 words, spoken text 42
 
-**Screen:** the overview. The globe is headed "Delayed arrivals", with the **Arrivals** list under it.
+**Screen:** the overview. The globe is headed "Demo flights", with the **Arrivals** list under it.
 
 **Click:** in the **Arrivals** list, click the row "DCA → MDW" (WN4832). It opens the flights page with that flight selected and a recovery plan already running.
 
@@ -40,7 +38,7 @@ Follow `runbook.md` first. Then:
 4. Click the **X** (Close) at the top right of the drawer.
 5. Point at the right panel: "Agents agreed", "Passes the rules checked", "2 turns".
 
-The view shows each agent's accepted count, reasons in plain words, objections withdrawn, and the model's own note, labelled **Unverified**. The private synthetic notes themselves are not shown: the words "no direct" and "R3" on screen are the model's, in its note. Say only what the screen shows.
+The view shows each agent's accepted count, reasons in plain words, objections withdrawn, and the model's own note, labelled **Unverified**. The private synthetic notes themselves are not shown: the words "no direct" and "R3" on screen are the model's, in its note. Say only what the screen shows. WN4832 is a saved two-turn case and not the usual one: in the first frozen run all 14 agreed on turn 1 (beat 5). Do not call withdrawal typical.
 
 **Say**:
 
@@ -85,25 +83,38 @@ The view shows each agent's accepted count, reasons in plain words, objections w
 
 > Now I close every runway. The system does not guess. It says no legal recovery plan, names the rules that block every plan, and shows the closest one. This is a no-go. No-go means no plan was cleared and a person decides. It does not mean the flight should not land. Nothing was approved.
 
-## Beat 5. The numbers (2:30 to 3:00). Budget 75 words, spoken text 60
+## Beat 5. The numbers (2:30 to 3:00). Budget 75 words, spoken text 72
 
-**Click:** the **Evidence** tab at the bottom. It opens on the numbers, with no scrolling: **Rules only** on the left, **With the model: tuned and unseen flights** on the right, each set with its class, commit, mode and seed. "Where we differ from the challenge workbook" and the limits are closed sections under them, then the full tables. The tab reads the evaluation through the API, so check that it shows the same commit as the file.
+**Click:** the **Evidence** tab at the bottom. It opens on the numbers, with no scrolling: **Rules only** on the left, **With the model: tuned and unseen flights** on the right, each set with its class, commit, mode and seed. Point at those for the 3150 and the 0. The 14, the turn count and the 9 of 14 are in **Full results: with the model**, further down; scroll there only if asked. "Where we differ from the challenge workbook" and the limits are closed sections under them, then the full tables. The tab reads the evaluation through the API, so check that it shows the same commit as the file.
 
 **Say:**
 
-> Rules-only numbers first, from a run of `[RESULT]` flights, model off. First-come-first-served plans broke a rule on `[RESULT]`. Our final plans broke a rule on `[RESULT]`. A rule of thumb that checks the rules first also breaks none, so the gate does the safety work. Live, agents versus fallback: `[LIVE RESULT]`. Unproven. These are simulated, not savings.
+> Rules only, 5000 flights, model off. First-come-first-served broke a rule on 3150 of 5000. Our final plans: 0 of 3919. A rule of thumb that checks the rules also breaks none, so the gate does the safety work. Live, 20 unseen flights: 14 reached the agents, all 14 agreed on turn 1, and 9 of 14 cost more than the fallback. Agents are not shown to beat the rules. Simulated, not savings.
 
-## Slots to fill before the talk
+## Where the spoken numbers come from
 
-Copy each value exactly as the file prints it. Do not round or recompute. Say the commit, mode and seed from the file header aloud, or have them on the Evidence tab. The last column shows what the file printed when this script was written (commit `e3fe575`, mode `off`, seed 0, in `apps/api/eval_results/latest_off_none.md`). Verification is pending, so re-read the file. The speaker must not use this column.
+Copied exactly from `apps/api/eval_results/`. Do not round or recompute. Say the mode aloud; the Evidence tab shows the commit, mode and seed.
 
-| Slot | Row to copy (name as printed in the file) | Printed when this was written (unverified) |
+Rules only: `latest_off_none.md`, commit `e3fe575`, mode `off`, seed 0.
+
+| Said | Row in the file | Value |
 |---|---|---|
-| Sampled flights | "Rows evaluated" | 5000 rows |
+| 5000 flights | "Rows evaluated" | 5000 rows |
 | First-come-first-served broke a rule | "first_come_first_served: packages breaking a rule" | 3150/5000 (63.0%) |
 | Our final plans broke a rule | "Final packages breaking a rule" | 0/3919 (0.0%) |
-| Rule of thumb broke a rule | "human_heuristic: packages breaking a rule" | 0/3919 (0.0%), zero by construction |
-| Agents versus fallback | "LLM versus fallback on the same rows" | NOT_REACHED. `[LIVE RESULT]` |
+| Rule of thumb breaks none | "human_heuristic: packages breaking a rule" | 0/3919 (0.0%), zero by construction |
+
+Live: the first frozen run, run-0002, `eval_live_frozen_seed0_2026-10-31T055759Z.md`, commit `db54b25`, mode `live`, seed 0, class unseen. The second frozen run is not used for the headline.
+
+| Said | Row in the file | Value |
+|---|---|---|
+| 20 unseen flights | "Rows evaluated" | 20 rows |
+| 14 reached the agents | "Rows a model answered, all rows" | 14/20 (70.0%) |
+| All 14 agreed | "Convergence rate, all rows" | 14/14 (100.0%) |
+| On turn 1 | "Turns used" | 1 turns, the mean over 14, so every one of them |
+| 9 of 14 cost more than the fallback | "Consensus costs more than fallback" | 9/14 (64.3%), interval 38.8-83.7% |
+
+The other 6 of the 20 are no-go, nothing legal (6/20, 30.0%). The cost comparison prices both plans with the same weights, so the value of the notes is not priced. Say so if asked.
 
 The denominators differ: 5000 rows are sampled, and 3919 are rows with a plan. Say which one you mean. Rules-only and live rows are different evidence classes, so never put them in one comparison.
 
