@@ -139,14 +139,18 @@ export function NegotiationView({ run }: { run: Run }) {
   return (
     <div className="space-y-5">
       <OutcomeStrip run={run} />
-      <p className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/40 bg-warning-soft px-2.5 py-1.5 text-sm">
-        <Badge variant="outline" className="border-warning/50 bg-background text-warning">
-          Unverified
-        </Badge>
-        <span>
-          Agent answers below are model output and are not verified. Only rule results are checked.
-        </span>
-      </p>
+      {run.turns.some((t) => t.responses.length > 0) ? (
+        <p className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/40 bg-warning-soft px-2.5 py-1.5 text-sm">
+          <Badge variant="outline" className="border-warning/50 bg-background text-warning">
+            Unverified
+          </Badge>
+          <span>
+            Agent answers below are model output and are not verified. Only rule results are checked.
+          </span>
+        </p>
+      ) : (
+        <p className="rounded-lg border border-border px-2.5 py-1.5 text-sm">No agent answered in this run, so there is no model output here.</p>
+      )}
       <p className="text-sm text-muted-foreground">
         {run.path === "consensus"
           ? "The agents agreed and the rules passed it. Agreement alone proves nothing: the rules decide what is allowed."

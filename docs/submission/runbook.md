@@ -100,12 +100,12 @@ The web app does not need a restart between rehearsals. Reload the page.
 
 ## Offline notes and the wifi-off check
 
-- The web app loads the Geist fonts from Google through `next/font/google`. The team's work log says the production build fails offline for this reason. Not checked here: whether `pnpm dev:web` shows the fonts offline.
+- The fonts are bundled with the web app, so they need no network.
 - The map on the flights page draws its tiles from a free online basemap (CARTO Dark Matter), so the map needs the network. The code says that without it a dotted backdrop stays visible and nothing else changes. Not seen running. `[CHECK ON SCREEN]`
 - `pnpm build` and `pnpm install` need the network. Do them before the venue.
 - Not yet done: a full run of the demo with wifi off.
 
-**Wifi-off check, before the talk:** with the API and web up and the overview loaded, turn wifi off. Reload the tab, click WN4832, and go through all five beats once. Look for: the fonts, the map (route lines and labels may be missing but the page must still work), the globe on the overview, and the **Evidence** tab. If the map is blank, decide now whether to keep wifi on for the talk (the venue network is then a risk) or to present with the dotted backdrop and say the map needs a network. Do not find this out on stage.
+**Wifi-off check, before the talk:** with the API and web up and the overview loaded, turn wifi off. Reload the tab, click WN4832, and go through all five beats once. Look for: the map (route lines and labels may be missing but the page must still work), the globe on the overview, and the **Evidence** tab. If the map is blank, decide now whether to keep wifi on for the talk (the venue network is then a risk) or to present with the dotted backdrop and say the map needs a network. Do not find this out on stage.
 
 ## Check the data and the tests
 
