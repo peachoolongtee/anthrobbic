@@ -111,7 +111,8 @@ FIELD_NOTES: Final[dict[str, str]] = {
     "taxiways": "synthetic",
     "gates": (
         "synthetic: the planned gate plus the workbook's spare_gates_at_any_time "
-        "spare gates"
+        "spare gates, all big enough for this aircraft and unoccupied during the "
+        "decision window (the workbook gives gate counts, not sizes)"
     ),
     "other_arrivals": (
         "synthetic as a field: flight IDs and scheduled arrival times are real "
@@ -258,7 +259,6 @@ class GeneratorParams:
 
     # Gates: the planned gate plus the workbook's spare gates (not the total).
     gate_size_weights: tuple[float, float, float] = (0.25, 0.55, 0.20)
-    gates_that_fit_min: int = 2
     gate_stay_min: tuple[int, int] = (25, 120)  # synthetic occupant stays
     gate_util_base: float = 0.35  # share of time a gate is occupied
     gate_util_span: float = 0.35  # added at 900+ arrivals a day
@@ -482,18 +482,15 @@ def _poor_between(forecast: Sequence[WeatherPeriod], lo: int, hi: int) -> bool:
 def _gates(
     rng: random.Random, spare: int, size: AircraftSize, p: GeneratorParams
 ) -> tuple[Gate, ...]:
-    """The planned gate's pool: one gate for the flight plus the spares."""
+    """The planned gate's pool: one gate for the flight plus the spares.
+
+    The workbook gives gate counts but no gate sizes, so any size here is ours.
+    Every candidate gate fits this aircraft: a spare gate that cannot take it
+    would not be spare for this flight. Sizes above the aircraft's still vary."""
     count = 1 + spare
     taxiways = max(2, math.ceil(count / 4))
-    sizes = [_SIZES[_weighted(rng, p.gate_size_weights)] for _ in range(count)]
-    fitting = [i for i, s in enumerate(sizes) if s >= size]
-    # An airport that cannot park the aircraft anywhere is not a negotiation.
-    for i in rng.sample(range(count), count):
-        if len(fitting) >= min(p.gates_that_fit_min, count):
-            break
-        if i not in fitting:
-            sizes[i] = size
-            fitting.append(i)
+    drawn = [_SIZES[_weighted(rng, p.gate_size_weights)] for _ in range(count)]
+    sizes = [max(size, d) for d in drawn]
     return tuple(
         Gate(gate_id=f"G{i + 1}", taxiway_id=f"T{i % taxiways + 1}", max_size=s)
         for i, s in enumerate(sizes)
@@ -676,6 +673,23 @@ def build_scenario(
             and o.start_min < plan_hi
             and o.end_min > plan_lo
         )
+    ]
+    # Spare gates are spare: no generated occupant sits on one anywhere in the
+    # decision window, from the scheduled gate-in to the end of the longest stay
+    # the latest slot can need (gate-in plus the minimum turnaround, or the next
+    # departure if later), plus the buffer. The workbook says these gates are
+    # free "at any time". Only the planned gate keeps occupants, including the
+    # seeded planned-gate conflict below.
+    last_gate_in = latest + (_DEFAULT_TAXI_IN_MIN if taxi_in is None else taxi_in)
+    window_hi = last_gate_in + stay
+    if leg is not None:
+        window_hi = max(window_hi, leg.scheduled_departure_min)
+    window_lo, window_hi = scheduled_gate_in - buffer, window_hi + buffer
+    occupancies = [
+        o
+        for o in occupancies
+        if o.gate_id == planned.gate_id
+        or not (o.start_min < window_hi and o.end_min > window_lo)
     ]
     occupancies = _with_planned_gate_conflict(
         _rng(key, "gate-conflict"),

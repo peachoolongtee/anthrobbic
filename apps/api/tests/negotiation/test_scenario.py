@@ -707,14 +707,15 @@ def test_a_conflict_never_double_books_the_planned_gate_with_its_stay(
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "On the 10 fixture rows the workbook's minimum turnarounds (35 and 45 min, "
-        "against 25 before) and planned-plus-spare gates (3 or 4, against 6 to 14) "
-        "leave no legal way to wait for the planned gate, so the pick always "
-        "dominates: 0 trade-offs in 1,919 deals over 600 seeds. On the real "
-        "500-row smoke sample the pick dominates in 292 of 302 deals, a trade-off "
-        "rate of 3.3% against 11.5% before. The conflict parameters are unchanged, "
-        "as instructed. If a generator change brings trade-offs back here, this "
-        "XPASSes and fails, which is the signal to remove the mark."
+        "On the 10 fixture rows waiting for the planned gate is still never legal "
+        "once its conflict starts: the workbook's minimum turnarounds (35 and 45 "
+        "min, against 25 before) make the stay too long to fit after it, so the "
+        "pick always dominates (0 trade-offs in 1,919 deals over 600 seeds before "
+        "the spare-gate change, and still none now). On the real 500-row smoke "
+        "sample 26 of 385 deals have a trade-off (6.8%, against 11.5% before the "
+        "workbook). The conflict parameters are unchanged. If a generator change "
+        "brings trade-offs back on these rows this XPASSes and fails, which is "
+        "the signal to remove the mark."
     ),
 )
 def test_a_conflict_can_create_a_real_trade_off(
@@ -751,3 +752,38 @@ def test_the_hard_turnaround_note_states_both_provenances_the_field_gets() -> No
     note = FIELD_NOTES["next_leg_turnaround_hard"]
     assert "synthetic" in note and "derived" in note
     assert "when a next leg exists" in note and "none does" in note
+
+
+def test_spare_gates_are_spare_and_fit_the_aircraft(
+    rows: dict[str, DotRow], csv_file: Path
+) -> None:
+    """The workbook gives each airport spare gates free at any time. Every
+    candidate gate fits this aircraft, and no generated occupant sits on a spare
+    gate from the earliest gate-in to the end of the longest stay (the latest
+    slot's turnaround, or the next departure if later)."""
+    checked = 0
+    for row in rows.values():
+        for seed in range(25):
+            s = build(row, csv_file, seed)
+            gates = s.gates.value or ()
+            planned = s.planned_gate.value
+            taxi = s.taxi_in_min.value
+            if taxi is None:
+                continue
+            size = s.aircraft_size.value
+            assert size is not None
+            assert all(g.max_size >= size for g in gates)
+            assert planned in {g.gate_id for g in gates}
+            limits_spare = len(gates) - 1
+            assert limits_spare in (2, 3)  # the workbook's spare gates, plus one
+            lo = s.earliest_arrival_min.value + taxi  # type: ignore[operator]
+            stay = s.min_turnaround_min.value
+            assert stay is not None
+            hi = s.latest_arrival_min.value + taxi + stay  # type: ignore[operator]
+            if s.next_departure_min.value is not None:
+                hi = max(hi, s.next_departure_min.value)
+            for o in s.gate_occupancies.value or ():
+                if o.gate_id != planned:
+                    assert not (o.start_min < hi and o.end_min > lo), (row, seed, o)
+            checked += 1
+    assert checked > 0
