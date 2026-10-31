@@ -38,6 +38,8 @@ The demo runs on Live. Use two terminal tabs, both at the repo root.
 
    The coordinator's test used this form. Relying on `.env` alone was not tested.
 
+   Shortcut: `pnpm dev:api:live` loads `apps/api/.env` into the process with `uv run --env-file`, so it needs `ALLOW_LIVE=1` and the key in that file. It also reloads on code changes, so use the form above for the talk itself.
+
 2. Web, built so the flights page starts in Live:
 
    ```bash
