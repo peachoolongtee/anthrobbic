@@ -22,7 +22,7 @@ const mono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Arrival recovery",
+  title: "Magic Airbus",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
