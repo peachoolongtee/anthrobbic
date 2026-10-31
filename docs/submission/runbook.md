@@ -66,7 +66,7 @@ The demo runs on Live. Use two terminal tabs, both at the repo root.
 Needs no key and no network. Build the web app without `NEXT_PUBLIC_DEFAULT_RUN_MODE`, then follow these steps. Use flights marked "Recorded" and the script's recorded wording in beat 2.
 
 
-The new dashboard has two pages: the overview at `/` and the flights page at `/dashboard/flights`. The overview, when it opens, asks the API for 50 flights and starts no runs, so it makes no model calls. The flights page asks for 200. Both need the API to be up, and the first list call after an API restart takes several seconds (7.8 seconds when measured). So the order matters. Use two terminal tabs, both at the repo root.
+The new dashboard has two pages: the overview at `/` and the flights page at `/dashboard/flights`. The overview, when it opens, asks the API for 50 flights and makes one recorded run of each flight with saved answers (19 today). Those replay, so they make no model calls, whatever the mode. The flights page asks for 200. Both need the API to be up, and the first list call after an API restart takes several seconds (7.8 seconds when measured). So the order matters. Use two terminal tabs, both at the repo root.
 
 1. API (port 8000):
 
@@ -93,11 +93,11 @@ The new dashboard has two pages: the overview at `/` and the flights page at `/d
    pnpm --filter web start
    ```
 
-5. Open `http://localhost:3000` in the tab you will present from. Skip the intro (see below). Wait until the **Arrivals** list shows flights.
+5. Open `http://localhost:3000` in the tab you will present from. Skip the intro (see below). Wait until the **Outcomes** panel on the overview shows its ring and counts.
 6. Do the wifi-off check (see below), then turn wifi back on or leave it off, as you plan to present.
 7. Click one flight and wait for the map, so the flights page and its map have loaded once. Then return to the overview and stay there.
 
-The web app talks to the API at `http://localhost:8000` unless `NEXT_PUBLIC_API_URL` says otherwise. The web build can also run on invented data with `NEXT_PUBLIC_API_MODE=mock`. The page then shows a "Mock sample data" tag in the top bar and says run outcomes are invented. Never use mock mode on stage.
+The web app talks to the API at `http://localhost:8000` unless `NEXT_PUBLIC_API_URL` says otherwise. The web build can also run on invented data with `NEXT_PUBLIC_API_MODE=mock`. The page, named Magic Airbus in the top bar, then shows a "Mock sample data" tag in the top bar and says run outcomes are invented. Never use mock mode on stage.
 
 ## Skip the intro
 
