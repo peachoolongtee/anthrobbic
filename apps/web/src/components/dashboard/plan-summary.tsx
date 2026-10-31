@@ -91,6 +91,11 @@ export function PlanSummary({
             : f,
       ) ?? [];
   const deal = run?.decision.kind === "DEAL" ? run.decision : null;
+  // A system fault judged no plan illegal, so it must not read as "no plan passes".
+  const noGoLabel =
+    run?.decision.kind === "NO_GO" && run.decision.reason_type === "SYSTEM_FAULT"
+      ? "No-go: system fault"
+      : "No-go: no recovery plan passes";
 
   return (
     <section aria-label="Recovery plan" className="space-y-3">
@@ -129,9 +134,9 @@ export function PlanSummary({
           <Pill
             ok={run.decision.kind === "DEAL"}
             icon={run.decision.kind === "DEAL" ? ShieldCheck : ShieldX}
-            title={run.decision.kind === "DEAL" ? "Passes the rules checked" : "No-go: no recovery plan passes"}
+            title={run.decision.kind === "DEAL" ? "Passes the rules checked" : noGoLabel}
           >
-            {run.decision.kind === "DEAL" ? "Passes the rules checked" : "No-go: no recovery plan passes"}
+            {run.decision.kind === "DEAL" ? "Passes the rules checked" : noGoLabel}
           </Pill>
           {run.turns.length > 0 && (
             <span

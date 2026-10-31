@@ -43,7 +43,10 @@ export function SignoffPanel({
         ) : run.decision.kind === "NO_GO" || !run.card ? (
           <div className="space-y-3">
             <p className="text-sm">
-              <strong>Nothing to approve.</strong> No recovery plan passed the rules, so there is nothing to sign.
+              <strong>Nothing to approve.</strong>{" "}
+              {run.decision.kind === "NO_GO" && run.decision.reason_type === "SYSTEM_FAULT"
+                ? "The plans could not be checked, so there is nothing to sign."
+                : "No recovery plan passed the rules, so there is nothing to sign."}{" "}
               The case is yours to handle.
             </p>
             <FallbackNotice run={run} onlyFaults />
