@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import { AnimatePresence, motion } from "motion/react";
 import {
   Box,
   CircleAlert,
@@ -11,7 +12,9 @@ import {
   MessagesSquare,
   PanelRightClose,
   PanelRightOpen,
+  RotateCcw,
   ScrollText,
+  Wrench,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -94,6 +97,68 @@ export function Dashboard() {
   };
   const toggleTab = (t: Tab) => setTab((cur) => (cur === t ? null : t));
 
+  // Reset is offered only when something was changed, as in the open panel.
+  const canReset =
+    !running &&
+    d.busy === null &&
+    run !== null &&
+    ((d.overrides.closed_runways?.length ?? 0) > 0 || (d.overrides.closed_gates?.length ?? 0) > 0 || !!d.overrides.inject_unsafe);
+
+  // Esc closes the try-to-break-it panel.
+  useEffect(() => {
+    if (!breakOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setBreakOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [breakOpen]);
+
+  // Every try-to-break-it control: the runway diagram (or a hint in 3D, where
+  // the scene is clickable) and the other actions. Shown closed on the map,
+  // or open in the panel that slides in over the flight list.
+  const breakDock = (
+    <BreakItDock
+      run={run}
+      flightId={selected?.flight_id ?? null}
+      overrides={d.overrides}
+      busy={d.busy}
+      disabled={running}
+      open={breakOpen}
+      onToggle={() => setBreakOpen((o) => !o)}
+      onUnsafe={(rule) => {
+        setTab("negotiation");
+        d.injectUnsafe(rule);
+      }}
+      onStale={d.changeAfterViewing}
+      onTamper={() => {
+        setTab("log");
+        d.tamperLog();
+      }}
+      onReset={d.reset}
+      onDisrupt={(kind, next, title) => {
+        setTab(null);
+        d.disrupt(kind, next, title);
+      }}
+    >
+      {view === "map" ? (
+        <AirportMap
+          run={run}
+          overrides={d.overrides}
+          disabled={running || d.busy !== null || run === null}
+          onRunway={(id) => {
+            setTab(null);
+            d.closeRunway(id);
+          }}
+          onGate={(id) => {
+            setTab(null);
+            d.blockGate(id);
+          }}
+        />
+      ) : (
+        <SceneHint />
+      )}
+    </BreakItDock>
+  );
+
   return (
     <div className="flex min-h-screen flex-col lg:h-screen">
       {/* During a live run the mode stays open, so a slow call can be left for Recorded. With
@@ -165,6 +230,26 @@ export function Dashboard() {
           />
         </aside>
 
+        {/* Try to break it, open: slides in from the left over the flight list. */}
+        <AnimatePresence>
+          {breakOpen && (
+            <motion.aside
+              key="break-open"
+              aria-label="Try to break it"
+              initial={{ x: "-106%", opacity: 0.6 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: "-106%", opacity: 0.6 }}
+              className={cn(
+                PANEL,
+                "relative z-20 flex flex-col overflow-y-auto bg-card/95 p-3 lg:absolute lg:top-3 lg:bottom-3 lg:left-3 lg:w-[19rem]",
+                running && "opacity-80",
+              )}
+            >
+              {breakDock}
+            </motion.aside>
+          )}
+        </AnimatePresence>
+
         {/* Map stage, between the two panels */}
         <main
           aria-busy={running}
@@ -172,7 +257,7 @@ export function Dashboard() {
         >
           {/* Not drawn: marks the space below the agent strip and above the
               try-to-break-it card, for framing the route. Hidden on small screens. */}
-          <div ref={clearArea} aria-hidden className={cn("pointer-events-none! absolute inset-x-0 top-28 max-lg:hidden", breakOpen ? "bottom-[21rem]" : "bottom-32")} />
+          <div ref={clearArea} aria-hidden className="pointer-events-none! absolute inset-x-0 top-28 bottom-32 max-lg:hidden" />
           <div className="flex justify-center lg:absolute lg:top-3 lg:left-1/2 lg:-translate-x-1/2">
             {running && d.mode === "live" ? (
               <LiveWorking />
@@ -216,55 +301,11 @@ export function Dashboard() {
             outcome={d.outcome}
             className={cn(
               "z-30 flex justify-center lg:absolute lg:left-1/2 lg:w-[min(28rem,100%)] lg:-translate-x-1/2",
-              // Never over the drawer's first lines, nor over the open card's Reset.
-              tab ? "lg:bottom-[4.75rem]" : breakOpen ? "lg:top-2" : "lg:top-28",
+              // Never over the drawer's first lines.
+              tab ? "lg:bottom-[4.75rem]" : "lg:top-28",
             )}
           />
 
-          {/* Every try-to-break-it control in one card: the runway diagram (or
-              a hint in 3D, where the scene is clickable) and the other actions. */}
-          <div className={cn(PANEL, "p-3 lg:absolute lg:right-0 lg:bottom-[4.25rem] lg:w-[22rem]", running && "opacity-80")}>
-            <BreakItDock
-              run={run}
-              overrides={d.overrides}
-              busy={d.busy}
-              disabled={running}
-              open={breakOpen}
-              onToggle={() => setBreakOpen((o) => !o)}
-              onUnsafe={(rule) => {
-                setTab("negotiation");
-                d.injectUnsafe(rule);
-              }}
-              onStale={d.changeAfterViewing}
-              onTamper={() => {
-                setTab("log");
-                d.tamperLog();
-              }}
-              onReset={d.reset}
-              onDisrupt={(kind, next, title) => {
-                setTab(null);
-                d.disrupt(kind, next, title);
-              }}
-            >
-              {view === "map" ? (
-                <AirportMap
-                  run={run}
-                  overrides={d.overrides}
-                  disabled={running || d.busy !== null || run === null}
-                  onRunway={(id) => {
-                    setTab(null);
-                    d.closeRunway(id);
-                  }}
-                  onGate={(id) => {
-                    setTab(null);
-                    d.blockGate(id);
-                  }}
-                />
-              ) : (
-                <SceneHint />
-              )}
-            </BreakItDock>
-          </div>
 
           {/* Drawer with the detail views */}
           {tab && (
@@ -272,7 +313,9 @@ export function Dashboard() {
               aria-label={TABS.find((t) => t.id === tab)?.label}
               className={cn(
                 PANEL,
-                "relative z-20 flex flex-col bg-card/95 animate-in fade-in slide-in-from-bottom-4 duration-200 lg:absolute lg:-left-[20rem] lg:right-0 lg:top-3 lg:bottom-[4.25rem]",
+                "relative z-20 flex flex-col bg-card/95 animate-in fade-in slide-in-from-bottom-4 duration-200 lg:absolute lg:right-0 lg:top-3 lg:bottom-[4.25rem]",
+                // Beside the try-to-break-it panel when it is open, so an attack and its result show side by side.
+                breakOpen ? "lg:left-0" : "lg:-left-[20rem]",
               )}
             >
               <div className="flex items-center justify-between border-b border-border px-4 py-2">
@@ -312,8 +355,11 @@ export function Dashboard() {
             </section>
           )}
 
-          {/* The detail views, alone at the bottom. */}
-          <div className="z-10 flex justify-center lg:absolute lg:inset-x-0 lg:bottom-3">
+          {/* One bar: the detail views, then Try to break it after a divider.
+              One bar rather than two side by side, so it never wraps onto a
+              second row. Opening Try to break it slides the full panel in over
+              the flight list, so the map, the route and the sign-off stay in view. */}
+          <div className="@container z-10 flex justify-center lg:absolute lg:inset-x-0 lg:bottom-3">
             <nav
               aria-label="Views"
               className="flex items-center gap-0.5 rounded-xl border border-border bg-card/85 p-1 backdrop-blur"
@@ -326,14 +372,40 @@ export function Dashboard() {
                   title={t.label}
                   onClick={() => toggleTab(t.id)}
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                    "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm whitespace-nowrap outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                     tab === t.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
                   )}
                 >
                   <t.Icon aria-hidden className="size-4" />
-                  <span className="max-xl:sr-only">{t.label}</span>
+                  <span className="@max-[608px]:sr-only">{t.label}</span>
                 </button>
               ))}
+
+              <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+              <button
+                type="button"
+                aria-expanded={breakOpen}
+                title="Try to break it"
+                onClick={() => setBreakOpen((o) => !o)}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm whitespace-nowrap outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                  breakOpen ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                  running && "opacity-80",
+                )}
+              >
+                <Wrench aria-hidden className="size-4" />
+                <span className="@max-[608px]:sr-only">Try to break it</span>
+              </button>
+              <button
+                type="button"
+                onClick={d.reset}
+                disabled={!canReset}
+                aria-label="Reset every change"
+                title="Reset every change"
+                className="inline-flex items-center rounded-lg px-2 py-1.5 text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
+              >
+                <RotateCcw aria-hidden className="size-4" />
+              </button>
             </nav>
           </div>
         </main>
