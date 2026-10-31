@@ -65,6 +65,7 @@ export function Dashboard() {
   const [view, setView] = useState<View>("map");
   // The clear area between the panels, where the map frames the route.
   const clearArea = useRef<HTMLDivElement>(null);
+  const [breakOpen, setBreakOpen] = useState(false);
 
   const run = d.runState.status === "ready" ? d.runState.run : null;
   const running = d.runState.status === "loading";
@@ -157,7 +158,7 @@ export function Dashboard() {
         >
           {/* Not drawn: marks the space below the agent strip and above the
               try-to-break-it card, for framing the route. Hidden on small screens. */}
-          <div ref={clearArea} aria-hidden className="pointer-events-none! absolute inset-x-0 top-28 bottom-[21rem] max-lg:hidden" />
+          <div ref={clearArea} aria-hidden className={cn("pointer-events-none! absolute inset-x-0 top-28 max-lg:hidden", breakOpen ? "bottom-[21rem]" : "bottom-32")} />
           <div className="flex justify-center lg:absolute lg:top-3 lg:left-1/2 lg:-translate-x-1/2">
             <AgentStrip run={running ? null : run} mode={d.mode} />
           </div>
@@ -193,7 +194,11 @@ export function Dashboard() {
           {/* Result of the last try-to-break-it action, under the agent strip. */}
           <BreakNotice
             outcome={d.outcome}
-            className="z-30 flex justify-center lg:absolute lg:top-28 lg:left-1/2 lg:w-[min(28rem,100%)] lg:-translate-x-1/2"
+            className={cn(
+              "z-30 flex justify-center lg:absolute lg:left-1/2 lg:w-[min(28rem,100%)] lg:-translate-x-1/2",
+              // Never over the drawer's first lines, nor over the open card's Reset.
+              tab ? "lg:bottom-[4.75rem]" : breakOpen ? "lg:top-2" : "lg:top-28",
+            )}
           />
 
           {/* Every try-to-break-it control in one card: the runway diagram (or
@@ -204,6 +209,8 @@ export function Dashboard() {
               overrides={d.overrides}
               busy={d.busy}
               disabled={running}
+              open={breakOpen}
+              onToggle={() => setBreakOpen((o) => !o)}
               onUnsafe={(rule) => {
                 setTab("negotiation");
                 d.injectUnsafe(rule);

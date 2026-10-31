@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   CircleAlert,
   CircleCheck,
+  ChevronDown,
   FileWarning,
   Info,
   Loader2,
@@ -27,6 +28,9 @@ interface Props {
   overrides: RunOverrides;
   busy: BreakKind | null;
   disabled: boolean;
+  /** Closed by default, so the card does not cover the route on the map. */
+  open: boolean;
+  onToggle: () => void;
   onDisrupt: (kind: "runway" | "gate", overrides: RunOverrides, title: string) => void;
   /** Where runways and gates are closed: the diagram, or a hint for the 3D view. */
   children?: ReactNode;
@@ -59,9 +63,18 @@ export function BreakItDock(p: Props) {
   return (
     <section aria-labelledby="break-heading" className={cn("space-y-2", p.className)}>
       <header className="flex items-center gap-2">
-        <Wrench aria-hidden className="size-4 text-muted-foreground" />
         <h2 id="break-heading" className="text-sm font-semibold">
-          Try to break it
+          <button
+            type="button"
+            aria-expanded={p.open}
+            aria-controls="break-controls"
+            onClick={p.onToggle}
+            className="flex items-center gap-2 rounded-md outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Wrench aria-hidden className="size-4 text-muted-foreground" />
+            Try to break it
+            <ChevronDown aria-hidden className={cn("size-4 text-muted-foreground transition-transform motion-reduce:transition-none", !p.open && "rotate-180")} />
+          </button>
         </h2>
         {p.busy !== null && <Loader2 aria-label="Re-running" className="size-4 animate-spin text-muted-foreground" />}
         <Button
@@ -77,65 +90,67 @@ export function BreakItDock(p: Props) {
         </Button>
       </header>
 
-      <div role="group" aria-label="Disruption presets" className="flex flex-wrap items-center gap-1">
-        {presetIds.map((id) => {
-          const d = presets[id];
-          return (
-            <Button
-              key={id}
-              size="sm"
-              variant="secondary"
-              disabled={off || !d.ok}
-              title={d.ok ? `${d.modelled}. The page says so when it runs.` : d.reason}
-              aria-describedby={!d.ok ? "preset-why" : undefined}
-              onClick={() => d.ok && p.onDisrupt(id === "equipment" ? "gate" : "runway", d.overrides, d.modelled)}
-            >
-              {DISRUPTION_LABELS[id]}
-            </Button>
-          );
-        })}
-      </div>
-      {!off && unavailable.length > 0 && (
-        <p id="preset-why" className="sr-only">
-          {unavailable.join(" ")}
-        </p>
-      )}
+      <div id="break-controls" hidden={!p.open} className="space-y-2">
+        <div role="group" aria-label="Disruption presets" className="flex flex-wrap items-center gap-1">
+          {presetIds.map((id) => {
+            const d = presets[id];
+            return (
+              <Button
+                key={id}
+                size="sm"
+                variant="secondary"
+                disabled={off || !d.ok}
+                title={d.ok ? `${d.modelled}. The page says so when it runs.` : d.reason}
+                aria-describedby={!d.ok ? "preset-why" : undefined}
+                onClick={() => d.ok && p.onDisrupt(id === "equipment" ? "gate" : "runway", d.overrides, d.modelled)}
+              >
+                {DISRUPTION_LABELS[id]}
+              </Button>
+            );
+          })}
+        </div>
+        {!off && unavailable.length > 0 && (
+          <p id="preset-why" className="sr-only">
+            {unavailable.join(" ")}
+          </p>
+        )}
 
-      {p.children}
+        {p.children}
 
-      <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2">
-        <Select items={UNSAFE_OPTIONS} value={unsafe} onValueChange={(v) => v && setUnsafe(v)} disabled={off}>
-          <SelectTrigger size="sm" aria-label="Unsafe recovery plan to inject" className="min-w-0 flex-1">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {UNSAFE_OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button size="sm" variant="secondary" disabled={off} onClick={() => p.onUnsafe(unsafe)} title="Slip this unsafe recovery plan into the negotiation">
-          <ShieldAlert aria-hidden />
-          Inject
-        </Button>
-      </div>
-      <div className="grid grid-cols-2 gap-1.5">
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={off}
-          onClick={p.onStale}
-          title="Block this recovery plan's gate on the server while the screen keeps the old plan. Then try to approve."
-        >
-          <TimerReset aria-hidden />
-          Late change
-        </Button>
-        <Button size="sm" variant="outline" disabled={off} onClick={p.onTamper} title="Edit the decision log, then check it">
-          <FileWarning aria-hidden />
-          Tamper log
-        </Button>
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2">
+          <Select items={UNSAFE_OPTIONS} value={unsafe} onValueChange={(v) => v && setUnsafe(v)} disabled={off}>
+            <SelectTrigger size="sm" aria-label="Unsafe recovery plan to inject" className="min-w-0 flex-1">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {UNSAFE_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button size="sm" variant="secondary" disabled={off} onClick={() => p.onUnsafe(unsafe)} title="Slip this unsafe recovery plan into the negotiation">
+            <ShieldAlert aria-hidden />
+            Inject
+          </Button>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={off}
+            onClick={p.onStale}
+            title="Block this recovery plan's gate on the server while the screen keeps the old plan. Then try to approve."
+          >
+            <TimerReset aria-hidden />
+            Late change
+          </Button>
+          <Button size="sm" variant="outline" disabled={off} onClick={p.onTamper} title="Edit the decision log, then check it">
+            <FileWarning aria-hidden />
+            Tamper log
+          </Button>
+        </div>
       </div>
     </section>
   );
