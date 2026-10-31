@@ -31,7 +31,7 @@ DEFAULT_CSV: Final = Path(
     "/Users/ianpong/Hackathons/anthrobbic/data/flight-delays/flights.csv"
 )
 ENV_CSV: Final = "FLIGHTS_CSV"
-CACHE_VERSION: Final = 1
+CACHE_VERSION: Final = 2
 
 type Cause = Literal["weather", "late_aircraft"]
 
@@ -258,7 +258,8 @@ CREATE TABLE flights (
     dep_abs INTEGER NOT NULL,
     tail TEXT NOT NULL,
     flight TEXT NOT NULL,
-    dep_delay INTEGER
+    dep_delay INTEGER,
+    arr_delay INTEGER
 );
 CREATE TABLE taxi_in (airport TEXT PRIMARY KEY, median_min INTEGER, samples INTEGER);
 """
@@ -333,6 +334,7 @@ def _fill_cache(con: sqlite3.Connection, source: Path) -> None:
         i_year, i_day = header.index("YEAR"), header.index("DAY")
         i_airline, i_fno = header.index("AIRLINE"), header.index("FLIGHT_NUMBER")
         i_ddelay, i_taxi = header.index("DEPARTURE_DELAY"), header.index("TAXI_IN")
+        i_adelay = header.index("ARRIVAL_DELAY")
         i_weather, i_late = (
             header.index("WEATHER_DELAY"),
             header.index("LATE_AIRCRAFT_DELAY"),
@@ -354,6 +356,7 @@ def _fill_cache(con: sqlite3.Connection, source: Path) -> None:
                 dep_abs = base + hhmm_to_min(dep)
                 arr_abs = base + scheduled_arrival_rel(dep, arr, stime)
                 ddelay = _to_int(rec[i_ddelay]) if rec[i_ddelay] else None
+                adelay = _to_int(rec[i_adelay]) if rec[i_adelay] else None
             except (ValueError, IndexError):
                 continue  # a malformed row cannot join the schedule
             flights.append(
@@ -365,6 +368,7 @@ def _fill_cache(con: sqlite3.Connection, source: Path) -> None:
                     rec[i_tail],
                     f"{rec[i_airline]}{rec[i_fno]}",
                     ddelay,
+                    adelay,
                 )
             )
             if rec[i_taxi]:
@@ -422,7 +426,7 @@ def _flush(
     flights: list[tuple[object, ...]],
     eligible: list[tuple[object, ...]],
 ) -> None:
-    con.executemany("INSERT INTO flights VALUES (?, ?, ?, ?, ?, ?, ?)", flights)
+    con.executemany("INSERT INTO flights VALUES (?, ?, ?, ?, ?, ?, ?, ?)", flights)
     marks = ", ".join("?" * (2 + len(_FIELDS)))
     con.executemany(
         f"INSERT INTO eligible (cause, source_row, {_ELIGIBLE_COLUMNS}) "
@@ -617,6 +621,60 @@ def next_leg(row: DotRow, path: str | os.PathLike[str] | None = None) -> NextLeg
         destination=destination,
         scheduled_departure_min=dep_abs - base,
         departure_delay_min=dep_delay,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class InboundLeg:
+    """The same tail's immediately previous leg into this flight's origin.
+
+    `arrival_delay_min` is the previous flight's own as-flown lateness. It is
+    used as a delay signal only when the aircraft had landed, or was about to,
+    by the decision point (see `inbound_leg`). Never this flight's outcome.
+    """
+
+    flight_id: str
+    scheduled_arrival_min: int  # relative to the subject's departure-date midnight
+    arrival_delay_min: int
+    scheduled_turn_min: int  # subject's scheduled departure minus that arrival
+
+
+def inbound_leg(
+    row: DotRow,
+    margin_min: int,
+    path: str | os.PathLike[str] | None = None,
+) -> InboundLeg | None:
+    """The tail's immediately previous leg, if its lateness was knowable.
+
+    The previous leg is the same tail's flight with the latest scheduled
+    arrival at or before this flight's scheduled departure (looking back up to
+    two days). It counts only if it arrived at this flight's origin, has an
+    arrival delay on file, and its actual arrival is no later than this
+    flight's scheduled departure plus `margin_min`: an operations centre tracks
+    an inbound aircraft, so one on the ground or within the margin of landing
+    is known at the decision point. Otherwise None; no earlier leg is tried.
+    """
+    con = ensure_cache(path)
+    base = row.day_start_abs
+    departure = base + hhmm_to_min(row.scheduled_departure)
+    found = con.execute(
+        "SELECT flight, dest, arr_abs, arr_delay FROM flights "
+        "WHERE tail = ? AND dep_abs < ? AND dep_abs >= ? AND arr_abs <= ? "
+        "ORDER BY arr_abs DESC, dep_abs DESC, flight LIMIT 1",
+        (row.tail_number, departure, departure - 2 * MINUTES_PER_DAY, departure),
+    ).fetchone()
+    if found is None:
+        return None
+    flight, destination, arr_abs, arr_delay = found
+    if destination != row.origin_airport or arr_delay is None:
+        return None
+    if arr_abs + arr_delay > departure + margin_min:
+        return None  # still airborne and not expected in time: not yet known
+    return InboundLeg(
+        flight_id=flight,
+        scheduled_arrival_min=arr_abs - base,
+        arrival_delay_min=arr_delay,
+        scheduled_turn_min=departure - arr_abs,
     )
 
 

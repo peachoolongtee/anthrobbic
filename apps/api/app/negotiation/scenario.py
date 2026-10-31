@@ -4,19 +4,34 @@ Provenance, per field (also in `FIELD_NOTES`):
 
 - real: the flight's identity and schedule.
 - derived: computed from the file, such as the tail's next departure, the
-  airport's typical taxi-in, and the earliest arrival (schedule plus a floor).
+  airport's typical taxi-in, and the earliest arrival (schedule plus a delay
+  signal, below).
 - synthetic: invented, seeded per flight, from `GeneratorParams`.
 
-No hindsight. Nothing here reads ARRIVAL_TIME, ARRIVAL_DELAY, WHEELS_ON,
-WHEELS_OFF, DEPARTURE_TIME, DEPARTURE_DELAY, AIR_TIME, ELAPSED_TIME, TAXI_IN or
-the size of any delay cause. Those are returned only by `outcome_of`.
+No hindsight. Nothing here reads this row's ARRIVAL_TIME, ARRIVAL_DELAY,
+WHEELS_ON, WHEELS_OFF, DEPARTURE_TIME, DEPARTURE_DELAY, AIR_TIME, ELAPSED_TIME,
+TAXI_IN or the size of any delay cause. Those are returned only by
+`outcome_of`. The one other-row outcome used is the inbound leg's lateness,
+below, and only when it was knowable.
 
-Earliest arrival is the scheduled arrival plus a disruption floor: 15 minutes
-for a weather row, 20 for a late-aircraft row. Those are the eligibility
-thresholds, so the floor is what the selection rule itself says is at least
-true of the row, and it uses no observed delay. It deliberately understates
-long delays; the negotiation absorbs the rest inside the planning window, and
-the as-flown arrival is kept apart for the evaluation to compare against.
+Earliest arrival is the scheduled arrival plus a delay signal:
+
+- Weather row: a floor of 15 minutes, the eligibility threshold. It uses no
+  observed delay and deliberately understates long delays.
+- Late-aircraft row: the larger of the floor (20 minutes) and the inbound
+  leg's propagated lateness. The inbound leg is the same tail's immediately
+  previous flight (`dot.inbound_leg`). Its lateness is the previous flight's
+  ARRIVAL_DELAY, counted only if that flight had landed, or was due to land,
+  by this flight's scheduled departure plus `INBOUND_KNOWN_MARGIN_MIN`, which
+  is when an operations centre tracking the inbound aircraft knows it. The
+  lateness that carries over is that lateness less the recovery allowance:
+  the scheduled turnaround above a minimum turnaround of
+  `rule_values.turnaround(NARROW_BODY)` (EUROCONTROL secondary value), floored
+  at zero. The margin of 30 minutes is our assumption. With no usable inbound
+  leg the floor applies, and `earliest_basis` says so.
+
+Either way the planning window is a fixed 60 minutes after earliest, and the
+as-flown arrival is kept apart for the evaluation to compare against.
 
 Decision point, by cause: a late-aircraft delay comes from the inbound leg, so
 it is known before departure and only a ground delay is possible (PRE_DEPARTURE).
@@ -30,7 +45,7 @@ import os
 import random
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Literal
 
 from app.negotiation import dot
 from app.negotiation import rule_values as rv
@@ -52,6 +67,8 @@ from app.negotiation.contracts import (
 )
 from app.negotiation.dot import Cause, DotRow, NextLeg
 
+INBOUND_KNOWN_MARGIN_MIN: Final = 30  # assumption: inbound ETA is tracked
+
 REAL: Final = Provenance.REAL
 DERIVED: Final = Provenance.DERIVED
 SYNTHETIC: Final = Provenance.SYNTHETIC
@@ -63,7 +80,10 @@ FIELD_NOTES: Final[dict[str, str]] = {
     "flight_rules": "synthetic: instrument rules iff the synthetic forecast is poor",
     "wake_category": "synthetic: no aircraft type in the data",
     "aircraft_size": "synthetic: from the real airline and distance",
-    "earliest_arrival_min": "derived: scheduled arrival plus the disruption floor",
+    "earliest_arrival_min": (
+        "derived: scheduled arrival plus the disruption floor, or for late-aircraft "
+        "rows the larger of that and the inbound leg's propagated lateness"
+    ),
     "latest_arrival_min": "derived: earliest plus the planning window",
     "taxi_in_min": "derived: the destination's median TAXI_IN over the whole file",
     "fuel_on_board_kg": "synthetic",
@@ -88,6 +108,57 @@ FIELD_NOTES: Final[dict[str, str]] = {
     "ground_shift_end_min": "synthetic",
     "connections": "synthetic: anchored on the real scheduled gate-in",
 }
+
+
+@dataclass(frozen=True, slots=True)
+class EarliestBasis:
+    """How the earliest arrival was set, for display and the evaluation.
+
+    `basis` is "inbound_leg" when the inbound leg's propagated lateness set
+    the delay, and "disruption_floor" otherwise (weather rows, no usable
+    inbound leg, or an inbound leg that carried less than the floor).
+    `usable_inbound` is whether a knowable inbound leg existed at all.
+    """
+
+    basis: Literal["inbound_leg", "disruption_floor"]
+    delay_min: int
+    floor_min: int
+    usable_inbound: bool
+    inbound_flight_id: str | None
+    inbound_lateness_min: int | None
+    recovery_allowance_min: int | None
+
+
+def earliest_basis(
+    row: DotRow, path: str | os.PathLike[str] | None = None
+) -> EarliestBasis:
+    """The delay added to the scheduled arrival to get the earliest arrival."""
+    cause = dot.cause_of(row)
+    floor = (
+        dot.WEATHER_THRESHOLD_MIN
+        if cause == "weather"
+        else dot.LATE_AIRCRAFT_THRESHOLD_MIN
+    )
+    inbound = (
+        dot.inbound_leg(row, INBOUND_KNOWN_MARGIN_MIN, path)
+        if cause == "late_aircraft"
+        else None
+    )
+    if inbound is None:
+        return EarliestBasis("disruption_floor", floor, floor, False, None, None, None)
+    allowance = max(
+        0, inbound.scheduled_turn_min - rv.turnaround(AircraftSize.NARROW_BODY).value
+    )
+    carried = max(0, inbound.arrival_delay_min - allowance)
+    return EarliestBasis(
+        basis="inbound_leg" if carried > floor else "disruption_floor",
+        delay_min=max(floor, carried),
+        floor_min=floor,
+        usable_inbound=True,
+        inbound_flight_id=inbound.flight_id,
+        inbound_lateness_min=inbound.arrival_delay_min,
+        recovery_allowance_min=allowance,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,6 +292,7 @@ class GeneratorParams:
     p_super_given_widebody: float = 0.03
     p_small_given_regional: float = 0.20
     default_block_min: int = 120
+    min_block_min: int = 15  # floor on the scheduled block time
 
 
 PARAMS: Final = GeneratorParams()
@@ -422,12 +494,7 @@ def build_scenario(
 
     # Times, on the departure date's clock, destination-local.
     scheduled_arrival = dot.scheduled_arrival_min(row)
-    floor = (
-        dot.WEATHER_THRESHOLD_MIN
-        if cause == "weather"
-        else dot.LATE_AIRCRAFT_THRESHOLD_MIN
-    )
-    earliest = scheduled_arrival + floor
+    earliest = scheduled_arrival + earliest_basis(row, path).delay_min
     latest = earliest + p.plan_window_min
     taxi_in = dot.typical_taxi_in(row.destination_airport, path)
     scheduled_gate_in = scheduled_arrival + (
@@ -516,6 +583,7 @@ def build_scenario(
             if row.distance is not None
             else p.default_block_min
         )
+    block = max(block, p.min_block_min)  # a zero or negative block is bad data
     if decision_point is DecisionPoint.AIRBORNE:
         remaining = block * rng_fuel.uniform(*p.airborne_remaining)
         tier = p.surplus_tiers[_weighted(rng_fuel, [t[0] for t in p.surplus_tiers])]
@@ -525,7 +593,7 @@ def build_scenario(
         remaining = float(block)
         surplus_min = rng_fuel.uniform(*p.surplus_pre_departure_min)
         needs_alternate = True  # loaded on the ground for any forecast
-    trip = round(remaining * cruise)
+    trip = max(1, round(remaining * cruise))
     reserve_min = rv.rule_value(rv.FUEL_RESERVE_MIN).value
     on_board = trip + round((reserve_min + surplus_min) * cruise)
     if needs_alternate:

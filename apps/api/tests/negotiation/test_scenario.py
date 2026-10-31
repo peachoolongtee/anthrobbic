@@ -1,7 +1,7 @@
 """Scenario building: provenance, determinism, no hindsight and a usable mix."""
 
 import shutil
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import replace
 from pathlib import Path
 
@@ -21,7 +21,9 @@ from app.negotiation.fallback import decide
 from app.negotiation.scenario import (
     FIELD_NOTES,
     AsFlownOutcome,
+    EarliestBasis,
     build_scenario,
+    earliest_basis,
     next_leg_of,
     outcome_of,
 )
@@ -162,18 +164,153 @@ def test_decision_point_follows_the_cause(
     )
 
 
-def test_earliest_arrival_is_schedule_plus_a_floor_not_the_outcome(
+def test_weather_earliest_is_schedule_plus_the_floor(
     rows: dict[str, DotRow], csv_file: Path
 ) -> None:
-    late = build(rows["NK301"], csv_file)
-    assert late.earliest_arrival_min.value == 8 * 60 + 30 + 20
-    assert late.latest_arrival_min.value == 8 * 60 + 30 + 20 + 60
     weather = build(rows["DL401"], csv_file)
     # Crosses midnight: 06:50 the next day is minute 1850, plus a floor of 15.
     assert weather.earliest_arrival_min.value == 1850 + 15
-    # The row's real arrival delay (70 and 71 min) is nowhere in the window.
-    assert rows["NK301"].arrival_delay == 70
+    # An inbound leg exists (DL400, 90 min late) but weather rows ignore it.
+    basis = earliest_basis(rows["DL401"], csv_file)
+    assert basis.basis == "disruption_floor"
+    assert basis.usable_inbound is False
+    # The row's own real arrival delay (71 min) is nowhere in the window.
     assert rows["DL401"].arrival_delay == 71
+
+
+def test_late_aircraft_earliest_follows_the_inbound_legs_lateness(
+    rows: dict[str, DotRow], csv_file: Path
+) -> None:
+    scenario = build(rows["NK301"], csv_file)
+    # NK300 was due 05:55 and landed 75 min late. NK301 leaves 07:00, so 65 min
+    # were scheduled; 40 of those are above the 25 min narrow-body minimum and
+    # absorb lateness. 75 - 40 = 35 carries over, which beats the floor of 20.
+    assert scenario.earliest_arrival_min.value == 8 * 60 + 30 + 35
+    assert scenario.latest_arrival_min.value == 8 * 60 + 30 + 35 + 60
+    basis = earliest_basis(rows["NK301"], csv_file)
+    assert basis == EarliestBasis(
+        basis="inbound_leg",
+        delay_min=35,
+        floor_min=20,
+        usable_inbound=True,
+        inbound_flight_id="NK300",
+        inbound_lateness_min=75,
+        recovery_allowance_min=40,
+    )
+    assert scenario.earliest_arrival_min.provenance is DERIVED
+    # The row's own real arrival delay (70 min) is not what set it.
+    assert rows["NK301"].arrival_delay == 70
+
+
+def test_an_inbound_leg_that_lands_too_late_to_be_known_gives_the_floor(
+    rows: dict[str, DotRow], csv_file: Path
+) -> None:
+    # AS805 lands 200 min late, at 12:35, long after AS804 leaves at 10:15.
+    basis = earliest_basis(rows["AS804"], csv_file)
+    assert basis.basis == "disruption_floor"
+    assert basis.usable_inbound is False
+    assert basis.delay_min == 20
+    sched = dot.scheduled_arrival_min(rows["AS804"])
+    assert build(rows["AS804"], csv_file).earliest_arrival_min.value == sched + 20
+
+
+def test_no_inbound_leg_or_one_elsewhere_gives_the_floor(
+    rows: dict[str, DotRow], csv_file: Path
+) -> None:
+    # EV901 has no earlier leg for its tail at all.
+    assert earliest_basis(rows["EV901"], csv_file).usable_inbound is False
+    # An inbound that landed somewhere other than this origin is not an inbound.
+    elsewhere = replace(rows["NK301"], origin_airport="JFK")
+    assert earliest_basis(elsewhere, csv_file).usable_inbound is False
+
+
+def edited_csv(
+    tmp_path: Path, name: str, edit: Callable[[dict[str, str]], None]
+) -> Path:
+    """A copy of the fixture with `edit` applied to each row's cells."""
+    folder = tmp_path / name
+    folder.mkdir()
+    lines = FIXTURE.read_text().splitlines()
+    header = lines[0].split(",")
+    out = [lines[0]]
+    for line in lines[1:]:
+        cells = dict(zip(header, line.split(","), strict=True))
+        edit(cells)
+        out.append(",".join(cells[column] for column in header))
+    target = folder / "flights.csv"
+    target.write_text("\n".join(out) + "\n")
+    return target
+
+
+def row_in(path: Path, flight_id: str) -> DotRow:
+    return next(r for r in dot.iter_eligible_rows(path) if r.flight_id == flight_id)
+
+
+def set_inbound_delay(delay: str) -> Callable[[dict[str, str]], None]:
+    def edit(cells: dict[str, str]) -> None:
+        if cells["AIRLINE"] + cells["FLIGHT_NUMBER"] == "NK300":
+            cells["ARRIVAL_DELAY"] = delay
+
+    return edit
+
+
+def test_changing_the_inbound_legs_lateness_changes_the_scenario(
+    csv_file: Path, tmp_path: Path
+) -> None:
+    base = build_scenario(row_in(csv_file, "NK301"), 2, csv_file)
+    later = edited_csv(tmp_path, "later", set_inbound_delay("95"))
+    worse = build_scenario(row_in(later, "NK301"), 2, later)
+    # 95 - 40 = 55 min carried: the earliest arrival moves 20 min later.
+    assert worse.earliest_arrival_min.value == 510 + 55
+    assert worse.model_dump_json() != base.model_dump_json()
+    # And lateness the schedule can absorb falls back to the floor.
+    early = edited_csv(tmp_path, "early", set_inbound_delay("30"))
+    mild = build_scenario(row_in(early, "NK301"), 2, early)
+    assert mild.earliest_arrival_min.value == 510 + 20
+    basis = earliest_basis(row_in(early, "NK301"), early)
+    assert basis.basis == "disruption_floor"
+    assert basis.usable_inbound is True
+
+
+def test_the_knowable_margin_is_exact(csv_file: Path, tmp_path: Path) -> None:
+    """NK300 lands at 05:55 plus its delay; NK301 leaves 07:00; the margin is 30."""
+    at_limit = edited_csv(tmp_path, "at", set_inbound_delay("95"))  # lands 07:30
+    over = edited_csv(tmp_path, "over", set_inbound_delay("96"))  # lands 07:31
+    assert earliest_basis(row_in(at_limit, "NK301"), at_limit).usable_inbound is True
+    assert earliest_basis(row_in(over, "NK301"), over).usable_inbound is False
+
+
+def test_other_flights_outcomes_do_not_change_the_scenario(
+    rows: dict[str, DotRow], csv_file: Path, tmp_path: Path
+) -> None:
+    """Only the inbound leg's arrival delay may matter. Traffic, the next leg
+    and every other flight's outcomes are not hindsight either."""
+    inbound = {"NK300", "AS805", "DL400"}
+    overwrite = {
+        "DEPARTURE_TIME": "0001",
+        "DEPARTURE_DELAY": "999",
+        "WHEELS_OFF": "0002",
+        "WHEELS_ON": "0003",
+        "ARRIVAL_TIME": "0004",
+        "AIR_TIME": "5",
+        "ELAPSED_TIME": "6",
+    }
+
+    def edit(cells: dict[str, str]) -> None:
+        cells.update(overwrite)
+        if cells["AIRLINE"] + cells["FLIGHT_NUMBER"] not in inbound:
+            cells["ARRIVAL_DELAY"] = "888"
+
+    changed_file = edited_csv(tmp_path, "changed", edit)
+    changed_rows = {r.flight_id: r for r in dot.iter_eligible_rows(changed_file)}
+    assert set(changed_rows) == set(rows)
+    for flight_id, row in rows.items():
+        assert changed_rows[flight_id].arrival_delay == 888
+        before = build_scenario(row, 5, csv_file).model_dump_json()
+        after = build_scenario(
+            changed_rows[flight_id], 5, changed_file
+        ).model_dump_json()
+        assert after == before
 
 
 def test_next_departure_comes_from_the_tails_next_leg(
@@ -270,43 +407,6 @@ def test_outcome_columns_do_not_change_the_scenario(
         assert build(changed, csv_file, 3).model_dump_json() == base
 
 
-def test_outcome_columns_in_the_file_do_not_change_the_scenario(
-    rows: dict[str, DotRow], csv_file: Path, tmp_path: Path
-) -> None:
-    """Other flights' outcomes (traffic, next leg) are not hindsight either."""
-    changed_dir = tmp_path / "changed"
-    changed_dir.mkdir()
-    changed_file = changed_dir / "flights.csv"
-    lines = FIXTURE.read_text().splitlines()
-    header = lines[0].split(",")
-    overwrite = {
-        "DEPARTURE_TIME": "0001",
-        "DEPARTURE_DELAY": "999",
-        "WHEELS_OFF": "0002",
-        "WHEELS_ON": "0003",
-        "ARRIVAL_TIME": "0004",
-        "ARRIVAL_DELAY": "888",
-        "AIR_TIME": "5",
-        "ELAPSED_TIME": "6",
-    }
-    out = [lines[0]]
-    for line in lines[1:]:
-        cells = line.split(",")
-        for column, value in overwrite.items():
-            cells[header.index(column)] = value
-        out.append(",".join(cells))
-    changed_file.write_text("\n".join(out) + "\n")
-    changed_rows = {r.flight_id: r for r in dot.iter_eligible_rows(changed_file)}
-    assert set(changed_rows) == set(rows)
-    for flight_id, row in rows.items():
-        assert changed_rows[flight_id].arrival_delay == 888
-        before = build_scenario(row, 5, csv_file).model_dump_json()
-        after = build_scenario(
-            changed_rows[flight_id], 5, changed_file
-        ).model_dump_json()
-        assert after == before
-
-
 def test_outcome_is_kept_apart_and_holds_the_as_flown_values(
     rows: dict[str, DotRow],
 ) -> None:
@@ -354,3 +454,35 @@ def test_real_rows_build_deterministic_scenarios_with_a_real_mix() -> None:
     # Neither trivially legal nor impossible across the sample.
     assert 0 < results.count("NO_DEAL") < len(results)
     assert 0 < results.count("DEAL") < len(results)
+
+
+def test_generated_values_are_always_usable_by_the_rules(
+    rows: dict[str, DotRow], csv_file: Path
+) -> None:
+    """Positive burn and fuel, a known runway per arrival and a known gate per
+    occupancy, and never the scenario's own flight among the others."""
+    variants = [*rows.values(), replace(rows["NK301"], scheduled_time=0)]
+    for row in variants:
+        for seed in range(30):
+            s = build(row, csv_file, seed)
+            for field in (
+                s.fuel_on_board_kg,
+                s.trip_fuel_kg,
+                s.cruise_burn_kg_per_min,
+                s.hold_burn_kg_per_min,
+                s.alternate_fuel_kg,
+            ):
+                assert field.value is not None and field.value > 0
+            runways, gates = s.runways.value, s.gates.value
+            assert runways is not None and gates is not None
+            assert all(
+                a.runway_id in {r.runway_id for r in runways}
+                for a in s.other_arrivals.value or ()
+            )
+            assert all(
+                o.gate_id in {g.gate_id for g in gates}
+                for o in s.gate_occupancies.value or ()
+            )
+            own = row.flight_id
+            assert own not in {a.flight_id for a in s.other_arrivals.value or ()}
+            assert own not in {o.flight_id for o in s.gate_occupancies.value or ()}
