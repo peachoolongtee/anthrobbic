@@ -793,3 +793,17 @@ def test_workbook_limits_are_not_called_regulations_or_studies() -> None:
     assert "not a regulation" in label
     line = lines_by_rule(good_card())["ATC-WAKE-SEP"]
     assert line.basis_label == label
+
+
+def test_every_rule_in_the_table_has_a_limit_basis_on_a_passing_card() -> None:
+    """A rule added without a basis would read "Limit basis unknown"."""
+    lines = lines_by_rule(good_card())
+    assert set(lines) == {rule.rule_id for rule in ALL_RULES}
+    for rule_id, line in lines.items():
+        assert line.basis_status != "unknown", rule_id
+        assert line.basis_label != "Limit basis unknown.", rule_id
+    assert lines["PLT-CREW-DUTY"].basis_key == rv.CREW_MAX_DUTY_MIN
+    assert lines["GND-GATE-NOTICE"].basis_key == rv.GATE_CHANGE_NOTICE_MIN
+    for rule_id in ("PLT-CREW-DUTY", "GND-GATE-NOTICE"):
+        assert lines[rule_id].basis_status == "organiser_workbook"
+        assert not lines[rule_id].is_regulation

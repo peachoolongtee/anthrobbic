@@ -83,12 +83,13 @@ def _unknown_int() -> "Sourced[int]":
 
 class Runway(FrozenModel):
     """A runway. Runways sharing a `parallel_group` are treated as one runway
-    for wake separation and throughput (FAA JO 7110.65: parallel runways less
-    than 2,500 ft apart count as a single runway).
+    for wake separation (FAA JO 7110.65: parallel runways less than 2,500 ft
+    apart count as a single runway). The throughput cap is an airport total, so
+    it counts every runway together and ignores groups.
 
     `parallel_group` has no default on purpose: an omitted value would silently
-    mean "independent", which removes wake and throughput limits. Say `None`
-    explicitly for a runway that is independent."""
+    mean "independent", which removes the wake separation between neighbouring
+    runways. Say `None` explicitly for a runway that is independent."""
 
     runway_id: str
     closed: bool
