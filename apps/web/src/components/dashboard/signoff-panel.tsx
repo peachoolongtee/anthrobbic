@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CircleCheck, CircleX, Hash, Send, UserCheck } from "lucide-react";
+import { Check, CircleCheck, CircleX, Copy, Hash, Send, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -150,12 +150,25 @@ function FreeText({
   );
 }
 
+/** The log's fingerprint after this decision: short, with the full value on hover and copy. */
 function LogHead({ head }: { head: string }) {
+  const [copied, setCopied] = useState(false);
   return (
-    <p className="flex items-start gap-1 font-mono text-xs break-all">
-      <Hash aria-hidden className="mt-0.5 size-3 shrink-0" />
-      Log head {head}
-    </p>
+    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title={`Log fingerprint ${head}`}>
+      <Hash aria-hidden className="size-3 shrink-0" />
+      <span className="font-mono">{head.slice(0, 8)}</span>
+      <span className="sr-only">Log fingerprint {head}</span>
+      <button
+        type="button"
+        onClick={() => {
+          void navigator.clipboard?.writeText(head).then(() => setCopied(true));
+        }}
+        aria-label="Copy the log fingerprint"
+        className="rounded p-0.5 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {copied ? <Check aria-hidden className="size-3" /> : <Copy aria-hidden className="size-3" />}
+      </button>
+    </span>
   );
 }
 
@@ -249,6 +262,8 @@ function SignoffForm({
       )}
       <FallbackNotice run={run} />
 
+      {!(approved || decided) && (
+        <>
       <fieldset className="space-y-1.5" disabled={locked}>
         <legend className="flex items-center gap-1.5 text-sm font-semibold" title="The airline's own calls">
           <UserCheck aria-hidden className="size-4 text-muted-foreground" />
@@ -344,6 +359,8 @@ function SignoffForm({
           </p>
         )}
       </div>
+        </>
+      )}
     </form>
   );
 }
@@ -362,20 +379,22 @@ function SignoffResultView({ signoff, onNewPlan }: { signoff: SignoffState; onNe
         </p>
       )}
       {signoff.status === "done" && isApproved(signoff.result.status) && (
-        <div className="space-y-2 rounded-lg border border-success/40 bg-success-soft p-3 text-sm">
+        <div className="space-y-2.5 rounded-lg border border-success/40 bg-success-soft p-3 text-sm">
           <p className="flex items-center gap-1.5 font-semibold text-success">
             <CircleCheck aria-hidden className="size-4" />
-            {signoff.result.requests.length > 0 ? "Requests issued, nothing executed" : "No requests issued, nothing executed"}
+            Approved
           </p>
-          <p className="text-xs">
-            Approved by {DECIDED_BY}.{" "}
+          <p className="text-xs text-muted-foreground">
             {signoff.result.requests.length > 0
-              ? "Requests were issued, not granted. Nothing has been executed. ATC and the pilot still have to act on the requests."
-              : "You chose not to send any requests, so ATC and the pilot have not been asked. Nothing has been executed."}
+              ? "Requests sent. ATC and the pilot still decide."
+              : "No requests sent."}
           </p>
-          <TermList title="Airline decisions approved" items={signoff.result.airline_decisions} />
-          <TermList title="Requests issued" items={signoff.result.requests} />
-          <LogHead head={signoff.result.log_head} />
+          <DoneList icon={UserCheck} label="Decided" items={signoff.result.airline_decisions} />
+          <DoneList icon={Send} label="Requested" items={signoff.result.requests} />
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span title={DECIDED_BY}>By duty manager (demo)</span>
+            <LogHead head={signoff.result.log_head} />
+          </div>
         </div>
       )}
       {signoff.status === "done" && !isApproved(signoff.result.status) && <Refusal result={signoff.result} onNewPlan={onNewPlan} />}
@@ -438,21 +457,20 @@ function Refusal({
   );
 }
 
-function TermList({ title, items }: { title: string; items: PackageTerm[] }) {
+function DoneList({ icon: Icon, label, items }: { icon: typeof Send; label: string; items: PackageTerm[] }) {
   if (items.length === 0) return null;
   return (
-    <div>
-      <p className="text-xs font-semibold">{title}</p>
-      <ul className="list-disc pl-5">
-        {items.map((t) => (
-          <li key={t.name}>
-            {(() => {
-              const p = plainTerm(t.name, TERM_LABEL[t.name] ?? t.name, t.value);
-              return `${p.label}: ${p.value}`;
-            })()}
+    <ul aria-label={label} className="space-y-1">
+      {items.map((t) => {
+        const p = plainTerm(t.name, TERM_LABEL[t.name] ?? t.name, t.value);
+        return (
+          <li key={t.name} className="flex items-center gap-2">
+            <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="text-muted-foreground">{p.label}</span>
+            <span className="font-medium">{p.value}</span>
           </li>
-        ))}
-      </ul>
-    </div>
+        );
+      })}
+    </ul>
   );
 }
