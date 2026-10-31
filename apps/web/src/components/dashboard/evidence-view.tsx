@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { FlaskConical } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -28,13 +28,15 @@ function EvidenceBadge({ evidence }: { evidence: string | null }) {
 function RunLine({ commit, mode, seed }: { commit: string | null; mode: string | null; seed: number | string | null }) {
   return (
     <span className="block font-mono text-xs text-muted-foreground">
-      <span className="block">{commit?.slice(0, 12)}</span>
-      <span className="block">
+      <span className="inline-block">{commit?.slice(0, 12)}</span>{" "}
+      <span className="inline-block">
         {mode}, seed {seed}
       </span>
     </span>
   );
 }
+
+const FALLBACK_LIMITS_TITLE = "Where we differ from the challenge workbook";
 
 /** Stated by requirement, whether or not an evaluation has run. */
 function WorkbookDifferences() {
@@ -56,21 +58,26 @@ function WorkbookDifferences() {
         Could not load where we differ from the challenge workbook. The planning service did not answer.
       </p>
     );
-  if (!limits) return <LoadingBlock label="Loading the limits" lines={3} />;
   return (
-    <section aria-labelledby="differences-heading" className="rounded-xl border border-border bg-card p-3">
-      <h3 id="differences-heading" className="font-display text-sm font-semibold">
-        {limits.title}
-      </h3>
-      <ul className="mt-1.5 space-y-1.5 text-sm">
-        {limits.items.map((d) => (
-          <li key={d.id}>
-            <span className="font-medium">{d.limit}:</span> {d.what_we_do}{" "}
-            <span className="text-muted-foreground">{d.why}</span>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <details className="rounded-xl border border-border bg-card p-3">
+      <summary className="cursor-pointer">
+        <h3 id="differences-heading" className="inline font-display text-sm font-semibold">
+          {limits?.title ?? FALLBACK_LIMITS_TITLE}
+        </h3>
+      </summary>
+      {limits ? (
+        <ul className="mt-1.5 space-y-1.5 text-sm">
+          {limits.items.map((d) => (
+            <li key={d.id}>
+              <span className="font-medium">{d.limit}:</span> {d.what_we_do}{" "}
+              <span className="text-muted-foreground">{d.why}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <LoadingBlock label="Loading the limits" lines={3} />
+      )}
+    </details>
   );
 }
 
@@ -84,39 +91,53 @@ function largest(items: HeadlineItem[]): HeadlineItem[] {
   return [...best.values()];
 }
 
-function HeadlineCard({ item }: { item: HeadlineItem }) {
+function HeadlineRow({ item }: { item: HeadlineItem }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-3">
-      <p className="text-xs text-muted-foreground">{item.label}</p>
+    <div className="flex items-baseline justify-between gap-3 py-1">
+      <dt className="min-w-0 text-xs text-muted-foreground">{item.label}</dt>
       {item.state === "absent" ? (
-        <p className="mt-1 text-sm text-muted-foreground">Not in the results.</p>
+        <dd className="shrink-0 text-xs text-muted-foreground">Not in the results.</dd>
       ) : (
-        <>
-          <p className="mt-0.5 font-display text-lg font-semibold tabular-nums">{item.value}</p>
-          {item.interval_text && <p className="text-xs text-muted-foreground">Interval {item.interval_text}</p>}
-          <div className="mt-1 space-y-0.5">
-            <EvidenceBadge evidence={item.evidence_class} />
-            <RunLine commit={item.commit} mode={item.mode} seed={item.seed} />
-          </div>
-        </>
+        <dd className="shrink-0 text-right tabular-nums">
+          <span className="block font-display text-sm font-semibold">{item.value}</span>
+          {item.interval_text && <span className="block text-[11px] text-muted-foreground">Interval {item.interval_text}</span>}
+        </dd>
       )}
     </div>
   );
 }
 
+/** Items from one run: one evidence class, commit, mode and seed, named once at the top. */
+function runsOf(items: HeadlineItem[]): HeadlineItem[][] {
+  const runs = new Map<string, HeadlineItem[]>();
+  for (const item of items) {
+    const id = [item.evidence_class, item.commit, item.mode, item.seed].join("|");
+    runs.set(id, [...(runs.get(id) ?? []), item]);
+  }
+  return [...runs.values()];
+}
+
 function HeadlineGroup({ title, detail, items }: { title: string; detail: string; items: HeadlineItem[] }) {
   if (items.length === 0) return null;
   return (
-    <section aria-label={title} className="space-y-1.5">
+    <section aria-label={title} className="space-y-1.5 rounded-xl border border-border bg-card p-3">
       <div>
         <h3 className="font-display text-sm font-semibold">{title}</h3>
         <p className="text-xs text-muted-foreground">{detail}</p>
       </div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {items.map((item, i) => (
-          <HeadlineCard key={`${item.key}-${i}`} item={item} />
-        ))}
-      </div>
+      {runsOf(items).map((run) => (
+        <div key={`${run[0].evidence_class}-${run[0].commit}`}>
+          <div className="flex items-center gap-2 border-b border-border pb-1">
+            <EvidenceBadge evidence={run[0].evidence_class} />
+            <RunLine commit={run[0].commit} mode={run[0].mode} seed={run[0].seed} />
+          </div>
+          <dl className="divide-y divide-border">
+            {run.map((item, i) => (
+              <HeadlineRow key={`${item.key}-${i}`} item={item} />
+            ))}
+          </dl>
+        </div>
+      ))}
     </section>
   );
 }
@@ -182,15 +203,11 @@ function ResultsTable({ title, rows }: { title: string; rows: EvaluationRow[] })
 const WITHOUT_A_MODEL = new Set(["rules_only", "test"]);
 
 export function EvidenceView() {
-  return (
-    <div className="space-y-4">
-      <WorkbookDifferences />
-      <EvaluationResults />
-    </div>
-  );
+  return <EvaluationResults differences={<WorkbookDifferences />} />;
 }
 
-function EvaluationResults() {
+/** Headline numbers first, so they show as the tab opens. `differences` shows in every state. */
+function EvaluationResults({ differences }: { differences: ReactNode }) {
   const [state, setState] = useState<State>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
 
@@ -204,9 +221,16 @@ function EvaluationResults() {
     };
   }, [attempt]);
 
-  if (state.status === "loading") return <LoadingBlock label="Loading the evidence" lines={6} />;
+  const withDifferences = (panel: ReactNode) => (
+    <div className="space-y-4">
+      {panel}
+      {differences}
+    </div>
+  );
+
+  if (state.status === "loading") return withDifferences(<LoadingBlock label="Loading the evidence" lines={6} />);
   if (state.status === "error")
-    return (
+    return withDifferences(
       <ErrorPanel
         title="Could not load the evidence"
         message={state.message}
@@ -215,14 +239,14 @@ function EvaluationResults() {
           setState({ status: "loading" });
           setAttempt((a) => a + 1);
         }}
-      />
+      />,
     );
 
   const { rows, limits, status, failures = [] } = state.data;
   if (status === "unreadable")
-    return <EmptyPanel title="Evaluation output could not be read">No numbers are shown. Run the evaluation command again.</EmptyPanel>;
+    return withDifferences(<EmptyPanel title="Evaluation output could not be read">No numbers are shown. Run the evaluation command again.</EmptyPanel>);
   if (rows.length === 0 && limits.length === 0)
-    return <EmptyPanel title="Not yet run">Run the evaluation command to generate the table. Nothing is typed in by hand.</EmptyPanel>;
+    return withDifferences(<EmptyPanel title="Not yet run">Run the evaluation command to generate the table. Nothing is typed in by hand.</EmptyPanel>);
 
   const headline = state.headline;
   const rulesOnly = rows.filter((r) => WITHOUT_A_MODEL.has(r.evidence_class));
@@ -249,19 +273,34 @@ function EvaluationResults() {
         </Alert>
       )}
       {headline && (
-        <>
+        <div className="grid items-start gap-3 lg:grid-cols-2">
           <HeadlineGroup title="Rules only" detail="Code and rules, with no model. Read from the results file." items={largest(headline.rules_only)} />
-          <HeadlineGroup title="Live model" detail="With the agents, live. Never compare with rules only." items={[...headline.live]} />
-          <HeadlineGroup
-            title="With the model: tuned and unseen flights"
-            detail="Run with the agents on the tuning and held-out flights. Each card names its class. Never compare across classes."
-            items={[...headline.other]}
-          />
-        </>
+          <div className="space-y-3">
+            <HeadlineGroup title="Live model" detail="With the agents, live. Never compare with rules only." items={[...headline.live]} />
+            <HeadlineGroup
+              title="With the model: tuned and unseen flights"
+              detail="Run with the agents on the tuning and held-out flights. Each set names its class. Never compare across classes."
+              items={[...headline.other]}
+            />
+          </div>
+        </div>
       )}
       <p className="text-xs text-muted-foreground">
         Generated from run output. Numbers with different evidence classes must not be compared with each other.
       </p>
+      {differences}
+      {limits.length > 0 && (
+        <details className="rounded-xl border border-border bg-card p-3">
+          <summary className="cursor-pointer">
+            <h3 className="inline font-display text-sm font-semibold">Limits: what these numbers do not show</h3>
+          </summary>
+          <ul className="mt-1.5 list-disc space-y-1 pl-5 text-sm">
+            {limits.map((l) => (
+              <li key={l}>{l}</li>
+            ))}
+          </ul>
+        </details>
+      )}
       <ResultsTable title="Full results: rules only and tests" rows={mainRows} />
       <ResultsTable title="Full results: with the model" rows={withModel} />
       {sampleRows.length > 0 && (
@@ -269,16 +308,6 @@ function EvaluationResults() {
           <summary className="cursor-pointer text-sm font-medium">Rules-only rows from the smaller samples of the live runs</summary>
           <ResultsTable title="Rules only, on the live runs' samples" rows={sampleRows} />
         </details>
-      )}
-      {limits.length > 0 && (
-        <section aria-label="Limits" className="space-y-1">
-          <h3 className="font-display text-sm font-semibold">Limits: what these numbers do not show</h3>
-          <ul className="list-disc space-y-1 pl-5 text-sm">
-            {limits.map((l) => (
-              <li key={l}>{l}</li>
-            ))}
-          </ul>
-        </section>
       )}
     </div>
   );
