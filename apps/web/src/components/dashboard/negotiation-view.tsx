@@ -92,10 +92,12 @@ export function NegotiationView({ run }: { run: Run }) {
         {run.path === "consensus"
           ? "The agents agreed and the rules passed it. Agreement alone proves nothing: the rules decide what is allowed."
           : run.path === "fallback"
-            ? "The agents did not reach a plan, so code chose one. A fallback is never shown as a clean result."
+            ? run.fallback_trigger === "llm_off"
+              ? "The model is off, so the agents did not run and code chose the plan. A fallback is never shown as a clean result."
+              : "The agents did not reach a plan, so code chose one. A fallback is never shown as a clean result."
             : "No plan passed the rules, so the system stopped instead of guessing."}
       </p>
-      <RemovedPlans removed={run.removed_packages} />
+      <RemovedPlans removed={run.removed_packages} total={run.removed_total} />
       {run.turns.length === 0 ? (
         <EmptyPanel title="The agents did not negotiate">
           {run.faults.length > 0 ? run.faults[0].message : "No turns were recorded for this run."}
@@ -107,7 +109,7 @@ export function NegotiationView({ run }: { run: Run }) {
   );
 }
 
-function RemovedPlans({ removed }: { removed: Run["removed_packages"] }) {
+function RemovedPlans({ removed, total }: { removed: Run["removed_packages"]; total?: number }) {
   return (
     <section aria-labelledby="removed-heading" className="rounded-lg border bg-muted/40 p-3">
       <h3 id="removed-heading" className="flex items-center gap-1.5 text-sm font-semibold">
@@ -116,6 +118,7 @@ function RemovedPlans({ removed }: { removed: Run["removed_packages"] }) {
       </h3>
       <p className="text-xs text-muted-foreground">
         Code removes any plan that breaks a rule, then the agents choose from what is left. They cannot put one back.
+        {total !== undefined && ` ${total} plans were illegal. One example of each kind of failure is shown.`}
       </p>
       {removed.length === 0 ? (
         <p className="mt-2 text-sm text-muted-foreground">No plan was removed.</p>
@@ -130,7 +133,9 @@ function RemovedPlans({ removed }: { removed: Run["removed_packages"] }) {
                     Injected by you
                   </Badge>
                 )}
-                <span className="text-xs text-muted-foreground">removed in turn {p.removed_in_turn}</span>
+                <span className="text-xs text-muted-foreground">
+                  {p.removed_in_turn === null ? "removed before any agent ran" : `removed in turn ${p.removed_in_turn}`}
+                </span>
               </div>
               <RuleList rules={p.violations} result="broken" />
             </li>

@@ -8,10 +8,12 @@ import type {
   AirportState,
   Card,
   Cause,
+  DecisionResult,
   Domain,
   Evaluation,
   Fact,
   Fault,
+  FinalDecision,
   LogEntry,
   NoDeal,
   RemovedPackage,
@@ -40,6 +42,8 @@ interface StoredRun {
   closedGates: string[];
   run: Run;
   extraLog: LogEntry[];
+  /** One final decision per run, like the real API. */
+  final?: FinalDecision;
 }
 
 const store = new Map<string, StoredRun>();
@@ -393,6 +397,23 @@ function build(
   };
 }
 
+/** Appends a log entry and moves the head on, as the real log does. */
+function recordDecision(s: StoredRun, runId: string, kind: string, summary: string): string {
+  const entryHash = hash(`${runId}:${kind}:${s.extraLog.length}`);
+  s.extraLog.push({ seq: 0, kind, summary, hash: entryHash });
+  s.run = { ...s.run, log_head: entryHash };
+  return entryHash;
+}
+
+function recordRefused(s: StoredRun, runId: string, attempted: string): string {
+  return recordDecision(
+    s,
+    runId,
+    "decision_refused",
+    `status: REFUSED_ALREADY_DECIDED; attempted: ${attempted}; final_decision: ${s.final}; issued: false`,
+  );
+}
+
 function logFor(s: StoredRun): LogEntry[] {
   const r = s.run;
   const entries: [string, string][] = [
@@ -464,6 +485,19 @@ export const mockBackend = {
     if (s.closedRunways.includes(deal.package.runway_id)) violations.push(bare(UNSAFE["ATC-RWY-CLOSED"].rule));
 
     const token = hash([body.terms_hash, body.state_version_seen, body.card_hash_seen].join("|"));
+    if (s.final && !(s.final === "APPROVED" && usedTokens.has(token))) {
+      return {
+        status: "REFUSED_ALREADY_DECIDED",
+        final_decision: s.final,
+        violations: [],
+        changed_fields: [],
+        changed_card_fields: [],
+        airline_decisions: [],
+        requests: [],
+        card_hash: card.card_hash,
+        log_head: recordRefused(s, runId, "signoff"),
+      };
+    }
     let status: SignoffResult["status"];
     let changedFields: string[] = [];
     let changedCard: string[] = [];
@@ -473,7 +507,10 @@ export const mockBackend = {
       status = "REFUSED_STATE_CHANGED";
       changedFields = changedNames(body.field_versions_seen, body.state_version_seen, current);
     } else if (violations.length > 0) status = "REFUSED_RULES_FAILED";
-    else if (body.card_hash_seen !== card.card_hash) {
+    else if (!RUNWAYS.includes(deal.package.runway_id) || !GATES.includes(deal.package.gate_id)) {
+      // As the real sign-off: only a package this flight's enumeration offers.
+      status = "REFUSED_NOT_ELIGIBLE";
+    } else if (body.card_hash_seen !== card.card_hash) {
       status = "REFUSED_CARD_CHANGED";
       const seen = body.card_field_hashes_seen;
       const now = card.field_hashes ?? {};
@@ -487,6 +524,7 @@ export const mockBackend = {
     const approved = status === "APPROVED";
     if (approved) {
       usedTokens.add(token);
+      s.final = "APPROVED";
       s.extraLog.push({
         seq: 0,
         kind: "signoff",
@@ -511,6 +549,38 @@ export const mockBackend = {
           : [],
       card_hash: card.card_hash,
       log_head: s.run.log_head,
+    };
+  },
+
+  async reject(runId: string, body: { decided_by: string; reason?: string }): Promise<DecisionResult> {
+    await wait(250);
+    const s = need(runId);
+    if (s.run.decision.kind !== "DEAL") throw new Error("This run has no plan to reject: it ended in no deal.");
+    if (s.final) return { status: "REFUSED_ALREADY_DECIDED", final_decision: s.final, log_head: recordRefused(s, runId, "reject") };
+    s.final = "REJECTED";
+    return {
+      status: "REJECTED",
+      final_decision: "REJECTED",
+      log_head: recordDecision(s, runId, "plan_rejected", `decided_by: ${body.decided_by}; has_unverified_reason: ${Boolean(body.reason)}; issued: false`),
+    };
+  },
+
+  async takeOver(runId: string, body: { decided_by: string; note?: string }): Promise<DecisionResult> {
+    await wait(250);
+    const s = need(runId);
+    const decision = s.run.decision;
+    if (decision.kind !== "NO_DEAL") throw new Error("This run has a plan: approve or reject it instead.");
+    if (s.final) return { status: "REFUSED_ALREADY_DECIDED", final_decision: s.final, log_head: recordRefused(s, runId, "take_over") };
+    s.final = "TAKEN_OVER";
+    return {
+      status: "TAKEN_OVER",
+      final_decision: "TAKEN_OVER",
+      log_head: recordDecision(
+        s,
+        runId,
+        "case_taken_over",
+        `reason_type: ${decision.reason_type}; decided_by: ${body.decided_by}; has_unverified_note: ${Boolean(body.note)}; issued: false`,
+      ),
     };
   },
 

@@ -9,7 +9,15 @@ export type Domain = "atc" | "pilot" | "ground";
 export type RunMode = "off" | "recorded" | "live";
 export type RunPath = "consensus" | "fallback" | "no_deal";
 export type Cause = "weather" | "late_aircraft";
-export type RuleStatus = "confirmed" | "policy" | "assumption";
+/** The basis of a rule's limit, from rule_values.py and card.py. */
+export type RuleStatus =
+  | "confirmed"
+  | "secondary"
+  | "unverified"
+  | "policy"
+  | "assumption"
+  | "scenario_defined"
+  | "unknown";
 export type NoDealReason = "NOTHING_LEGAL" | "SYSTEM_FAULT";
 
 export interface NextLeg {
@@ -17,10 +25,12 @@ export interface NextLeg {
   route: string;
   /** 24-hour local time, already formatted by the API. */
   scheduled_departure: string;
-  /** Minutes of delay that reach this flight if nothing is done. */
-  delay_minutes: number;
-  /** (addition) Provenance of the next-leg figures. */
+  /** Minutes of delay that reach this flight if nothing is done. Null when an input is unknown. */
+  delay_minutes: number | null;
+  /** (addition) Provenance of the next leg itself. */
   provenance?: Provenance;
+  /** (addition) Provenance of `delay_minutes`, which rests on synthetic aircraft size. */
+  delay_provenance?: Provenance;
 }
 
 export interface ScenarioSummary {
@@ -35,6 +45,8 @@ export interface ScenarioSummary {
   delay_provenance?: Provenance;
   /** (addition) The same aircraft's next flight, derived from the same file. */
   next_leg?: NextLeg | null;
+  /** (addition) True when saved model answers exist for this row. Listed first. */
+  has_recording?: boolean;
 }
 
 export interface RunOverrides {
@@ -53,7 +65,7 @@ export interface TurnResponse {
   domain: Domain;
   acceptable_count: number;
   ranking_summary: string;
-  /** Plain-language reasons for this agent's answer. */
+  /** The agent's own reason codes. Unverified. */
   reason_codes: string[];
   /** What other agents are told. No private values. */
   public_reason_classes: string[];
@@ -67,24 +79,30 @@ export interface Turn {
 export interface RuleResult {
   rule_id: string;
   domain: Domain;
-  /** Plain-language rule name. Sign-off violations carry only `message`. */
+  /** The requirement, shown when the rule held. */
   label?: string;
-  message: string;
+  /** What the plan does wrong, shown when it failed. Null when the rule held. */
+  message: string | null;
   source: string;
+  /** Null when the rule held: the rules report values only when they fail. */
   observed: number | null;
   limit: number | null;
   unit: string;
   /** (addition) Whether the observed value must be at least or at most the limit. */
-  direction?: "at_least" | "at_most";
-  /** Absent on sign-off violations. */
+  direction?: "at_least" | "at_most" | null;
+  /** The basis of the limit. */
   status?: RuleStatus;
+  /** (addition) card.py's sentence for that basis. */
+  status_label?: string;
+  /** (addition) Whether the rule held at this state. */
+  result?: "pass" | "fail" | "missing_data";
   /** "constraint" for a real limit, "missing_data" when an input was unknown. */
-  cause?: "constraint" | "missing_data";
+  cause?: "constraint" | "missing_data" | null;
 }
 
 export interface RemovedPackage extends PackageRef {
-  /** Turn after which the plan was removed. */
-  removed_in_turn: number;
+  /** Turn after which the plan was removed. Null when no agent turn ran. */
+  removed_in_turn: number | null;
   violations: RuleResult[];
   /** (addition) True when the plan came from "inject an unsafe proposal". */
   injected?: boolean;
@@ -137,6 +155,8 @@ export interface Card {
   card_hash: string;
   /** (addition) Hash per hashed card fact, sent back as `card_field_hashes_seen`. */
   field_hashes?: Record<string, string>;
+  /** (addition) How the plan was chosen. Stated on the card and in its hash. */
+  how_reached?: "consensus" | "fallback" | "fallback_after_fault";
   /** The action as one sentence, written from a template. */
   action: string;
   action_facts: Fact[];
@@ -155,10 +175,22 @@ export interface ModelNote {
 export type FaultKind =
   | "model_off"
   | "missing_key"
+  | "auth_failure"
+  | "rate_limit"
   | "timeout"
+  | "wall_clock_cap"
+  | "connection_error"
   | "malformed_output"
+  | "max_tokens"
+  | "hallucinated_package"
   | "api_error"
   | "refusal"
+  | "recording_miss"
+  | "consensus_recheck_failed"
+  | "package_bound"
+  | "scenario_data"
+  | "sink_failure"
+  | "internal_error"
   | "turn_cap"
   | "missing_data";
 
@@ -182,8 +214,12 @@ export interface Run {
   /** (addition) Hash per scenario field, so a refusal can name what changed. */
   field_versions?: Record<string, string>;
   path: RunPath;
+  /** (addition) Why the fallback ran, e.g. "llm_off". Null when it did not. */
+  fallback_trigger?: string | null;
   turns: Turn[];
   removed_packages: RemovedPackage[];
+  /** (addition) Illegal plans in all. `removed_packages` shows one per distinct failure. */
+  removed_total?: number;
   decision: Decision;
   /** Null when there is no plan to show. */
   card: Card | null;
@@ -214,7 +250,19 @@ export type SignoffStatus =
   | "REFUSED_PACKAGE_CHANGED"
   | "REFUSED_CARD_CHANGED"
   | "REFUSED_RULES_FAILED"
-  | "REFUSED_ALREADY_USED";
+  | "REFUSED_ALREADY_USED"
+  | "REFUSED_NOT_ELIGIBLE"
+  | "REFUSED_ALREADY_DECIDED";
+
+/** A run has one final decision. A refused attempt does not set it. */
+export type FinalDecision = "APPROVED" | "REJECTED" | "TAKEN_OVER";
+
+/** Reject and take-over answer with this. Neither issues anything. */
+export interface DecisionResult {
+  status: "REJECTED" | "TAKEN_OVER" | "REFUSED_ALREADY_DECIDED";
+  final_decision: FinalDecision;
+  log_head: string;
+}
 
 /** A term of the plan as sign-off returns it, e.g. {name: "gate_id", value: "gate B12"}. */
 export interface PackageTerm {
@@ -225,6 +273,8 @@ export interface PackageTerm {
 /** Mirrors SignOffOutcome. A changed field may be "unattributed". */
 export interface SignoffResult {
   status: SignoffStatus;
+  /** (addition) Present on REFUSED_ALREADY_DECIDED: what already stands. */
+  final_decision?: FinalDecision | null;
   package_name?: string;
   violations: RuleResult[];
   changed_fields: string[];
@@ -251,6 +301,8 @@ export interface VerifyResult {
 export interface RunLog {
   entries: LogEntry[];
   verify: VerifyResult;
+  /** (addition) The head now, which moves on at state changes and sign-off. */
+  head?: string;
 }
 
 export type EvidenceClass =
@@ -267,7 +319,7 @@ export interface EvaluationRow {
   metric: string;
   value: number | string;
   interval: [number, number] | null;
-  n: number;
+  n: number | null;
   evidence_class: EvidenceClass;
   commit: string;
   mode: string;
@@ -275,6 +327,8 @@ export interface EvaluationRow {
 }
 
 export interface Evaluation {
+  /** (addition) "not_yet_run" means no evaluation output exists. */
+  status?: "ok" | "not_yet_run" | "unreadable";
   rows: EvaluationRow[];
   limits: string[];
 }

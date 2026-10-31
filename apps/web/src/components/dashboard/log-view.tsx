@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { CircleAlert, CircleCheck } from "lucide-react";
 import { api, describeError, isUnreachable } from "@/lib/api";
 import type { RunLog, VerifyResult } from "@/lib/api-types";
+import { logKindLabel, verifyReasonLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyPanel, ErrorPanel, LoadingBlock } from "@/components/dashboard/states";
@@ -69,7 +70,7 @@ export function LogView({
           )}
           <span>
             <strong>{log.verify.valid ? "The log checks out." : "The log does not check out."}</strong>{" "}
-            {log.verify.reason ?? ""}
+            {verifyReasonLabel(log.verify.reason)}
           </span>
         </p>
         {tamper && (
@@ -82,7 +83,7 @@ export function LogView({
             {tamper.valid ? <CircleAlert aria-hidden className="size-4 text-destructive" /> : <CircleCheck aria-hidden className="size-4 text-success" />}
             <span>
               <strong>Tampered copy: {tamper.valid ? "not detected." : "detected."}</strong>{" "}
-              {tamper.reason ?? ""}
+              {verifyReasonLabel(tamper.reason)}
               {tamper.first_bad_seq !== null && ` First bad entry: ${tamper.first_bad_seq}.`}
             </span>
           </p>
@@ -93,7 +94,7 @@ export function LogView({
         </p>
         <p className="font-mono text-xs break-all">
           <span className="font-sans font-medium">Log head </span>
-          {logHead}
+          {log.head ?? logHead}
         </p>
       </div>
       <Table>
@@ -111,7 +112,7 @@ export function LogView({
               <TableRow key={e.seq} className={cn(bad && "bg-destructive-soft")}>
                 <TableCell>{e.seq}</TableCell>
                 <TableCell className="whitespace-normal">
-                  <span className="text-xs text-muted-foreground">{e.kind}</span>
+                  <span className="text-xs text-muted-foreground">{logKindLabel(e.kind)}</span>
                   <br />
                   {e.summary}
                   {bad && <strong className="ml-2 text-destructive">First bad entry</strong>}

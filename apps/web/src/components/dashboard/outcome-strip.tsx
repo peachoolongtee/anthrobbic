@@ -35,12 +35,13 @@ function Chip({
  */
 export function OutcomeStrip({ run }: { run: Run }) {
   const agreed = run.path === "consensus";
+  const notAsked = run.fallback_trigger === "llm_off";
   const passed = run.decision.kind === "DEAL";
   return (
     <section aria-label="How this recovery plan was reached" className="space-y-1.5">
       <div className="flex flex-wrap gap-1.5">
-        <Chip label="Agents agreed?" tone={agreed ? "ok" : "no"}>
-          {agreed ? "Yes" : "No"}
+        <Chip label="Agents agreed?" tone={agreed ? "ok" : notAsked ? "neutral" : "no"}>
+          {agreed ? "Yes" : notAsked ? "Not asked: model off" : "No"}
         </Chip>
         <Chip label="Rules passed?" tone={passed ? "ok" : "no"}>
           {passed ? "Yes" : "No plan passes"}

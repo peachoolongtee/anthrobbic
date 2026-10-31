@@ -43,8 +43,12 @@ export const PROVENANCE_LABEL: Record<Provenance, { name: string; detail: string
 
 export const RULE_STATUS_LABEL: Record<RuleStatus, { name: string; detail: string }> = {
   confirmed: { name: "Regulation", detail: "Confirmed against the published rule" },
+  secondary: { name: "Published study", detail: "From a published study, not a rule" },
+  unverified: { name: "Unverified", detail: "Not yet verified against its source" },
   policy: { name: "Policy, not regulation", detail: "Our own limit, shaped on a regulation. It is not the regulation." },
   assumption: { name: "Assumption", detail: "A demo default that is not from a regulation" },
+  scenario_defined: { name: "Set by the scenario", detail: "The limit comes from the scenario data, not a regulation" },
+  unknown: { name: "Basis unknown", detail: "The basis of this limit is not known" },
 };
 
 export const PATH_LABEL: Record<RunPath, string> = {
@@ -56,10 +60,22 @@ export const PATH_LABEL: Record<RunPath, string> = {
 export const FAULT_LABEL: Record<FaultKind, string> = {
   model_off: "Model off",
   missing_key: "No model key",
+  auth_failure: "Model key refused",
+  rate_limit: "Rate limited",
   timeout: "Timed out",
+  wall_clock_cap: "Time limit reached",
+  connection_error: "Could not reach the model",
   malformed_output: "Unreadable answer",
+  max_tokens: "Answer cut off",
+  hallucinated_package: "Named a plan not offered",
   api_error: "Model error",
   refusal: "Agent refused",
+  recording_miss: "No recording",
+  consensus_recheck_failed: "Agreed plan failed the re-check",
+  package_bound: "Too many candidate plans",
+  scenario_data: "Scenario data problem",
+  sink_failure: "Log write failed",
+  internal_error: "Internal error",
   turn_cap: "Turn limit reached",
   missing_data: "Missing data",
 };
@@ -105,7 +121,45 @@ export const SIGNOFF_STATUS: Record<SignoffStatus, { title: string; detail: stri
     title: "Refused: this approval was already used",
     detail: "Each approval can be used once. Make a new recovery plan to approve again.",
   },
+  REFUSED_NOT_ELIGIBLE: {
+    title: "Refused: this plan was not offered for sign-off",
+    detail: "Only a plan the system itself offered for this flight can be approved.",
+  },
+  REFUSED_ALREADY_DECIDED: {
+    title: "Refused: this run was already decided",
+    detail: "A run has one final decision, and this one is recorded. Make a new recovery plan to decide again.",
+  },
 };
+
+/** Why a log failed its check, in plain words. Unknown reasons are shown as received. */
+const VERIFY_REASON_LABEL: Record<string, string> = {
+  malformed_entry: "A log line cannot be read.",
+  seq_mismatch: "An entry was deleted, moved or inserted.",
+  prev_hash_mismatch: "An entry no longer links to the one before it.",
+  entry_hash_mismatch: "An entry's content was edited.",
+  anchor_not_found: "The log was rewritten or cut short: its recorded head is missing.",
+  non_canonical_line: "A log line was rewritten: it is not in the exact form it was written in.",
+  file_diverged: "The log file no longer matches what this service wrote.",
+  log_failed: "A log write failed and could not be undone, so this log is closed.",
+};
+
+export function verifyReasonLabel(reason: string | null): string {
+  if (reason === null) return "";
+  return VERIFY_REASON_LABEL[reason] ?? reason;
+}
+
+/** Log entry kinds with a plain name. Others are shown as logged. */
+const LOG_KIND_LABEL: Record<string, string> = {
+  plan_rejected: "Plan rejected by the duty manager",
+  case_taken_over: "Case taken over by the duty manager",
+  decision_refused: "Decision refused: this run was already decided",
+  signoff: "Sign-off",
+  state_change: "Airport state changed",
+};
+
+export function logKindLabel(kind: string): string {
+  return LOG_KIND_LABEL[kind] ?? kind;
+}
 
 export function signoffStatusLabel(status: string): { title: string; detail: string } {
   return (

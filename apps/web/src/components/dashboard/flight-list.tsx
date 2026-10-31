@@ -123,7 +123,10 @@ export function FlightList({
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-semibold">{s.flight_id}</span>
-                      <Badge variant="outline">{CAUSE_LABEL[s.cause]}</Badge>
+                      <span className="flex flex-wrap justify-end gap-1">
+                        {s.has_recording && <Badge variant="secondary">Recorded</Badge>}
+                        <Badge variant="outline">{CAUSE_LABEL[s.cause]}</Badge>
+                      </span>
                     </div>
                     <div className="mt-0.5 flex items-center justify-between gap-2 text-muted-foreground">
                       <span className="truncate">{s.route}</span>
@@ -139,9 +142,16 @@ export function FlightList({
                         <span>
                           Same aircraft next: <span className="font-medium text-foreground">{s.next_leg.flight_id}</span>{" "}
                           <ArrowRight aria-hidden className="inline size-3" /> departs {s.next_leg.scheduled_departure},{" "}
-                          <span className="font-medium text-foreground">{s.next_leg.delay_minutes} min</span> of delay
-                          reaches it{" "}
-                          {s.next_leg.provenance && <ProvenanceBadge provenance={s.next_leg.provenance} className="ml-0.5 align-middle" />}
+                          <span className="font-medium text-foreground">
+                            {s.next_leg.delay_minutes === null ? "unknown" : `${s.next_leg.delay_minutes} min`}
+                          </span>{" "}
+                          of delay reaches it{" "}
+                          {(s.next_leg.delay_provenance ?? s.next_leg.provenance) && (
+                            <ProvenanceBadge
+                              provenance={(s.next_leg.delay_provenance ?? s.next_leg.provenance)!}
+                              className="ml-0.5 align-middle"
+                            />
+                          )}
                         </span>
                       </div>
                     ) : (

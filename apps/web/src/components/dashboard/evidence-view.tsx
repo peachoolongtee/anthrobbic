@@ -82,9 +82,11 @@ export function EvidenceView() {
       />
     );
 
-  const { rows, limits } = state.data;
+  const { rows, limits, status } = state.data;
+  if (status === "unreadable")
+    return <EmptyPanel title="Evaluation output could not be read">No numbers are shown. Run the evaluation command again.</EmptyPanel>;
   if (rows.length === 0 && limits.length === 0)
-    return <EmptyPanel title="No evaluation yet">Run the evaluation command to generate the table. Nothing is typed in by hand.</EmptyPanel>;
+    return <EmptyPanel title="Not yet run">Run the evaluation command to generate the table. Nothing is typed in by hand.</EmptyPanel>;
 
   const guarded = rows.filter((r) => r.arm !== "unguarded_model");
   const comparison = rows.filter((r) => r.arm === "unguarded_model");
