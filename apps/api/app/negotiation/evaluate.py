@@ -11,7 +11,6 @@ this module loads and its controls run before those modules exist.
 """
 
 import contextlib
-import fcntl
 import hashlib
 import json
 import math
@@ -19,6 +18,7 @@ import os
 import random
 import statistics
 import subprocess
+import sys
 import tempfile
 import time
 from collections import Counter
@@ -698,7 +698,15 @@ def load_ledger(results_dir: Path) -> dict[str, Any]:
 def _ledger_lock(results_dir: Path) -> Iterator[None]:
     results_dir.mkdir(parents=True, exist_ok=True)
     with (results_dir / f".{FROZEN_LEDGER_FILE}.lock").open("w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        # fcntl exists only on Unix; Windows locks the first byte with msvcrt.
+        if sys.platform == "win32":
+            import msvcrt
+
+            msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(lock, fcntl.LOCK_EX)
         yield
 
 

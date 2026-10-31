@@ -9,12 +9,17 @@ import type {
   Card,
   Cause,
   DecisionResult,
+  DelaySpread,
   Domain,
   Evaluation,
   Fact,
+  Headline,
+  WorkbookLimits,
   Fault,
   FinalDecision,
   LogEntry,
+  LookupQuery,
+  LookupResult,
   NoGo,
   RemovedPackage,
   Run,
@@ -29,7 +34,13 @@ import type {
   Turn,
   VerifyResult,
 } from "@/lib/api-types";
-import { MOCK_EVALUATION, MOCK_SCENARIOS, type MockScenario } from "@/lib/mock/fixtures";
+import {
+  MOCK_BELOW_THRESHOLD_FLIGHT,
+  MOCK_EVALUATION,
+  MOCK_LOOKUP_ONLY,
+  MOCK_SCENARIOS,
+  type MockScenario,
+} from "@/lib/mock/fixtures";
 
 const RUNWAYS = ["27L", "27R"];
 const GATES = ["B12", "B14", "C3"];
@@ -265,10 +276,10 @@ function build(
   if (noGo) path = "no_go";
   else if (modelOff || timedOut) path = "fallback";
 
-  if (!noGo && modelOff) {
+  if (modelOff) {
     faults.push({
       kind: "model_off",
-      message: "The model is switched off, so the agents did not negotiate. The rule-based fallback chose the plan.",
+      message: "The model is switched off, so the agents did not run.",
     });
   }
   if (timedOut) {
@@ -329,7 +340,7 @@ function build(
     const next = sc.summary.next_leg;
     const facts: Fact[] = [
       { key: "arrival", label: "Arrival time", value: clock(arrive), provenance: "derived" },
-      { key: "scheduled", label: "Scheduled arrival", value: sc.summary.scheduled_arrival, provenance: "synthetic" },
+      { key: "scheduled", label: "Scheduled arrival", value: sc.summary.scheduled_arrival, provenance: "real" },
       { key: "runway", label: "Runway", value: rwy, provenance: "synthetic" },
       { key: "gate", label: "Gate", value: gate, provenance: "synthetic" },
       { key: "handling", label: "Delay handling", value: "Hold at a fix", provenance: "derived" },
@@ -450,13 +461,49 @@ export const mockBackend = {
     return rows.slice(0, params.limit ?? 50);
   },
 
+  async eligibleCount(): Promise<{ eligible_total: number }> {
+    await wait(100);
+    return { eligible_total: MOCK_SCENARIOS.length + MOCK_LOOKUP_ONLY.length };
+  },
+
+  async lookupFlight(query: LookupQuery): Promise<LookupResult> {
+    await wait(250);
+    const none = (reason: string, message: string): LookupResult => ({ status: "none", matches: [], total: 0, reason, message });
+    if (!query.date.startsWith("2015-")) return none("outside_dataset", "The flight data covers 2015 only.");
+    if (query.date.startsWith("2015-10-")) {
+      return none(
+        "october_excluded",
+        "October 2015 is excluded from this data, because that month's airport codes are numeric, not the usual three letters.",
+      );
+    }
+    if (query.flight_number === MOCK_BELOW_THRESHOLD_FLIGHT) {
+      return none("below_thresholds", "That flight is in the data, but it is not a disruption case.");
+    }
+    const matches = [...MOCK_SCENARIOS, ...MOCK_LOOKUP_ONLY]
+      .map((s) => s.summary)
+      .filter((s) => {
+        const [airline, number] = s.flight_id.split(" ");
+        const [origin, , destination] = s.route.split(" ");
+        return (
+          number === String(query.flight_number) &&
+          (!query.airline || query.airline.toUpperCase() === airline) &&
+          (!query.origin || query.origin.toUpperCase() === origin) &&
+          (!query.destination || query.destination.toUpperCase() === destination)
+        );
+      });
+    if (matches.length === 0) {
+      return none("not_in_data", `No flight numbered ${query.flight_number} matches that search on ${query.date} in the mock data.`);
+    }
+    return { status: matches.length === 1 ? "one" : "several", matches, total: matches.length, reason: null, message: null };
+  },
+
   async createRun(body: {
     scenario_id: string;
     mode: RunMode;
     overrides?: RunOverrides;
   }): Promise<Run> {
     await wait(body.mode === "live" ? 900 : 450);
-    const sc = MOCK_SCENARIOS.find((s) => s.summary.scenario_id === body.scenario_id);
+    const sc = [...MOCK_SCENARIOS, ...MOCK_LOOKUP_ONLY].find((s) => s.summary.scenario_id === body.scenario_id);
     if (!sc) throw new Error(`Unknown scenario ${body.scenario_id}`);
     const closedRunways = body.overrides?.closed_runways ?? [];
     const closedGates = body.overrides?.closed_gates ?? [];
@@ -586,6 +633,41 @@ export const mockBackend = {
     };
   },
 
+  async getSpread(runId: string): Promise<DelaySpread> {
+    await wait(150);
+    const s = need(runId);
+    const { flight_id, route, scheduled_arrival, next_leg } = s.scenario.summary;
+    return {
+      flight_id,
+      route,
+      tail_number: "mock",
+      scheduled_arrival,
+      plan_arrival: null,
+      plan_arrival_provenance: null,
+      legs: next_leg
+        ? [
+            {
+              flight_id: next_leg.flight_id,
+              route: next_leg.route,
+              scheduled_departure: next_leg.scheduled_departure,
+              scheduled_arrival: "",
+              provenance: "derived",
+              projection: null,
+              unprojected_reason: "The mock does not project this. Start the API for a scheduled projection.",
+            },
+          ]
+        : [],
+      note: "Mock sample data.",
+    };
+  },
+
+  /** The mock's record of a run, marked as such, since no API can serve it. */
+  consensusLogUrl(runId: string): string {
+    const s = need(runId);
+    const file = { format: "mock-consensus-log", mock: "Every figure is invented sample data.", run: s.run, entries: logFor(s) };
+    return `data:application/json,${encodeURIComponent(JSON.stringify(file, null, 2))}`;
+  },
+
   async getLog(runId: string): Promise<RunLog> {
     await wait(200);
     const s = need(runId);
@@ -601,6 +683,46 @@ export const mockBackend = {
       valid: false,
       first_bad_seq: seq,
       reason: `Entry ${seq} was edited. Its hash no longer matches the hash stored in entry ${seq + 1}.`,
+    };
+  },
+
+  async getLimits(): Promise<WorkbookLimits> {
+    await wait(100);
+    return {
+      title: "Where we differ from the challenge workbook (mock: start the API for the checked list)",
+      items: [
+        {
+          id: "mock",
+          limit: "Mock sample data",
+          what_we_do: "The mock has no list of its own.",
+          why: "The real list comes from the API.",
+          checked_against: "mock",
+        },
+      ],
+    };
+  },
+
+  async getHeadline(): Promise<Headline> {
+    await wait(100);
+    const rows = MOCK_EVALUATION.rows.slice(0, 2);
+    return {
+      status: "ok",
+      rules_only: rows.map((r) => ({
+        key: r.metric,
+        label: r.metric,
+        metric: r.metric,
+        state: "measured",
+        value: String(r.value),
+        interval_text: null,
+        n: r.n,
+        evidence_class: r.evidence_class,
+        commit: r.commit,
+        mode: r.mode,
+        seed: typeof r.seed === "number" ? r.seed : null,
+        note: "Mock sample data",
+      })),
+      live: [],
+      other: [],
     };
   },
 

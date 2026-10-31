@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CircleAlert, CircleCheck } from "lucide-react";
+import { CircleAlert, CircleCheck, Download } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
 import { api, describeError, isUnreachable } from "@/lib/api";
 import type { RunLog, VerifyResult } from "@/lib/api-types";
 import { logKindLabel, verifyReasonLabel } from "@/lib/labels";
@@ -92,17 +93,25 @@ export function LogView({
           Each entry holds the hash of the one before, so an edit breaks the chain. The chain alone cannot catch a
           full rewrite. The head below is recorded on the sign-off so it can be compared.
         </p>
+        <a
+          href={api.consensusLogUrl(runId)}
+          download={`consensus-log-${runId}.json`}
+          className={buttonVariants({ variant: "secondary", size: "sm" })}
+        >
+          <Download aria-hidden />
+          Download consensus log
+        </a>
         <p className="font-mono text-xs break-all">
           <span className="font-sans font-medium">Log head </span>
           {log.head ?? logHead}
         </p>
       </div>
-      <Table>
+      <Table className="table-fixed">
         <TableHeader>
           <TableRow>
             <TableHead className="w-12">No.</TableHead>
             <TableHead>What happened</TableHead>
-            <TableHead className="hidden sm:table-cell">Hash</TableHead>
+            <TableHead className="hidden w-24 sm:table-cell">Hash</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -111,13 +120,15 @@ export function LogView({
             return (
               <TableRow key={e.seq} className={cn(bad && "bg-destructive-soft")}>
                 <TableCell>{e.seq}</TableCell>
-                <TableCell className="whitespace-normal">
+                <TableCell className="whitespace-normal [overflow-wrap:anywhere]">
                   <span className="text-xs text-muted-foreground">{logKindLabel(e.kind)}</span>
                   <br />
                   {e.summary}
                   {bad && <strong className="ml-2 text-destructive">First bad entry</strong>}
                 </TableCell>
-                <TableCell className="hidden font-mono text-xs sm:table-cell">{e.hash}</TableCell>
+                <TableCell title={e.hash} className="hidden truncate font-mono text-xs sm:table-cell">
+                  {e.hash}
+                </TableCell>
               </TableRow>
             );
           })}

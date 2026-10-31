@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CircleCheck, CircleX, Hash } from "lucide-react";
+import { ArrowUpRight, CircleCheck, CircleX, Hash, Send, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -42,7 +43,10 @@ export function SignoffPanel({
         ) : run.decision.kind === "NO_GO" || !run.card ? (
           <div className="space-y-3">
             <p className="text-sm">
-              <strong>Nothing to approve.</strong> No recovery plan passed the rules, so there is nothing to sign.
+              <strong>Nothing to approve.</strong>{" "}
+              {run.decision.kind === "NO_GO" && run.decision.reason_type === "SYSTEM_FAULT"
+                ? "The plans could not be checked, so there is nothing to sign."
+                : "No recovery plan passed the rules, so there is nothing to sign."}{" "}
               The case is yours to handle.
             </p>
             <FallbackNotice run={run} onlyFaults />
@@ -172,6 +176,11 @@ function DecisionOutcome({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** The panel scrolls, so a step that just opened brings itself fully into view. */
+function showWhenOpened(el: HTMLElement | null) {
+  el?.scrollIntoView({ block: "end" });
+}
+
 function SignoffForm({
   run,
   card,
@@ -233,8 +242,10 @@ function SignoffForm({
       <FallbackNotice run={run} />
 
       <fieldset className="space-y-1.5" disabled={locked}>
-        <legend className="text-sm font-semibold">You decide</legend>
-        <p className="text-xs text-muted-foreground">The airline&rsquo;s own calls.</p>
+        <legend className="flex items-center gap-1.5 text-sm font-semibold" title="The airline's own calls">
+          <UserCheck aria-hidden className="size-4 text-muted-foreground" />
+          You decide
+        </legend>
         <ul className="space-y-0.5 text-sm">
           {card.airline_decisions.map((d) => (
             <li key={d.key}>
@@ -243,40 +254,50 @@ function SignoffForm({
             </li>
           ))}
         </ul>
-        <div className="flex items-start gap-2 pt-1 text-sm">
-          <Checkbox id="approve-decisions" checked={decide} onCheckedChange={(v) => setDecide(v)} className="mt-0.5" />
-          <label htmlFor="approve-decisions" className="font-medium">
-            I approve these decisions
-          </label>
-        </div>
       </fieldset>
 
       <fieldset className="space-y-1.5" disabled={locked}>
-        <legend className="text-sm font-semibold">You request</legend>
-        <p className="text-xs text-muted-foreground">
-          Others decide these. The pilot in command keeps fuel and safety authority.
-        </p>
+        <legend
+          className="flex items-center gap-1.5 text-sm font-semibold"
+          title="Others decide these. The pilot in command keeps fuel and safety authority."
+        >
+          <Send aria-hidden className="size-4 text-muted-foreground" />
+          You request
+        </legend>
         <ul className="space-y-0.5 text-sm">
           {card.requests.map((r) => (
             <li key={r.key}>
               <span className="text-muted-foreground">{r.label}: </span>
-              <span className="font-medium">{r.value}</span> <ProvenanceBadge provenance={r.provenance} className="align-middle" />
-              <span className="text-xs text-muted-foreground">to {r.to}</span>
+              <span className="font-medium">{r.value}</span> <ProvenanceBadge provenance={r.provenance} className="align-middle" />{" "}
+              <span title={`To ${r.to}`} className="inline-flex align-middle text-muted-foreground">
+                <ArrowUpRight aria-hidden className="size-3.5" />
+                <span className="sr-only">to {r.to}</span>
+              </span>
             </li>
           ))}
         </ul>
-        <div className="flex items-start gap-2 pt-1 text-sm">
-          <Checkbox id="send-requests" checked={request} onCheckedChange={(v) => setRequest(v)} className="mt-0.5" />
-          <label htmlFor="send-requests" className="font-medium">
-            Send these requests
-          </label>
-        </div>
       </fieldset>
 
-      {/* Stays on screen while the rest of the panel scrolls. */}
-      <div className="sticky -bottom-3 space-y-1 bg-card pt-2 pb-3">
+      {/* Stops following the scroll once decided, so it cannot cover the outcome above it. */}
+      <div className={cn("space-y-1.5 bg-card pt-2 pb-3", !approved && !decided && "sticky -bottom-4 z-10")}>
+        {!confirmingReject && !locked && !refused && (
+          <div className="space-y-1 text-sm">
+            <div className="flex items-start gap-2">
+              <Checkbox id="approve-decisions" checked={decide} disabled={locked} onCheckedChange={(v) => setDecide(v)} className="mt-0.5" />
+              <label htmlFor="approve-decisions" className="font-medium">
+                I approve these decisions
+              </label>
+            </div>
+            <div className="flex items-start gap-2">
+              <Checkbox id="send-requests" checked={request} disabled={locked} onCheckedChange={(v) => setRequest(v)} className="mt-0.5" />
+              <label htmlFor="send-requests" className="font-medium">
+                Send these requests
+              </label>
+            </div>
+          </div>
+        )}
         {confirmingReject && !decided ? (
-          <div className="space-y-2 rounded-lg border border-destructive/40 bg-destructive-soft p-2">
+          <div ref={showWhenOpened} className="space-y-2 rounded-lg border border-destructive/40 bg-destructive-soft p-2">
             <p className="text-sm font-semibold">Reject this plan? Nothing is issued, and this run cannot then be approved.</p>
             <FreeText id="reject-reason" label="Reason (optional, recorded as unverified)" value={reason} onChange={setReason} disabled={rejecting} />
             <div className="flex gap-2">

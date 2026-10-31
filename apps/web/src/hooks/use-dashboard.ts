@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, describeError, isUnreachable } from "@/lib/api";
+import { api, describeError, isUnreachable, STARTS_LIVE } from "@/lib/api";
 import type {
   Cause,
   DecisionResult,
+  LookupQuery,
   Run,
   RunMode,
   RunOverrides,
@@ -38,6 +39,14 @@ export type DecisionState =
   | { status: "error"; message: string }
   | { status: "done"; result: DecisionResult };
 
+export type LookupState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "none"; message: string }
+  | { status: "several"; matches: ScenarioSummary[]; total: number }
+  | { status: "found"; flightId: string };
+
 export type BreakKind = "runway" | "gate" | "unsafe" | "stale" | "tamper";
 
 export interface BreakOutcome {
@@ -49,17 +58,25 @@ export interface BreakOutcome {
 
 export const DECIDED_BY = "Duty manager (demo, not authenticated)";
 
+/** The API's maximum for one list. */
+const LIST_LIMIT = 200;
+
 export function useDashboard() {
   const [cause, setCause] = useState<Cause | "all">("all");
   const [query, setQuery] = useState("");
   const [scenarios, setScenarios] = useState<Load<ScenarioSummary[]>>({ status: "loading" });
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [mode, setModeState] = useState<RunMode>("recorded");
+  const [mode, setModeState] = useState<RunMode>(STARTS_LIVE ? "live" : "recorded");
   const [overrides, setOverrides] = useState<RunOverrides>({});
   const [runState, setRunState] = useState<RunState>({ status: "idle" });
   const [signoff, setSignoff] = useState<SignoffState>({ status: "idle" });
   const [decision, setDecision] = useState<DecisionState>({ status: "idle" });
   const [sameAsRejected, setSameAsRejected] = useState(false);
+  // Flights found by the lookup stay at the top of the list for this session.
+  const [found, setFound] = useState<ScenarioSummary[]>([]);
+  const [lookup, setLookup] = useState<LookupState>({ status: "idle" });
+  const [rulesOnlyFlight, setRulesOnlyFlight] = useState<string | null>(null);
+  const lookupSeq = useRef(0);
   // For this page only: to say so if a new plan is the one just rejected. It does
   // not change what the backend plans.
   const rejected = useRef<{ scenarioId: string; terms: string } | null>(null);
@@ -68,6 +85,10 @@ export function useDashboard() {
   const [busy, setBusy] = useState<BreakKind | null>(null);
   const runSeq = useRef(0);
   const selectedRef = useRef<string | null>(null);
+  // Read when the list arrives, in case the mode was changed while it loaded.
+  const modeRef = useRef<RunMode>(STARTS_LIVE ? "live" : "recorded");
+  // The ?flight= last acted on. Back from the overview this page keeps its state, so a new one must be noticed.
+  const lastLink = useRef<string | null>(null);
 
   const startRun = useCallback(
     async (scenarioId: string, runMode: RunMode, ov: RunOverrides): Promise<Run | null> => {
@@ -98,16 +119,46 @@ export function useDashboard() {
   const fetchScenarios = useCallback(
     (c: Cause | "all") => {
       api
-        .listScenarios(c === "all" ? { limit: 50 } : { cause: c, limit: 50 })
+        .listScenarios(c === "all" ? { limit: LIST_LIMIT } : { cause: c, limit: LIST_LIMIT })
         .then((data) => {
           setScenarios({ status: "ready", data });
-          if (selectedRef.current === null && data.length > 0) {
-            selectedRef.current = data[0].scenario_id;
-            setSelectedId(data[0].scenario_id);
+          // A flight picked on the home page arrives as ?flight=<scenario_id>.
+          const linked = new URLSearchParams(window.location.search).get("flight");
+          const seenLink = lastLink.current;
+          lastLink.current = linked;
+          if (selectedRef.current !== null) {
+            const asked = linked !== seenLink ? data.find((row) => row.scenario_id === linked) : undefined;
+            if (asked) {
+              const runMode: RunMode = modeRef.current === "recorded" && asked.has_recording === false ? "off" : modeRef.current;
+              selectedRef.current = asked.scenario_id;
+              setSelectedId(asked.scenario_id);
+              setOverrides({});
+              setOutcome(null);
+              setRulesOnlyFlight(null);
+              modeRef.current = runMode;
+              setModeState(runMode);
+              void startRun(asked.scenario_id, runMode, {});
+            }
+            return;
+          }
+          if (data.length > 0) {
+            if (STARTS_LIVE) {
+              // A run here spends model calls, so only a flight someone asked for runs: never the first row by default.
+              const asked = data.find((row) => row.scenario_id === linked);
+              if (!asked) return;
+              selectedRef.current = asked.scenario_id;
+              setSelectedId(asked.scenario_id);
+              void startRun(asked.scenario_id, modeRef.current, {});
+              return;
+            }
+            const flight = data.find((row) => row.scenario_id === linked) ?? data[0];
+            selectedRef.current = flight.scenario_id;
+            setSelectedId(flight.scenario_id);
             // Open on replay only when this row has saved answers to replay.
-            const first: RunMode = data[0].has_recording === false ? "off" : "recorded";
+            const first: RunMode = flight.has_recording === false ? "off" : "recorded";
+            modeRef.current = first;
             setModeState(first);
-            void startRun(data[0].scenario_id, first, {});
+            void startRun(flight.scenario_id, first, {});
           }
         })
         .catch((err: unknown) => {
@@ -141,15 +192,56 @@ export function useDashboard() {
       setSelectedId(scenarioId);
       setOverrides({});
       setOutcome(null);
+      setRulesOnlyFlight(null);
       void startRun(scenarioId, mode, {});
     },
     [mode, startRun],
   );
 
+  /** Select and run a looked-up flight. Replay only runs what was saved, and this
+   *  never moves to Live on its own. */
+  const openFound = useCallback(
+    (flight: ScenarioSummary) => {
+      const rulesOnly = mode === "recorded" && flight.has_recording === false;
+      const runMode: RunMode = rulesOnly ? "off" : mode;
+      setFound((rows) => [flight, ...rows.filter((r) => r.scenario_id !== flight.scenario_id)]);
+      modeRef.current = runMode;
+      selectedRef.current = flight.scenario_id;
+      setSelectedId(flight.scenario_id);
+      setOverrides({});
+      setOutcome(null);
+      setModeState(runMode);
+      setRulesOnlyFlight(rulesOnly ? flight.flight_id : null);
+      setLookup({ status: "found", flightId: flight.flight_id });
+      void startRun(flight.scenario_id, runMode, {});
+    },
+    [mode, startRun],
+  );
+
+  const findFlight = useCallback(
+    async (query: LookupQuery) => {
+      const seq = ++lookupSeq.current;
+      setLookup({ status: "loading" });
+      try {
+        const result = await api.lookupFlight(query);
+        if (seq !== lookupSeq.current) return;
+        if (result.status === "one") openFound(result.matches[0]);
+        else if (result.status === "several") setLookup({ status: "several", matches: result.matches, total: result.total });
+        else setLookup({ status: "none", message: result.message ?? "No eligible flight matches that search." });
+      } catch (err) {
+        if (seq !== lookupSeq.current) return;
+        setLookup({ status: "error", message: describeError(err) });
+      }
+    },
+    [openFound],
+  );
+
   const setMode = useCallback(
     (m: RunMode) => {
+      modeRef.current = m;
       setModeState(m);
       setOutcome(null);
+      setRulesOnlyFlight(null);
       if (selectedRef.current) void startRun(selectedRef.current, m, overrides);
     },
     [overrides, startRun],
@@ -242,6 +334,14 @@ export function useDashboard() {
       );
     },
     [overrides, breakWith],
+  );
+
+  /** A preset: several existing overrides at once, with a title saying how it is modelled. */
+  const disrupt = useCallback(
+    (kind: "runway" | "gate", next: RunOverrides, title: string) => {
+      void breakWith(kind, next, title);
+    },
+    [breakWith],
   );
 
   const injectUnsafe = useCallback(
@@ -377,6 +477,11 @@ export function useDashboard() {
     retryScenarios,
     selectedId,
     select,
+    found,
+    lookup,
+    findFlight,
+    openFound,
+    rulesOnlyFlight,
     mode,
     setMode,
     overrides,
@@ -395,6 +500,7 @@ export function useDashboard() {
     tamper,
     closeRunway,
     blockGate,
+    disrupt,
     injectUnsafe,
     changeAfterViewing,
     tamperLog,

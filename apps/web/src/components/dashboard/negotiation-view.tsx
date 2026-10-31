@@ -1,18 +1,42 @@
 import { Ban, ShieldX } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import type { Domain, Run, Turn } from "@/lib/api-types";
-import { DOMAIN_LABEL, DOMAIN_ROLE, FAULT_LABEL, publicReasonLabel } from "@/lib/labels";
+import type { Domain, Run, Turn, TurnResponse } from "@/lib/api-types";
+import { DOMAIN_LABEL, DOMAIN_ROLE, FAULT_LABEL, agentReasonLabel, planLabel, publicReasonLabel } from "@/lib/labels";
 import { EmptyPanel } from "@/components/dashboard/states";
+import { OutcomeStrip } from "@/components/dashboard/outcome-strip";
 import { RuleList } from "@/components/dashboard/rule-line";
 
 const DOMAINS: Domain[] = ["atc", "pilot", "ground"];
+
+/** A summary that is only plan IDs says nothing to a reader; the list stays on hover and in the log. */
+const ONLY_PLAN_IDS = /^PKG-\w+(, PKG-\w+)*$/;
 
 const TURN_HINT: Record<number, string> = {
   1: "Each agent answers alone, seeing only its own data.",
   2: "Each agent now sees which plans were removed and a general reason, with no private values.",
 };
 
-function TurnColumns({ turn, run }: { turn: Turn; run: Run }) {
+/** What an agent gave up between turns: plans it had declined and now accepts. */
+function withdrawn(previous: TurnResponse | undefined, now: TurnResponse) {
+  if (!previous || !now.accepted) return [];
+  const accepted = new Set(now.accepted);
+  return (previous.declined ?? []).filter((d) => accepted.has(d.package));
+}
+
+function byReason(items: { package: string; reason: string }[]) {
+  const groups = new Map<string, string[]>();
+  for (const item of items) groups.set(item.reason, [...(groups.get(item.reason) ?? []), item.package]);
+  return groups;
+}
+
+/** The opposite move: plans it accepted before and no longer does. */
+function dropped(previous: TurnResponse | undefined, now: TurnResponse) {
+  if (!previous?.accepted || !now.accepted) return [];
+  const accepted = new Set(now.accepted);
+  return previous.accepted.filter((p) => !accepted.has(p));
+}
+
+function TurnColumns({ turn, run, previous }: { turn: Turn; run: Run; previous?: Turn }) {
   return (
     <section aria-labelledby={`turn-${turn.turn}`} className="space-y-2">
       <div>
@@ -33,20 +57,51 @@ function TurnColumns({ turn, run }: { turn: Turn; run: Run }) {
               </div>
               {r ? (
                 <div className="mt-1.5 space-y-1.5">
-                  <p>
+                  <p title={ONLY_PLAN_IDS.test(r.ranking_summary) ? `Ranked first: ${r.ranking_summary}` : undefined}>
                     Would accept <strong>{r.acceptable_count}</strong> {r.acceptable_count === 1 ? "plan" : "plans"}
                   </p>
-                  <p className="text-muted-foreground">{r.ranking_summary}</p>
+                  {!ONLY_PLAN_IDS.test(r.ranking_summary) && <p className="text-muted-foreground">{r.ranking_summary}</p>}
                   {r.reason_codes.length > 0 && (
                     <div>
                       <p className="text-xs font-medium">Its reasons</p>
                       <ul className="list-disc pl-4 text-muted-foreground">
                         {r.reason_codes.map((c, i) => (
-                          <li key={i}>{c}</li>
+                          <li key={i}>{agentReasonLabel(c)}</li>
                         ))}
                       </ul>
                     </div>
                   )}
+                  {withdrawn(previous?.responses.find((x) => x.domain === d), r).length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium">Withdrew its objection to</p>
+                      <ul className="list-disc pl-4 text-muted-foreground">
+                        {[...byReason(withdrawn(previous?.responses.find((x) => x.domain === d), r))].map(([reason, plans]) => (
+                          <li key={reason} title={plans.join(", ")}>
+                            {plans.length} {plans.length === 1 ? "plan" : "plans"} (was: {publicReasonLabel(reason)})
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {dropped(previous?.responses.find((x) => x.domain === d), r).length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium">No longer accepts</p>
+                      <p className="font-mono text-xs break-words text-muted-foreground">
+                        {dropped(previous?.responses.find((x) => x.domain === d), r).join(", ")}
+                      </p>
+                    </div>
+                  )}
+                  {run.model_notes
+                    .filter((n) => n.domain === d && n.turn === turn.turn)
+                    .map((n, i) => (
+                      <div key={i} className="rounded-md border border-dashed border-warning/50 p-2">
+                        <Badge variant="outline" className="border-warning/50 text-warning">
+                          Unverified
+                        </Badge>
+                        <p className="mt-1 text-xs font-medium">The model&rsquo;s own note</p>
+                        <p className="text-muted-foreground">{n.text}</p>
+                      </div>
+                    ))}
                   {r.public_reason_classes.length > 0 && (
                     <div>
                       <p className="text-xs font-medium">Shared with the others</p>
@@ -78,16 +133,24 @@ function TurnColumns({ turn, run }: { turn: Turn; run: Run }) {
 }
 
 export function NegotiationView({ run }: { run: Run }) {
+  // A plan the user slipped in is the point of that click, so its catch comes first and open.
+  const injected = run.removed_packages.some((p) => p.injected);
+  const removed = <RemovedPlans key={run.run_id} removed={run.removed_packages} total={run.removed_total} open={injected} />;
   return (
     <div className="space-y-5">
-      <p className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/40 bg-warning-soft px-2.5 py-1.5 text-sm">
-        <Badge variant="outline" className="border-warning/50 bg-background text-warning">
-          Unverified
-        </Badge>
-        <span>
-          Agent answers below are model output and are not verified. Only rule results are checked.
-        </span>
-      </p>
+      <OutcomeStrip run={run} />
+      {run.turns.some((t) => t.responses.length > 0) ? (
+        <p className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/40 bg-warning-soft px-2.5 py-1.5 text-sm">
+          <Badge variant="outline" className="border-warning/50 bg-background text-warning">
+            Unverified
+          </Badge>
+          <span>
+            Agent answers below are model output and are not verified. Only rule results are checked.
+          </span>
+        </p>
+      ) : (
+        <p className="rounded-lg border border-border px-2.5 py-1.5 text-sm">No agent answered in this run, so there is no model output here.</p>
+      )}
       <p className="text-sm text-muted-foreground">
         {run.path === "consensus"
           ? "The agents agreed and the rules passed it. Agreement alone proves nothing: the rules decide what is allowed."
@@ -97,26 +160,29 @@ export function NegotiationView({ run }: { run: Run }) {
               : "The agents did not reach a plan, so code chose one. A fallback is never shown as a clean result."
             : "No plan passed the rules, so the system stopped instead of guessing."}
       </p>
-      <RemovedPlans removed={run.removed_packages} total={run.removed_total} />
+      {injected && removed}
       {run.turns.length === 0 ? (
-        <EmptyPanel title="The agents did not negotiate">
+        <EmptyPanel title="The agents did not run.">
           {run.faults.length > 0 ? run.faults[0].message : "No turns were recorded for this run."}
         </EmptyPanel>
       ) : (
-        run.turns.map((t) => <TurnColumns key={t.turn} turn={t} run={run} />)
+        run.turns.map((t, i) => <TurnColumns key={t.turn} turn={t} run={run} previous={run.turns[i - 1]} />)
       )}
+      {!injected && removed}
     </div>
   );
 }
 
-function RemovedPlans({ removed, total }: { removed: Run["removed_packages"]; total?: number }) {
+function RemovedPlans({ removed, total, open }: { removed: Run["removed_packages"]; total?: number; open: boolean }) {
   return (
-    <section aria-labelledby="removed-heading" className="rounded-lg border bg-muted/40 p-3">
-      <h3 id="removed-heading" className="flex items-center gap-1.5 text-sm font-semibold">
-        <ShieldX aria-hidden className="size-4" />
-        Plans the rules removed
-      </h3>
-      <p className="text-xs text-muted-foreground">
+    <details open={open} className="rounded-lg border bg-muted/40 p-3">
+      <summary className="cursor-pointer">
+        <h3 id="removed-heading" className="inline-flex items-center gap-1.5 text-sm font-semibold">
+          <ShieldX aria-hidden className="size-4" />
+          Plans the rules removed
+        </h3>
+      </summary>
+      <p className="mt-1 text-xs text-muted-foreground">
         Code removes any plan that breaks a rule, then the agents choose from what is left. They cannot put one back.
         {total !== undefined && ` ${total} plans were illegal. One example of each kind of failure is shown.`}
       </p>
@@ -127,7 +193,9 @@ function RemovedPlans({ removed, total }: { removed: Run["removed_packages"]; to
           {removed.map((p) => (
             <li key={p.package_id} className="rounded-md border bg-card p-2.5">
               <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="font-medium">{p.label}</span>
+                <span className="font-medium" title={p.label}>
+                  {planLabel(p.label)}
+                </span>
                 {p.injected && (
                   <Badge variant="outline" className="border-transparent bg-warning-soft text-warning">
                     Injected by you
@@ -142,6 +210,6 @@ function RemovedPlans({ removed, total }: { removed: Run["removed_packages"]; to
           ))}
         </ul>
       )}
-    </section>
+    </details>
   );
 }

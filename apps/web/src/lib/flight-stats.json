@@ -1,0 +1,109 @@
+{
+  "source": "US DOT on-time records, 2015, organiser file data/flights.csv",
+  "year": 2015,
+  "rule": "WEATHER_DELAY over 15 min or LATE_AIRCRAFT_DELAY over 20 min, flown, October left out",
+  "months": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    11,
+    12
+  ],
+  "rows": 358774,
+  "skipped": 0,
+  "eligible": 358774,
+  "eligibleWeather": 42012,
+  "eligibleLateAircraft": 326249,
+  "avgEligibleArrivalDelay": 82,
+  "causeMinutes": {
+    "late_aircraft": 21558009,
+    "airline": 2779125,
+    "air_system": 2310792,
+    "weather": 2895086,
+    "security": 10356
+  },
+  "topDestinations": [
+    {
+      "key": "ORD",
+      "count": 21584
+    },
+    {
+      "key": "ATL",
+      "count": 18504
+    },
+    {
+      "key": "DFW",
+      "count": 17310
+    },
+    {
+      "key": "DEN",
+      "count": 14316
+    },
+    {
+      "key": "LAX",
+      "count": 13863
+    },
+    {
+      "key": "SFO",
+      "count": 10970
+    }
+  ],
+  "topRoutes": [
+    {
+      "key": "SFO-LAX",
+      "count": 1489
+    },
+    {
+      "key": "LAX-SFO",
+      "count": 1286
+    },
+    {
+      "key": "LAX-LAS",
+      "count": 988
+    },
+    {
+      "key": "LAS-LAX",
+      "count": 866
+    },
+    {
+      "key": "SFO-LAS",
+      "count": 834
+    },
+    {
+      "key": "LGA-ORD",
+      "count": 832
+    }
+  ],
+  "eligibleByArrivalHour": [
+    8036,
+    1375,
+    235,
+    138,
+    338,
+    2386,
+    2144,
+    2188,
+    2701,
+    4968,
+    7856,
+    11392,
+    14157,
+    17023,
+    20108,
+    19829,
+    26663,
+    26684,
+    31494,
+    33784,
+    35785,
+    36595,
+    28853,
+    24042
+  ]
+}

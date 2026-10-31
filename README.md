@@ -1,4 +1,4 @@
-# Arrival recovery
+# Magic Airbus: arrival recovery
 
 Autonomous SG 2026, Airbus track, Challenge 2.
 
@@ -6,7 +6,7 @@ A duty manager picks a late flight. Three agents, for air traffic control (ATC),
 
 The agents propose and code decides. The model never does arithmetic or legality checks.
 
-Marks used in this repo's submission files: `[RESULT]` is a number from a rules-only evaluation run that is being regenerated after a rule fix. `[LIVE RESULT]` needs a model run that has not finished. `[IF MERGED]` is a feature still being built. No figure from an evaluation run is typed in this file. Read them from `apps/api/eval_results/`.
+Every figure in this file comes from `apps/api/eval_results/`. Rules-only figures are from the mode off run at commit `e3fe575`, seed 0, 5000 flights (`latest_off_none.md`). Live figures are from the first frozen run, run-0002, at commit `db54b25`, seed 0, 20 flights, class unseen (`eval_live_frozen_seed0_2026-10-31T055759Z.md`). These are different evidence classes, so do not compare them.
 
 ## What is built
 
@@ -21,7 +21,7 @@ Read from the code in this repo.
 - **Dashboard** (`apps/web`, Next.js): flight list, recovery plan, negotiation, log and evidence views, a sign-off panel, and a "Try to break it" bar.
 - **Evaluation** (`apps/api/app/negotiation/evaluate.py`, `scripts/evaluate.py`): one command prints the table, with an evidence class on each number.
 
-Run modes: **Model off** (rules only), **Recorded** (replays saved model answers) and **Live** (calls the model; refused unless `ALLOW_LIVE=1` and a credential is set).
+Run modes: **Model off** (rules only), **Recorded** (replays saved model answers) and **Live** (calls the model; available only when the API is started with `ALLOW_LIVE=1` and a credential). The presenter's build starts in Live with `NEXT_PUBLIC_DEFAULT_RUN_MODE=live`, and then runs only a flight someone picks. Unset, the flights page opens in Recorded or Model off.
 
 ## Design choices that matter for judging
 
@@ -30,7 +30,7 @@ Run modes: **Model off** (rules only), **Recorded** (replays saved model answers
 - **Traceability.** Every message and verdict goes into a hash-chained log. The log head is recorded on the sign-off.
 - **Authority.** The airline decides the gate. The arrival slot and flight-plan action are requests to ATC. The pilot in command keeps fuel and safety authority. Approved does not mean executed.
 - **One decision per run.** A plan is approved or rejected, and a no-go is taken over. A later decision on the same run is refused.
-- **Honest evaluation.** Evidence classes are never compared. Rows that need a model show NOT_REACHED until one has run. The agents are compared against the rule-based fallback on the same rows, and that result will be reported whatever it is.
+- **Honest evaluation.** Evidence classes are never compared. Rows that need a model show NOT_REACHED until one has run. The agents are compared against the rule-based fallback on the same rows, and the result is reported below whatever it says.
 
 ## Run it
 
@@ -88,24 +88,24 @@ Provenance:
 
 ## Limits and changes to state
 
-- **Turn cap.** The organisers' brief lets the fallback decide after 3 turns. We stop at 2. This is the one change to a brief limit that we are sure of. It is stricter.
+- **Turn cap.** The organisers' brief lets the fallback decide after 3 turns. We stop at 2, so we fall back one turn earlier than the brief allows. This is the one change to a brief limit that we are sure of.
 - **Additions where the workbook is silent**, from `rule_values.py` (the author of this README has not re-compared them with the workbook file): "super behind super" takes the 3-mile default; a small aircraft behind a B757 is not modelled; the workbook's minimum-time column for departures is not used, because only arrivals are sequenced; gate buffer, approach speeds and the 5-minute slot grid are labelled assumptions; the alternate-fuel test is our policy, shaped on a US regulation.
 - **Wake separation** uses the legacy classes. Real terminals use RECAT, which needs aircraft types the data lacks.
 - **Results are simulated** on 2015 US data with synthetic operational fields. They are not measured savings.
 - **Missing cases.** The eligible rows contain no cancelled or diverted flights, so the worst disruptions are missing.
 - **Fuel on board is synthetic** and, by the generator's design, usually above the workbook's 45-minute default.
 - **Closing a runway does not lower the airport's arrivals-per-hour limit.** The demo does not model reduced airport capacity.
-- **The no-go rate depends strongly on synthetic settings.** The evaluation file shows how it moves with them.
-- **Outcomes are unstable across synthetic seeds** for a share of flights. The evaluation file reports that share.
+- **The no-go rate depends strongly on synthetic settings.** It is 1081/5000 (21.6%) on the full sample. On a 500-flight sample it moves from 27/500 (5.4%) to 186/500 (37.2%) as `p_next_leg_hard` goes from 0.0 to 0.7.
+- **Outcomes are unstable across synthetic seeds.** 2095/5000 flights (41.9%) flip between a plan and a no-go.
 - **Few flights contain real trade-offs.** The first generator had none. We added a synthetic gate conflict before any model ran, so the trade-offs describe our generator, not real operations. See `apps/api/eval_results/generator_change_before_after.md`.
-- **The rule of thumb also breaks no rules**, because it consults the rules. Safety rests on the gate, not on the agents.
-- **First-come-first-served** is an uncoordinated comparison, not a model of a good human.
-- **The value of the agents is unproven** until `[LIVE RESULT]`.
+- **The rule of thumb also breaks no rules** (0/3919), because it consults the rules, as do our final plans (0/3919). Safety rests on the gate, not on the agents.
+- **First-come-first-served** broke a rule on 3150/5000 (63.0%). It is an uncoordinated comparison, not a model of a good human.
+- **Agents are not shown to beat the rules.** In the first frozen run a model answered on 14 of 20 flights, and all 14 agreed on turn 1. The other 6 were no-go, with nothing legal. The agents' plan cost more than the fallback's on 9/14 (64.3%, interval 38.8-83.7%) and was the same plan on 5/14 (35.7%). Both are priced with the same weights, so the value of the notes is not priced. Final plans breaking a rule were 0/14 (interval 0.0-21.5%), and 20 flights prove little.
 - **The rules are a subset of real ATC procedure**, and "rules that bind most" partly describes our generator.
 - **Date-line flights** (25 of the 358,774 eligible rows) land a day off and draw traffic from the wrong day. The airport taxi median uses the whole file, including the flight's own row.
 - **The log** catches an edit but not a full rewrite, unless the head is compared with a copy kept elsewhere.
 - **No sign-in.** The approver is recorded as "Duty manager (demo, not authenticated)".
-- **Not independently checked.** An independent check found a defect in the crew-duty and gate-notice rules, so the rules-only numbers are being regenerated. Hand-worked scenarios had not been checked by someone who did not write them as of the last run.
-- **Recorded mode** needs saved answers that match the current prompts. The saved answers in `apps/api/recordings/` do not, so recorded runs fall back to rules with a "No recording" fault until they are saved again.
+- **Not independently checked.** An independent check found a defect in the crew-duty and gate-notice rules. It was fixed, and the rules-only figures above were generated after the fix. Hand-worked scenarios had not been checked by someone who did not write them as of the last run.
+- **Recorded mode** replays saved answers from `apps/api/recordings/`, for the flights marked "Recorded" in the list. It covers each airport only as recorded: after any change to runways or gates, the rules choose the plan, the screen lists "No recording" faults and says why. A flight with no saved answers opens in Model off.
 
 Further reading: `docs/submission/` holds the demo script, runbook, judge card and Q&A.

@@ -50,6 +50,25 @@ export interface ScenarioSummary {
   has_recording?: boolean;
 }
 
+/** A flight as a person names it. The API searches every eligible row. */
+export interface LookupQuery {
+  date: string;
+  flight_number: number;
+  airline?: string;
+  origin?: string;
+  destination?: string;
+}
+
+export interface LookupResult {
+  status: "one" | "several" | "none";
+  matches: ScenarioSummary[];
+  /** Matches in all, which may be more than `matches` holds. */
+  total: number;
+  reason: string | null;
+  /** Why there is no match, in plain words. */
+  message: string | null;
+}
+
 export interface RunOverrides {
   closed_runways?: string[];
   closed_gates?: string[];
@@ -65,6 +84,10 @@ export interface PackageRef {
 export interface TurnResponse {
   domain: Domain;
   acceptable_count: number;
+  /** (addition) Plan names, so what moved between turns can be shown. */
+  accepted?: string[];
+  /** (addition) What it declined, with the general reason it shared. */
+  declined?: { package: string; reason: string }[];
   ranking_summary: string;
   /** The agent's own reason codes. Unverified. */
   reason_codes: string[];
@@ -171,6 +194,11 @@ export interface Card {
 export interface ModelNote {
   domain: Domain;
   text: string;
+  /** (addition) The turn it was written on. */
+  turn?: number;
+  /** (addition) Always true: the rules never read these. */
+  unverified?: boolean;
+  label?: string;
 }
 
 export type FaultKind =
@@ -346,6 +374,63 @@ export interface Evaluation {
   limits: string[];
   /** (addition) Controls that failed in the run. */
   failures?: string[];
+}
+
+/** Where we depart from the challenge workbook. Words only, no figures from a run. */
+export interface WorkbookLimits {
+  title: string;
+  items: { id: string; limit: string; what_we_do: string; why: string; checked_against: string }[];
+}
+
+export interface HeadlineItem {
+  key: string;
+  label: string;
+  metric: string;
+  state: "measured" | "not_reached" | "failed" | "absent";
+  /** The results file's own display text. Null only when absent. */
+  value: string | null;
+  interval_text: string | null;
+  n: number | null;
+  evidence_class: string | null;
+  commit: string | null;
+  mode: string | null;
+  seed: number | null;
+  note: string;
+}
+
+export interface Headline {
+  status: "ok" | "not_yet_run" | "unreadable";
+  rules_only: HeadlineItem[];
+  live: HeadlineItem[];
+  other: HeadlineItem[];
+}
+
+/** The same aircraft's later flights, from the schedule. Never as flown. */
+export interface DelaySpread {
+  flight_id: string;
+  route: string;
+  tail_number: string;
+  scheduled_arrival: string;
+  /** When this plan puts the aircraft at its gate. Null for a no-go. */
+  plan_arrival: string | null;
+  plan_arrival_provenance: Provenance | null;
+  legs: {
+    flight_id: string;
+    route: string;
+    scheduled_departure: string;
+    scheduled_arrival: string;
+    provenance: Provenance;
+    projection: {
+      earliest_departure: string;
+      turnaround_min: number;
+      turnaround_provenance: Provenance;
+      knock_on_min: number;
+      projected_arrival: string;
+      provenance: Provenance;
+    } | null;
+    unprojected_reason: string | null;
+  }[];
+  note: string;
 }
 
 export interface StateChange {

@@ -2,7 +2,12 @@ import { API_URL } from "@/lib/env";
 import type {
   Cause,
   DecisionResult,
+  DelaySpread,
   Evaluation,
+  Headline,
+  WorkbookLimits,
+  LookupQuery,
+  LookupResult,
   Run,
   RunLog,
   RunMode,
@@ -20,6 +25,8 @@ import { mockBackend } from "@/lib/mock/backend";
  * NEXT_PUBLIC_API_URL. The value is inlined at build time.
  */
 export const IS_MOCK = process.env.NEXT_PUBLIC_API_MODE === "mock";
+/** Set for the presenter's build, and inlined at build time. Unset, the flights page opens as it always has. */
+export const STARTS_LIVE = process.env.NEXT_PUBLIC_DEFAULT_RUN_MODE === "live";
 
 export class ApiError extends Error {
   /** "unreachable" means no HTTP response arrived at all. */
@@ -71,6 +78,21 @@ export const api = {
     return http<ScenarioSummary[]>(`/scenarios${qs ? `?${qs}` : ""}`);
   },
 
+  /** How many eligible flights the lookup searches. */
+  eligibleCount(): Promise<{ eligible_total: number }> {
+    if (IS_MOCK) return mockBackend.eligibleCount();
+    return http<{ eligible_total: number }>("/scenarios/count");
+  },
+
+  lookupFlight(query: LookupQuery): Promise<LookupResult> {
+    if (IS_MOCK) return mockBackend.lookupFlight(query);
+    const q = new URLSearchParams({ date: query.date, flight_number: String(query.flight_number) });
+    if (query.airline) q.set("airline", query.airline);
+    if (query.origin) q.set("origin", query.origin);
+    if (query.destination) q.set("destination", query.destination);
+    return http<LookupResult>(`/scenarios/lookup?${q.toString()}`);
+  },
+
   createRun(body: {
     scenario_id: string;
     mode: RunMode;
@@ -108,9 +130,30 @@ export const api = {
     return http<RunLog>(`/runs/${encodeURIComponent(runId)}/log`);
   },
 
+  getSpread(runId: string): Promise<DelaySpread> {
+    if (IS_MOCK) return mockBackend.getSpread(runId);
+    return http<DelaySpread>(`/runs/${encodeURIComponent(runId)}/spread`);
+  },
+
+  /** A link to the whole record of a run, as one JSON file. Works in any run state. */
+  consensusLogUrl(runId: string): string {
+    if (IS_MOCK) return mockBackend.consensusLogUrl(runId);
+    return `${API_URL}/runs/${encodeURIComponent(runId)}/consensus-log`;
+  },
+
   verifyLog(runId: string, body: { tamper?: boolean } = {}): Promise<VerifyResult> {
     if (IS_MOCK) return mockBackend.verifyLog(runId, body);
     return post<VerifyResult>(`/runs/${encodeURIComponent(runId)}/log/verify`, body);
+  },
+
+  getLimits(): Promise<WorkbookLimits> {
+    if (IS_MOCK) return mockBackend.getLimits();
+    return http<WorkbookLimits>("/evaluation/limits");
+  },
+
+  getHeadline(): Promise<Headline> {
+    if (IS_MOCK) return mockBackend.getHeadline();
+    return http<Headline>("/evaluation/headline");
   },
 
   getEvaluation(): Promise<Evaluation> {

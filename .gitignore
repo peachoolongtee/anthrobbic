@@ -3,3 +3,6 @@
 !.env.example
 .claude/worktrees/
 node_modules/
+
+# Datasets, kept out of git (see docs/agents/work-log.md)
+/data/
