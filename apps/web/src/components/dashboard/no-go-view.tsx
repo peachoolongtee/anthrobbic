@@ -1,5 +1,6 @@
 import { ServerCrash, ShieldAlert } from "lucide-react";
 import type { NoGo } from "@/lib/api-types";
+import { planLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { RuleList } from "@/components/dashboard/rule-line";
 
@@ -59,7 +60,9 @@ export function NoGoView({ decision }: { decision: NoGo }) {
         </h3>
         {decision.nearest_package ? (
           <>
-            <p className="mt-1 text-sm font-medium">{decision.nearest_package.label}</p>
+            <p className="mt-1 text-sm font-medium" title={decision.nearest_package.label}>
+              {planLabel(decision.nearest_package.label)}
+            </p>
             <p className="text-xs text-muted-foreground">Fails the fewest rules. Not a recommendation.</p>
             {decision.nearest_violations.length > 0 && (
               <RuleList rules={decision.nearest_violations} result="broken" />

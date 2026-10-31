@@ -286,3 +286,15 @@ export const TERM_LABEL: Record<string, string> = {
   slot: "Arrival slot",
   action: "Delay handling",
 };
+
+/**
+ * A plan named in plain words: "Gate G1, runway R2, 21:05, direct", from the API's
+ * "PKG-81594950 (Gate: G1; Arrival slot: runway R2 at minute 1265 (21:05); Flight-plan action: direct)".
+ * Any other shape is shown as it came.
+ */
+export function planLabel(label: string): string {
+  const m = /^PKG-\w+ \(Gate: (.+?); Arrival slot: runway (\S+) at minute \d+ \((\d\d:\d\d)\); Flight-plan action: (\w+)\)$/.exec(label);
+  if (!m) return label;
+  const [, gate, runway, clock, action] = m;
+  return `Gate ${gate}, runway ${runway}, ${clock}, ${action.replaceAll("_", " ")}`;
+}

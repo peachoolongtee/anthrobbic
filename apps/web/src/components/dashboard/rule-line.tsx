@@ -4,10 +4,26 @@ import type { RuleResult } from "@/lib/api-types";
 import { RULE_STATUS_LABEL } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 
+const SINGULAR: Record<string, string> = {
+  "closed runways": "closed runway",
+  "closed taxiways": "closed taxiway",
+  "impossible actions": "impossible action",
+  "arrivals per hour": "arrival per hour",
+};
+
+/** The API's unit is plural; "1 closed runways" is not something to put on a screen. */
+function withUnit(value: RuleResult["observed"], unit: string): string {
+  const word = Number(value) === 1 ? (SINGULAR[unit] ?? unit) : unit;
+  return `${value} ${word}`.trim();
+}
+
+/** Longer than this, a source sits behind a toggle so the line stays readable. */
+const LONG_SOURCE = 40;
+
 function limitText(rule: RuleResult, result: "held" | "broken"): string {
   if (rule.limit === null) return result === "held" ? "not reported" : "unknown";
   const prefix = rule.direction === "at_least" ? "at least " : rule.direction === "at_most" ? "at most " : "";
-  return `${prefix}${rule.limit} ${rule.unit}`.trim();
+  return `${prefix}${withUnit(rule.limit, rule.unit)}`;
 }
 
 const STATUS_TONE: Record<NonNullable<RuleResult["status"]>, string> = {
@@ -56,18 +72,26 @@ export function RuleLine({ rule, result }: { rule: RuleResult; result: "held" | 
                 ? result === "held"
                   ? "not reported"
                   : "unknown"
-                : `${rule.observed} ${rule.unit}`}
+                : withUnit(rule.observed, rule.unit)}
             </dd>
           </div>
           <div className="flex gap-1">
             <dt className="text-muted-foreground">Limit</dt>
             <dd className="font-medium text-foreground">{limitText(rule, result)}</dd>
           </div>
-          <div className="flex gap-1">
-            <dt className="text-muted-foreground">Source</dt>
-            <dd className="text-foreground">{rule.source}</dd>
-          </div>
+          {rule.source.length <= LONG_SOURCE && (
+            <div className="flex gap-1">
+              <dt className="text-muted-foreground">Source</dt>
+              <dd className="text-foreground">{rule.source}</dd>
+            </div>
+          )}
         </dl>
+        {rule.source.length > LONG_SOURCE && (
+          <details className="mt-0.5 text-xs">
+            <summary className="cursor-pointer text-muted-foreground">Source</summary>
+            <p className="mt-0.5 text-foreground">{rule.source}</p>
+          </details>
+        )}
       </div>
     </li>
   );
