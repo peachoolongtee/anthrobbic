@@ -56,6 +56,7 @@ _ROW_ID = re.compile(
 class CatalogueEntry:
     summary: ScenarioSummary
     scenario: Scenario
+    row: DotRow
 
 
 def recorded_briefs(directory: Path) -> frozenset[tuple[str, int]]:
@@ -281,4 +282,5 @@ def _entry(row: DotRow, scenario: Scenario, *, has_recording: bool) -> Catalogue
     return CatalogueEntry(
         summary=adapter.scenario_summary(row, scenario, has_recording=has_recording),
         scenario=scenario,
+        row=row,
     )

@@ -729,6 +729,48 @@ def next_leg(row: DotRow, path: str | os.PathLike[str] | None = None) -> NextLeg
 
 
 @dataclass(frozen=True, slots=True)
+class LaterLeg:
+    """One of the same tail's later flights that day. Schedule columns only."""
+
+    flight_id: str
+    origin: str
+    destination: str
+    scheduled_departure_min: int  # relative to the subject's departure-date midnight
+    scheduled_arrival_min: int  # same reference, on the destination's clock
+
+
+def later_legs(
+    row: DotRow, path: str | os.PathLike[str] | None = None
+) -> tuple[LaterLeg, ...]:
+    """The same tail's flights that depart later than this flight's scheduled
+    arrival and before the end of its departure date, in departure order.
+
+    Reads the schedule columns of the cache's `flights` table and nothing else:
+    the as-flown delay columns beside them are never selected. Uses the
+    `(tail, dep_abs)` index, so a call costs a handful of rows, not a scan.
+    """
+    if not row.tail_number:
+        return ()
+    con = ensure_cache(path)
+    base = row.day_start_abs
+    found = con.execute(
+        "SELECT flight, origin, dest, dep_abs, arr_abs FROM flights "
+        "WHERE tail = ? AND dep_abs > ? AND dep_abs < ? ORDER BY dep_abs, flight",
+        (row.tail_number, base + scheduled_arrival_min(row), base + MINUTES_PER_DAY),
+    )
+    return tuple(
+        LaterLeg(
+            flight_id=flight,
+            origin=origin,
+            destination=destination,
+            scheduled_departure_min=dep_abs - base,
+            scheduled_arrival_min=arr_abs - base,
+        )
+        for flight, origin, destination, dep_abs, arr_abs in found
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class InboundLeg:
     """The same tail's immediately previous leg into this flight's origin.
 

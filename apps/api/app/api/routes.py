@@ -17,6 +17,7 @@ from app.api.runs import (
 from app.api.wire import (
     ConsensusLog,
     DecisionResult,
+    DelaySpread,
     EligibleCount,
     Evaluation,
     LookupResult,
@@ -115,6 +116,11 @@ def get_consensus_log(
         f'attachment; filename="consensus-log-{document.run_id}.json"'
     )
     return document
+
+
+@router.get("/runs/{run_id}/spread")
+def get_spread(service: Service, run_id: str) -> DelaySpread:
+    return service.spread(run_id)
 
 
 @router.post("/runs/{run_id}/log/verify")

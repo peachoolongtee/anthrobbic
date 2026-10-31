@@ -404,3 +404,41 @@ class Evaluation(FrozenModel):
     limits: tuple[str, ...]
     # Controls that failed in the run. Shown first: they outrank every number.
     failures: tuple[str, ...] = ()
+
+
+class LegProjection(FrozenModel):
+    """What the knock-on does to one later leg. Computed, never as flown."""
+
+    earliest_departure: str
+    # The origin's minimum turnaround, from the organiser workbook (synthetic).
+    turnaround_min: int
+    turnaround_provenance: Provenance
+    # How far the earliest departure passes the scheduled one; zero if it absorbs.
+    knock_on_min: int
+    projected_arrival: str
+    provenance: Provenance
+
+
+class SpreadLeg(FrozenModel):
+    flight_id: str
+    route: str
+    scheduled_departure: str
+    scheduled_arrival: str
+    # Of the four fields above: scheduled columns of the file.
+    provenance: Provenance
+    # None when the run has no plan to project from, or the chain cannot be
+    # carried this far; `unprojected_reason` then says why.
+    projection: LegProjection | None
+    unprojected_reason: str | None
+
+
+class DelaySpread(FrozenModel):
+    flight_id: str
+    route: str
+    tail_number: str
+    scheduled_arrival: str
+    # When this plan puts the aircraft at its gate. None for a no-go run.
+    plan_arrival: str | None
+    plan_arrival_provenance: Provenance | None
+    legs: tuple[SpreadLeg, ...]
+    note: str
