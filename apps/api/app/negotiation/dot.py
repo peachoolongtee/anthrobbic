@@ -531,6 +531,103 @@ def _select_by_ids(con: sqlite3.Connection, ids: list[int]) -> Iterator[DotRow]:
         yield from _select_rows(con, f"WHERE id IN ({marks})", tuple(chunk))
 
 
+# --- finding one flight ------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class FlightQuery:
+    """A flight as a person names it: date and number, optionally narrowed."""
+
+    date: date
+    flight_number: int
+    airline: str | None = None
+    origin: str | None = None
+    destination: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FlightOnFile:
+    """Why a flight on the schedule might not be eligible. It says only whether a
+    tail and an arrival delay are on file, never what the delay was."""
+
+    has_tail: bool
+    arrived: bool
+
+
+# Each destination once, by seeking through the index rather than reading it. The
+# taxi table will not do: an airport whose only flights were cancelled is not in it.
+_EVERY_DESTINATION: Final = """(
+    WITH RECURSIVE d(dest) AS (
+        SELECT MIN(dest) FROM flights
+        UNION ALL
+        SELECT (SELECT MIN(dest) FROM flights WHERE dest > d.dest)
+        FROM d WHERE d.dest IS NOT NULL
+    )
+    SELECT dest FROM d WHERE dest IS NOT NULL
+)"""
+
+
+def eligible_count(path: str | os.PathLike[str] | None = None) -> int:
+    result = ensure_cache(path).execute("SELECT COUNT(*) FROM eligible").fetchone()
+    return int(result[0])
+
+
+def find_eligible(
+    query: FlightQuery, path: str | os.PathLike[str] | None = None
+) -> list[DotRow]:
+    """Eligible rows matching a query, in file order. A scan of the eligible table,
+    which is quick enough that the cache needs no new index or version."""
+    day = query.date
+    where = "WHERE year = ? AND month = ? AND day = ? AND flight_number = ?"
+    params: list[object] = [day.year, day.month, day.day, query.flight_number]
+    for column, value in (
+        ("airline", query.airline),
+        ("origin_airport", query.origin),
+        ("destination_airport", query.destination),
+    ):
+        if value is not None:
+            where += f" AND {column} = ?"
+            params.append(value)
+    return list(_select_rows(ensure_cache(path), where, tuple(params)))
+
+
+def scheduled_flights(
+    query: FlightQuery, path: str | os.PathLike[str] | None = None
+) -> list[FlightOnFile]:
+    """Every flight on the schedule matching a query, eligible or not.
+
+    Goes through the destination and arrival index, one short range per airport,
+    because the schedule holds millions of rows. An arrival is within a day of its
+    departure date on any clock, so the range cannot miss one.
+    """
+    base = query.date.toordinal() * MINUTES_PER_DAY
+    number = str(query.flight_number)
+    sql = (
+        "SELECT tail, arr_delay FROM flights WHERE dest IN "
+        + ("(?)" if query.destination else _EVERY_DESTINATION)
+        + " AND arr_abs BETWEEN ? AND ? AND dep_abs >= ? AND dep_abs < ?"
+        + " AND substr(flight, 3) = ?"
+    )
+    params: list[object] = [query.destination] if query.destination else []
+    params += [
+        base - MINUTES_PER_DAY,
+        base + 2 * MINUTES_PER_DAY,
+        base,
+        base + MINUTES_PER_DAY,
+        number,
+    ]
+    if query.airline:
+        sql += " AND substr(flight, 1, 2) = ?"
+        params.append(query.airline)
+    if query.origin:
+        sql += " AND origin = ?"
+        params.append(query.origin)
+    return [
+        FlightOnFile(has_tail=bool(tail.strip()), arrived=arr_delay is not None)
+        for tail, arr_delay in ensure_cache(path).execute(sql, params)
+    ]
+
+
 # --- schedule queries --------------------------------------------------------
 
 

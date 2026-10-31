@@ -39,6 +39,31 @@ class ScenarioSummary(FrozenModel):
     has_recording: bool
 
 
+class LookupResult(FrozenModel):
+    # A flight that cannot be run is an answer, not an error: `reason` says which.
+    status: Literal["one", "several", "none"]
+    # Bounded. The same summary the list shows, so no outcome column can ride along.
+    matches: tuple[ScenarioSummary, ...]
+    # Matches in all, which may be more than `matches` holds.
+    total: int
+    reason: (
+        Literal[
+            "outside_dataset",
+            "october_excluded",
+            "not_in_data",
+            "below_thresholds",
+            "cancelled_or_diverted",
+            "no_tail_number",
+        ]
+        | None
+    )
+    message: str | None
+
+
+class EligibleCount(FrozenModel):
+    eligible_total: int
+
+
 class PackageRef(FrozenModel):
     package_id: str
     label: str
