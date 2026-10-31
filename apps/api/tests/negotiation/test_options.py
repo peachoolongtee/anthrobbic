@@ -31,8 +31,8 @@ SMALL: dict[str, Any] = {
     "earliest_arrival_min": 100,
     "latest_arrival_min": 105,
     "runways": (
-        Runway(runway_id="R2", closed=False),
-        Runway(runway_id="R1", closed=True),
+        Runway(runway_id="R2", closed=False, parallel_group=None),
+        Runway(runway_id="R1", closed=True, parallel_group=None),
     ),
     "gates": (
         Gate(gate_id="G2", taxiway_id="T1", max_size=AircraftSize.NARROW_BODY),
@@ -143,7 +143,7 @@ def test_package_bound_is_enforced_exactly() -> None:
         # Before departure, one runway and one gate give one package per slot.
         return make_scenario(
             decision_point=DecisionPoint.PRE_DEPARTURE,
-            runways=(Runway(runway_id="R1", closed=False),),
+            runways=(Runway(runway_id="R1", closed=False, parallel_group=None),),
             gates=(
                 Gate(gate_id="G1", taxiway_id="T1", max_size=AircraftSize.NARROW_BODY),
             ),

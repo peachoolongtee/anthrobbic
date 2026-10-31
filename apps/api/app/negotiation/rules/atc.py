@@ -13,6 +13,7 @@ from app.negotiation.contracts import (
 from app.negotiation.rules.shared import (
     airport_conditions,
     gates_with_id,
+    own_flight_is_ambiguous,
     runway_group,
 )
 
@@ -84,8 +85,13 @@ def check_wake_separation(
     known = {r.runway_id for r in runways}
     same_runway = runway_group(runways, package.slot.runway_id)
     found: list[Violation] = []
+    ambiguous = own_flight_is_ambiguous((a.flight_id for a in arrivals), own_id)
+    if ambiguous:
+        found.append(
+            _missing(WAKE_SEPARATION, f"flight id {own_id}", source, "ambiguous")
+        )
     for other in arrivals:
-        if own_id is not None and other.flight_id == own_id:
+        if not ambiguous and own_id is not None and other.flight_id == own_id:
             continue
         if other.runway_id not in known:
             found.append(
@@ -223,8 +229,13 @@ def check_runway_throughput(
     same_runway = runway_group(runways, package.slot.runway_id)
     found: list[Violation] = []
     times: list[int] = []
+    ambiguous = own_flight_is_ambiguous((a.flight_id for a in arrivals), own_id)
+    if ambiguous:
+        found.append(
+            _missing(RUNWAY_THROUGHPUT, f"flight id {own_id}", source, "ambiguous")
+        )
     for other in arrivals:
-        if own_id is not None and other.flight_id == own_id:
+        if not ambiguous and own_id is not None and other.flight_id == own_id:
             continue
         if other.runway_id not in known:
             found.append(

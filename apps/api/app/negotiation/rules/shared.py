@@ -1,6 +1,6 @@
 """Lookups several rules share. Pure, and they decide nothing on their own."""
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 
 from app.negotiation import rule_values as rv
 from app.negotiation.contracts import FlightRules, Gate, Runway, WeatherPeriod
@@ -49,3 +49,12 @@ def airport_conditions(
     return (
         FlightRules.IFR if poor_or_unknown_at(forecast, time_min) else FlightRules.VFR
     )
+
+
+def own_flight_is_ambiguous(flight_ids: Iterable[str], own_id: str | None) -> bool:
+    """True when more than one row carries the scenario's own flight ID.
+
+    One such row is the flight itself and is skipped. Two or more cannot be told
+    apart from other traffic, so none is skipped and the rule fails closed.
+    """
+    return own_id is not None and sum(1 for f in flight_ids if f == own_id) > 1

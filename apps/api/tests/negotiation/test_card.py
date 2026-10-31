@@ -75,8 +75,8 @@ def failing_card() -> Card:
     # Hold with a closed 28L runway and a heavy gate problem: several failures.
     scenario = make_scenario(
         runways=(
-            Runway(runway_id="28L", closed=True),
-            Runway(runway_id="28R", closed=False),
+            Runway(runway_id="28L", closed=True, parallel_group=None),
+            Runway(runway_id="28R", closed=False, parallel_group=None),
         )
     )
     package = BASELINE_PACKAGE
@@ -334,7 +334,11 @@ def test_decision_card_takes_no_free_text_parameter() -> None:
 
 
 def test_no_deal_card_ignores_the_free_text_reason() -> None:
-    no_deal = decide(make_scenario(runways=(Runway(runway_id="28L", closed=True),)))
+    no_deal = decide(
+        make_scenario(
+            runways=(Runway(runway_id="28L", closed=True, parallel_group=None),)
+        )
+    )
     assert isinstance(no_deal, NoDeal)
     dirty = no_deal.model_copy(update={"reason": POISON})
     assert render(no_deal_card(dirty)) == render(no_deal_card(no_deal))
@@ -409,8 +413,8 @@ def test_nothing_legal_and_system_fault_read_differently() -> None:
     closed = decide(
         make_scenario(
             runways=(
-                Runway(runway_id="28L", closed=True),
-                Runway(runway_id="28R", closed=True),
+                Runway(runway_id="28L", closed=True, parallel_group=None),
+                Runway(runway_id="28R", closed=True, parallel_group=None),
             )
         )
     )
@@ -430,8 +434,8 @@ def test_no_deal_shows_binding_rules_nearest_package_and_the_change() -> None:
     closed = decide(
         make_scenario(
             runways=(
-                Runway(runway_id="28L", closed=True),
-                Runway(runway_id="28R", closed=True),
+                Runway(runway_id="28L", closed=True, parallel_group=None),
+                Runway(runway_id="28R", closed=True, parallel_group=None),
             )
         )
     )
@@ -665,8 +669,8 @@ def test_no_deal_shows_the_binding_violations_with_numbers_and_sources() -> None
     closed = decide(
         make_scenario(
             runways=(
-                Runway(runway_id="28L", closed=True),
-                Runway(runway_id="28R", closed=True),
+                Runway(runway_id="28L", closed=True, parallel_group=None),
+                Runway(runway_id="28R", closed=True, parallel_group=None),
             )
         )
     )
@@ -685,7 +689,11 @@ def test_no_deal_shows_the_binding_violations_with_numbers_and_sources() -> None
 
 
 def test_binding_evidence_never_echoes_free_text() -> None:
-    closed = decide(make_scenario(runways=(Runway(runway_id="28L", closed=True),)))
+    closed = decide(
+        make_scenario(
+            runways=(Runway(runway_id="28L", closed=True, parallel_group=None),)
+        )
+    )
     assert isinstance(closed, NoDeal)
     dirty = closed.model_copy(
         update={

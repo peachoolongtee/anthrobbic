@@ -93,10 +93,15 @@ def extra_burn_kg(scenario: Scenario, package: Package) -> int | None:
 
 # Quantities that cannot be real if they break these bounds. Bad data fails
 # closed, the same as missing data.
-_MUST_BE_POSITIVE = frozenset({"cruise_burn_kg_per_min", "hold_burn_kg_per_min"})
-_MUST_NOT_BE_NEGATIVE = frozenset(
-    {"fuel_on_board_kg", "trip_fuel_kg", "alternate_fuel_kg"}
+_MUST_BE_POSITIVE = frozenset(
+    {
+        "cruise_burn_kg_per_min",
+        "hold_burn_kg_per_min",
+        "trip_fuel_kg",
+        "alternate_fuel_kg",
+    }
 )
+_MUST_NOT_BE_NEGATIVE = frozenset({"fuel_on_board_kg"})
 
 
 def _problem(name: str, value: object) -> str | None:

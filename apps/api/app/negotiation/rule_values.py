@@ -34,7 +34,9 @@ class RuleValue(BaseModel):
 
 # Wake separation uses the legacy classes, not RECAT, and the current order
 # rather than the 2015 text. In that order the legacy-class minima are listed
-# under en route and are applied here to arrivals as a simplification. Every
+# under en route and are applied here to arrivals as a simplification. The
+# current order's terminal tables use wake categories A to I, which we simplify
+# away. Every
 # pair is checked on one runway and the leader is on approach, so the values for
 # "small behind heavy/large on the same runway" apply, and behind a super the
 # low-and-slow values apply (at or below FL240 and under 250 kt). Small behind
@@ -42,8 +44,9 @@ class RuleValue(BaseModel):
 _WAKE_SOURCE = (
     "FAA JO 7110.65BB para 5-5-4, current order not the 2015 text. The legacy "
     "minima are listed there under en route and are applied here to arrivals "
-    "as a simplification; real terminals use RECAT. Leader on approach, so the "
-    "low-slow behind-super values apply"
+    "as a simplification. The current order's terminal tables use wake "
+    "categories A to I, which we simplify away; real terminals use RECAT. "
+    "Leader on approach, so the low-slow behind-super values apply"
 )
 _ASSUMED = "assumption: demo default, not from a regulation"
 

@@ -78,6 +78,12 @@ def with_arrivals(*arrivals: OtherArrival, **overrides: Any) -> Scenario:
     return make_scenario(other_arrivals=tuple(arrivals), **overrides)
 
 
+INDEPENDENT = (
+    Runway(runway_id="28L", closed=False, parallel_group=None),
+    Runway(runway_id="28R", closed=False, parallel_group=None),
+)
+
+
 def wake_cases() -> list[Case]:
     cases: list[Case] = []
     L, H, S = WakeCategory.LARGE, WakeCategory.HEAVY, WakeCategory.SMALL
@@ -130,7 +136,7 @@ def wake_cases() -> list[Case]:
         bad("same minute", with_arrivals(arrival(L, 100)), make_package(100)),
         ok(
             "other runway is ignored",
-            with_arrivals(arrival(L, 100, runway_id="28R")),
+            with_arrivals(arrival(L, 100, runway_id="28R"), runways=INDEPENDENT),
             make_package(100),
         ),
         ok("no other arrivals", with_arrivals(), make_package(100)),
@@ -155,14 +161,14 @@ def wake_cases() -> list[Case]:
 
 
 def runway_closed_cases() -> list[Case]:
-    open_28l = Runway(runway_id="28L", closed=False)
+    open_28l = Runway(runway_id="28L", closed=False, parallel_group=None)
     return [
         ok("open runway", make_scenario(), make_package(runway_id="28L")),
         bad(
             "closed runway",
             make_scenario(
                 runways=(
-                    Runway(runway_id="28L", closed=True),
+                    Runway(runway_id="28L", closed=True, parallel_group=None),
                     open_28l.model_copy(update={"runway_id": "28R"}),
                 )
             ),
@@ -170,7 +176,12 @@ def runway_closed_cases() -> list[Case]:
         ),
         ok(
             "other runway closed",
-            make_scenario(runways=(open_28l, Runway(runway_id="28R", closed=True))),
+            make_scenario(
+                runways=(
+                    open_28l,
+                    Runway(runway_id="28R", closed=True, parallel_group=None),
+                )
+            ),
             make_package(runway_id="28L"),
         ),
         bad("runway not in scenario", make_scenario(), make_package(runway_id="09")),
@@ -251,7 +262,9 @@ def throughput_cases() -> list[Case]:
         ),
         ok(
             "other runway traffic does not count",
-            make_scenario(other_arrivals=others(cap + 5, mine - 1, "28R")),
+            make_scenario(
+                other_arrivals=others(cap + 5, mine - 1, "28R"), runways=INDEPENDENT
+            ),
             make_package(mine),
         ),
         bad(
@@ -321,7 +334,8 @@ def fuel_cases() -> list[Case]:
         ok(
             "no alternate required lowers the requirement",
             make_scenario(
-                fuel_on_board_kg=trip + reserve - alternate, alternate_fuel_kg=0
+                fuel_on_board_kg=trip + reserve - alternate,
+                destination_forecast=GOOD_FORECAST,
             ),
             BASELINE_PACKAGE,
             boundary=True,
@@ -693,6 +707,7 @@ APART = (
     Runway(runway_id="28R", closed=False, parallel_group="Q"),
 )
 LARGE = WakeCategory.LARGE
+SUPER = WakeCategory.SUPER
 HEAVY = WakeCategory.HEAVY
 SMALL = WakeCategory.SMALL
 OWN = BASELINE["flight_id"]
@@ -722,6 +737,12 @@ def extra_wake_cases() -> list[Case]:
         ),
         ok(
             "runways with no group are independent",
+            with_arrivals(arrival(LARGE, 100, "28R"), runways=INDEPENDENT),
+            make_package(100, runway_id="28L"),
+        ),
+        # B1: the factory default puts 28L and 28R in one group, the safe choice.
+        bad(
+            "the default runways share a group",
             with_arrivals(arrival(LARGE, 100, "28R")),
             make_package(100, runway_id="28L"),
         ),
@@ -788,14 +809,114 @@ def extra_wake_cases() -> list[Case]:
     ]
 
 
+def extra_own_flight_cases() -> dict[str, list[Case]]:
+    """B3: one row with the scenario's own flight ID is the flight itself; more
+    than one is ambiguous and nothing is skipped."""
+    cap = rv.runway_hourly_arrivals(FlightRules.IFR).value
+    mine = 500
+    stay = rv.turnaround(AircraftSize.NARROW_BODY).value
+    end = GATE_IN + stay
+
+    def own_stay() -> GateOccupancy:
+        return GateOccupancy(
+            gate_id="A1", flight_id=OWN, start_min=GATE_IN, end_min=end
+        )
+
+    def traffic(n: int) -> tuple[OtherArrival, ...]:
+        return tuple(arrival(LARGE, mine - 1, name=f"F{i}") for i in range(n))
+
+    return {
+        atc.WAKE_SEPARATION: [
+            ok(
+                "a single own-flight row is skipped",
+                with_arrivals(arrival(SUPER, 100, name=OWN), wake_category=SMALL),
+                make_package(100),
+            ),
+            bad(
+                "two own-flight rows are ambiguous, a same-id super at the same "
+                "minute counts",
+                with_arrivals(
+                    arrival(LARGE, 100, name=OWN),
+                    arrival(SUPER, 100, name=OWN),
+                    wake_category=SMALL,
+                ),
+                make_package(100),
+            ),
+        ],
+        atc.RUNWAY_THROUGHPUT: [
+            ok(
+                "a single own-flight row is skipped",
+                make_scenario(
+                    other_arrivals=(
+                        *traffic(cap - 1),
+                        arrival(LARGE, mine - 1, name=OWN),
+                    )
+                ),
+                make_package(mine),
+            ),
+            bad(
+                "two own-flight rows are ambiguous and are counted",
+                make_scenario(
+                    other_arrivals=(
+                        *traffic(cap - 2),
+                        arrival(LARGE, mine - 1, name=OWN),
+                        arrival(LARGE, mine - 1, name=OWN),
+                    )
+                ),
+                make_package(mine),
+                violations=2,  # ambiguous, plus cap + 1 counted
+            ),
+        ],
+        ground.GATE_OVERLAP: [
+            ok(
+                "a single own-flight occupancy is skipped",
+                make_scenario(gate_occupancies=(own_stay(),), next_departure_min=end),
+                BASELINE_PACKAGE,
+            ),
+            bad(
+                "two own-flight occupancies at the same gate are ambiguous",
+                make_scenario(
+                    gate_occupancies=(own_stay(), own_stay()), next_departure_min=end
+                ),
+                BASELINE_PACKAGE,
+                violations=3,  # ambiguous, plus each stay now counted as a clash
+            ),
+            # N1: with a soft next leg and an unknown departure the stay is just
+            # the turnaround. That is a gate-only simplification, pinned here.
+            ok(
+                "soft leg, unknown departure: stay is the turnaround, at the buffer",
+                make_scenario(
+                    next_leg_turnaround_hard=False,
+                    next_departure_min=None,
+                    gate_occupancies=(occupancy(end + 15, end + 90),),
+                ),
+                BASELINE_PACKAGE,
+                boundary=True,
+            ),
+            bad(
+                "soft leg, unknown departure: one minute inside the buffer",
+                make_scenario(
+                    next_leg_turnaround_hard=False,
+                    next_departure_min=None,
+                    gate_occupancies=(occupancy(end + 14, end + 90),),
+                ),
+                BASELINE_PACKAGE,
+                boundary=True,
+                violations=1,
+                expect=(14, 15),
+            ),
+        ],
+    }
+
+
 def extra_runway_cases() -> list[Case]:
     return [
         bad(
             "duplicate runway, first open then closed",
             make_scenario(
                 runways=(
-                    Runway(runway_id="28L", closed=False),
-                    Runway(runway_id="28L", closed=True),
+                    Runway(runway_id="28L", closed=False, parallel_group=None),
+                    Runway(runway_id="28L", closed=True, parallel_group=None),
                 )
             ),
             make_package(runway_id="28L"),
@@ -804,8 +925,8 @@ def extra_runway_cases() -> list[Case]:
             "duplicate runway, first closed then open",
             make_scenario(
                 runways=(
-                    Runway(runway_id="28L", closed=True),
-                    Runway(runway_id="28L", closed=False),
+                    Runway(runway_id="28L", closed=True, parallel_group=None),
+                    Runway(runway_id="28L", closed=False, parallel_group=None),
                 )
             ),
             make_package(runway_id="28L"),
@@ -1019,7 +1140,11 @@ def extra_throughput_cases() -> list[Case]:
         ),
         ok(
             "independent runways do not share the cap",
-            poor(*others(15, mine - 1, "28L"), *others(15, mine - 1, "28R", "G")),
+            poor(
+                *others(15, mine - 1, "28L"),
+                *others(15, mine - 1, "28R", "G"),
+                runways=INDEPENDENT,
+            ),
             make_package(mine),
         ),
         # D4 and D5.
@@ -1147,11 +1272,42 @@ def extra_fuel_cases() -> list[Case]:
             make_scenario(trip_fuel_kg=-1, fuel_on_board_kg=trip + reserve),
             BASELINE_PACKAGE,
         ),
-        ok(
-            "trip fuel of exactly zero is valid",
+        # B2: a flight that needs no fuel to land is bad data, not a free pass.
+        bad(
+            "trip fuel of exactly zero is invalid",
             make_scenario(trip_fuel_kg=0, fuel_on_board_kg=reserve),
             BASELINE_PACKAGE,
             boundary=True,
+        ),
+        ok(
+            "trip fuel of one is the smallest valid trip",
+            make_scenario(trip_fuel_kg=1, fuel_on_board_kg=1 + reserve),
+            BASELINE_PACKAGE,
+            boundary=True,
+        ),
+        bad(
+            "alternate fuel of exactly zero when an alternate is required",
+            make_scenario(alternate_fuel_kg=0, fuel_on_board_kg=trip + reserve),
+            BASELINE_PACKAGE,
+            boundary=True,
+        ),
+        ok(
+            "alternate fuel of one when an alternate is required",
+            make_scenario(
+                alternate_fuel_kg=1,
+                fuel_on_board_kg=trip + reserve - alternate + 1,
+            ),
+            BASELINE_PACKAGE,
+            boundary=True,
+        ),
+        ok(
+            "alternate fuel of zero is ignored when none is required",
+            make_scenario(
+                alternate_fuel_kg=0,
+                fuel_on_board_kg=no_alt,
+                destination_forecast=GOOD_FORECAST,
+            ),
+            BASELINE_PACKAGE,
         ),
         bad(
             "negative alternate fuel when an alternate is required",
@@ -1332,14 +1488,19 @@ def slot_window_cases() -> list[Case]:
     ]
 
 
+_OWN = extra_own_flight_cases()
 RULE_CASES: dict[str, list[Case]] = {
-    atc.WAKE_SEPARATION: wake_cases() + extra_wake_cases(),
+    atc.WAKE_SEPARATION: wake_cases() + extra_wake_cases() + _OWN[atc.WAKE_SEPARATION],
     atc.RUNWAY_CLOSED: runway_closed_cases() + extra_runway_cases(),
     atc.TAXIWAY_CLOSED: taxiway_closed_cases() + extra_taxiway_cases(),
-    atc.RUNWAY_THROUGHPUT: throughput_cases() + extra_throughput_cases(),
+    atc.RUNWAY_THROUGHPUT: throughput_cases()
+    + extra_throughput_cases()
+    + _OWN[atc.RUNWAY_THROUGHPUT],
     atc.SLOT_WINDOW: slot_window_cases(),
     pilot.FUEL_POLICY: fuel_cases() + extra_fuel_cases(),
-    ground.GATE_OVERLAP: overlap_cases() + extra_overlap_cases(),
+    ground.GATE_OVERLAP: overlap_cases()
+    + extra_overlap_cases()
+    + _OWN[ground.GATE_OVERLAP],
     ground.GATE_SIZE: size_cases() + extra_size_cases(),
     ground.TURNAROUND: turnaround_cases() + extra_turnaround_cases(),
 }

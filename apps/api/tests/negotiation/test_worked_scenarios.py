@@ -100,7 +100,7 @@ def worked(**overrides: Any):  # noqa: ANN201
         "hold_burn_kg_per_min": 40,
         "alternate_fuel_kg": 1_000,
         "destination_forecast": GOOD_WEATHER,
-        "runways": (Runway(runway_id="R1", closed=False),),
+        "runways": (Runway(runway_id="R1", closed=False, parallel_group=None),),
         "taxiways": (Taxiway(taxiway_id="T1", closed=False),),
         "gates": (G1, G2),
         "other_arrivals": (),
@@ -291,8 +291,8 @@ DEALS = [
         "one runway closed",
         worked(
             runways=(
-                Runway(runway_id="R1", closed=True),
-                Runway(runway_id="R2", closed=False),
+                Runway(runway_id="R1", closed=True, parallel_group=None),
+                Runway(runway_id="R2", closed=False, parallel_group=None),
             )
         ),
         pk("R2", 100, "G1", DIRECT),
@@ -353,8 +353,8 @@ DEALS = [
         "independent runways",
         worked(
             runways=(
-                Runway(runway_id="R1", closed=False),
-                Runway(runway_id="R2", closed=False),
+                Runway(runway_id="R1", closed=False, parallel_group=None),
+                Runway(runway_id="R2", closed=False, parallel_group=None),
             ),
             other_arrivals=(
                 OtherArrival(
@@ -550,7 +550,9 @@ def test_no_deal_when_hard_turnaround_and_wake_conflict() -> None:
 
 
 def test_no_deal_when_the_only_runway_is_closed() -> None:
-    result = no_deal(worked(runways=(Runway(runway_id="R1", closed=True),)))
+    result = no_deal(
+        worked(runways=(Runway(runway_id="R1", closed=True, parallel_group=None),))
+    )
     assert result.reason_type is NoDealReason.NOTHING_LEGAL
     assert result.binding_rule_ids == ("ATC-RWY-CLOSED",)
     assert [(e.rule_id, e.packages_eliminated) for e in result.eliminations] == [
@@ -614,7 +616,10 @@ def test_missing_data_alongside_a_real_violation_is_still_nothing_legal() -> Non
     # data, because every one also hits the closed runway. Both rules eliminate
     # 10 packages, so both bind, in ID order.
     result = no_deal(
-        worked(runways=(Runway(runway_id="R1", closed=True),), fuel_on_board_kg=None)
+        worked(
+            runways=(Runway(runway_id="R1", closed=True, parallel_group=None),),
+            fuel_on_board_kg=None,
+        )
     )
     assert result.reason_type is NoDealReason.NOTHING_LEGAL
     assert result.binding_rule_ids == ("ATC-RWY-CLOSED", "PLT-FUEL-POLICY")
@@ -744,7 +749,9 @@ def test_binding_violations_carry_observed_value_and_limit() -> None:
     assert [
         (v.rule_id, v.observed, v.limit, v.unit) for v in turnaround.binding_violations
     ] == [("GND-TURNAROUND", 20, 25, "min")]
-    closed = no_deal(worked(runways=(Runway(runway_id="R1", closed=True),)))
+    closed = no_deal(
+        worked(runways=(Runway(runway_id="R1", closed=True, parallel_group=None),))
+    )
     assert [(v.rule_id, v.observed, v.limit) for v in closed.binding_violations] == [
         ("ATC-RWY-CLOSED", 1, 0)
     ]
@@ -778,7 +785,10 @@ def test_binding_violation_prefers_a_real_limit_over_missing_data() -> None:
 
 def test_every_binding_rule_gets_one_violation() -> None:
     result = no_deal(
-        worked(runways=(Runway(runway_id="R1", closed=True),), fuel_on_board_kg=None)
+        worked(
+            runways=(Runway(runway_id="R1", closed=True, parallel_group=None),),
+            fuel_on_board_kg=None,
+        )
     )
     # The closed runway has a real limit; the fuel rule only missing data.
     assert [v.rule_id for v in result.binding_violations] == [

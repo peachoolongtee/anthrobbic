@@ -169,8 +169,8 @@ def test_state_version_is_stable_and_a_hash() -> None:
     [
         {
             "runways": (
-                Runway(runway_id="28L", closed=True),
-                Runway(runway_id="28R", closed=False),
+                Runway(runway_id="28L", closed=True, parallel_group=None),
+                Runway(runway_id="28R", closed=False, parallel_group=None),
             )
         },
         {
@@ -237,8 +237,8 @@ def test_gate_occupancy_appearing_while_reading_is_refused() -> None:
 def test_closed_runway_is_refused_with_the_violation() -> None:
     now = make_scenario(
         runways=(
-            Runway(runway_id="28L", closed=True),
-            Runway(runway_id="28R", closed=False),
+            Runway(runway_id="28L", closed=True, parallel_group=None),
+            Runway(runway_id="28R", closed=False, parallel_group=None),
         )
     )
     outcome, _, used = run(view(make_scenario()), now)
@@ -324,8 +324,8 @@ def test_a_refusal_does_not_use_the_token() -> None:
 def test_rule_failing_at_current_state_is_refused_even_if_the_manager_saw_it() -> None:
     failing = make_scenario(
         runways=(
-            Runway(runway_id="28L", closed=True),
-            Runway(runway_id="28R", closed=False),
+            Runway(runway_id="28L", closed=True, parallel_group=None),
+            Runway(runway_id="28R", closed=False, parallel_group=None),
         )
     )
     request = view(failing)  # state and card both match what is current

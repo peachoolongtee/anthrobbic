@@ -80,11 +80,15 @@ class Sourced[T](FrozenModel):
 class Runway(FrozenModel):
     """A runway. Runways sharing a `parallel_group` are treated as one runway
     for wake separation and throughput (FAA JO 7110.65: parallel runways less
-    than 2,500 ft apart count as a single runway). None means independent."""
+    than 2,500 ft apart count as a single runway).
+
+    `parallel_group` has no default on purpose: an omitted value would silently
+    mean "independent", which removes wake and throughput limits. Say `None`
+    explicitly for a runway that is independent."""
 
     runway_id: str
     closed: bool
-    parallel_group: str | None = None
+    parallel_group: str | None
 
 
 class Taxiway(FrozenModel):

@@ -54,8 +54,9 @@ BASELINE: dict[str, Any] = {
         ),
     ),
     "runways": (
-        Runway(runway_id="28L", closed=False),
-        Runway(runway_id="28R", closed=False),
+        # One group, the safe default: the two runways share wake and throughput.
+        Runway(runway_id="28L", closed=False, parallel_group="P"),
+        Runway(runway_id="28R", closed=False, parallel_group="P"),
     ),
     "taxiways": (
         Taxiway(taxiway_id="T1", closed=False),
@@ -191,7 +192,7 @@ def random_scenario(seed: int, small: bool = False) -> Scenario:
 
     trip = rng.randrange(2_000, 6_000)
     cruise = rng.randrange(30, 80)
-    alternate = rng.choice([0, 0, 800, 1_500])
+    alternate = rng.choice([800, 1_200, 1_500])
     reserve = 45 * cruise + alternate
     weather_start = earliest - 120 + rng.choice([0, 0, 0, 90])  # sometimes a gap
     forecast = tuple(

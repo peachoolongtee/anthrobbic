@@ -16,6 +16,7 @@ from app.negotiation.contracts import (
     Proposal,
     Provenance,
     Response,
+    Runway,
     Scenario,
     Sourced,
     Violation,
@@ -275,3 +276,14 @@ def test_result_kinds_are_discriminated() -> None:
         ArrivalSlot(runway_id="1", time_min=2).time_min == 2
         and FlightPlanAction.DIRECT.value == "direct"
     )
+
+
+def test_parallel_group_must_be_stated() -> None:
+    # Omitting it would silently mean "independent", which drops wake and
+    # throughput limits between neighbouring runways.
+    with pytest.raises(ValidationError):
+        Runway.model_validate({"runway_id": "28L", "closed": False})
+    alone = Runway(runway_id="28L", closed=False, parallel_group=None)
+    grouped = Runway(runway_id="28L", closed=False, parallel_group="P")
+    assert alone.parallel_group is None
+    assert grouped.parallel_group == "P"

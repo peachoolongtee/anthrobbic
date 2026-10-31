@@ -9,7 +9,7 @@ from app.negotiation.contracts import (
     Scenario,
     Violation,
 )
-from app.negotiation.rules.shared import gates_with_id
+from app.negotiation.rules.shared import gates_with_id, own_flight_is_ambiguous
 
 GATE_OVERLAP = "GND-GATE-OVERLAP"
 GATE_SIZE = "GND-GATE-SIZE"
@@ -70,6 +70,10 @@ def gate_stay_end_min(scenario: Scenario, package: Package) -> int | None:
     No tow is modelled, so it holds the gate until its next departure when that
     is known and later than gate-in plus the minimum turnaround; otherwise it
     holds it for the minimum turnaround.
+
+    An unknown next departure on a soft leg is not a violation: the stay falls
+    back to the turnaround. This is a gate-only simplification. A hard leg with
+    an unknown departure still fails closed in the turnaround rule.
     """
     start = gate_in_min(scenario, package)
     stay = turnaround_min(scenario)
@@ -117,8 +121,11 @@ def check_gate_overlap(scenario: Scenario, package: Package) -> tuple[Violation,
 
     known = {g.gate_id for g in gates}
     found: list[Violation] = []
+    ambiguous = own_flight_is_ambiguous((o.flight_id for o in occupancies), own_id)
+    if ambiguous:
+        found.append(_missing(GATE_OVERLAP, f"flight id {own_id}", source, "ambiguous"))
     for other in occupancies:
-        if own_id is not None and other.flight_id == own_id:
+        if not ambiguous and own_id is not None and other.flight_id == own_id:
             continue
         if other.gate_id not in known:
             found.append(
