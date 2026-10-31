@@ -612,7 +612,7 @@ def decision_card(
         todo = (
             f"Decide the gate for {name} as the airline.",
             f"Send the slot and action for {name} to ATC as requests.",
-            "Approval records that requests were issued. Nothing is executed.",
+            "Approval issues only the requests you choose. Nothing is executed.",
         )
         why = (
             _REACHED_TEXT[how_reached],

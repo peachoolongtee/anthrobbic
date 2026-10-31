@@ -100,7 +100,7 @@ export const UNSAFE_OPTIONS: { value: string; label: string }[] = [
 export const SIGNOFF_STATUS: Record<SignoffStatus, { title: string; detail: string }> = {
   APPROVED: {
     title: "Approved",
-    detail: "Requests were issued, not granted. Nothing has been executed.",
+    detail: "Nothing has been executed.",
   },
   REFUSED_STATE_CHANGED: {
     title: "Refused: the airport changed after you looked",

@@ -61,6 +61,7 @@ from app.negotiation.contracts import (
 from app.negotiation.log import (
     EvidenceLog,
     LogEntry,
+    LogIntegrityError,
     VerifyResult,
     load_entries,
     verify_entries,
@@ -364,6 +365,16 @@ class RunRecord:
     lock: threading.Lock = field(default_factory=threading.Lock)
     final: FinalDecision | None = None
 
+    def require_intact_log(self) -> None:
+        """Caller holds the lock. Stops a decision on a log that does not verify,
+        including an edit that kept the file's size and modification time."""
+        result = self.log.verify(self.anchor)
+        if not result.valid:
+            raise LogIntegrityError(
+                f"the run log does not verify: {result.reason} at "
+                f"seq {result.first_bad_seq}"
+            )
+
     def stored(self) -> tuple[tuple[LogEntry, ...], VerifyResult]:
         """The log as it is on disk, checked against the anchor. A file that cannot
         even be parsed is invalid, with the entries this process remembers."""
@@ -556,6 +567,7 @@ class RunService:
     def change_state(self, run_id: str, change: StateChange) -> StateChanged:
         record = self._record(run_id)
         with record.lock:
+            record.require_intact_log()
             before = state_version(record.scenario)
             record.scenario = apply_state_change(record.scenario, change)
             after = state_version(record.scenario)
@@ -585,6 +597,7 @@ class RunService:
                 WRONG_DECISION_KIND,
             )
         with record.lock:
+            record.require_intact_log()
             # Replaying the exact approval keeps sign-off's own REFUSED_ALREADY_USED.
             replay = record.final == "APPROVED" and request.token in self._used_tokens
             if record.final is not None and not replay:
@@ -632,6 +645,7 @@ class RunService:
                 WRONG_DECISION_KIND,
             )
         with record.lock:
+            record.require_intact_log()
             if record.final is not None:
                 head = self._log_refused(record, "reject", request.decided_by)
                 return DecisionResult(
@@ -665,6 +679,7 @@ class RunService:
                 WRONG_DECISION_KIND,
             )
         with record.lock:
+            record.require_intact_log()
             if record.final is not None:
                 head = self._log_refused(record, "take_over", request.decided_by)
                 return DecisionResult(

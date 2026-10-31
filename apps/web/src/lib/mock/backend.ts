@@ -528,7 +528,7 @@ export const mockBackend = {
       s.extraLog.push({
         seq: 0,
         kind: "signoff",
-        summary: `Approved by ${body.decided_by}. Requests issued, nothing executed.`,
+        summary: `Approved by ${body.decided_by}. ${body.requests_to_send ? "Requests issued" : "No requests issued"}, nothing executed.`,
         hash: hash(`${runId}:signoff:${body.decided_by}`),
       });
       s.run = { ...s.run, log_head: hash(`${runId}:head:signed`) };
