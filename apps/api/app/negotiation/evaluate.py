@@ -29,6 +29,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from importlib import import_module
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Self
 
 from pydantic import model_validator
@@ -1445,6 +1446,7 @@ class BaselineRow:
     harmful: bool
     harm_only: tuple[str, ...]
     metrics: PackageMetrics | None
+    package_hash: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1511,13 +1513,17 @@ class RowResult:
 
 
 def alternate_weights() -> dict[str, CostWeights]:
-    """Each weight doubled and halved in turn."""
+    """Each weight scaled alone, by 2 and by 10 each way. Doubling alone can look
+    stable just because the default weights are far apart."""
     variants: dict[str, CostWeights] = {}
     for name, value in DEFAULT_WEIGHTS.model_dump().items():
-        variants[f"{name} x2"] = DEFAULT_WEIGHTS.model_copy(update={name: value * 2})
-        variants[f"{name} /2"] = DEFAULT_WEIGHTS.model_copy(
-            update={name: max(value // 2, 1)}
-        )
+        for factor in (2, 10):
+            variants[f"{name} x{factor}"] = DEFAULT_WEIGHTS.model_copy(
+                update={name: value * factor}
+            )
+            variants[f"{name} /{factor}"] = DEFAULT_WEIGHTS.model_copy(
+                update={name: max(value // factor, 1)}
+            )
     return variants
 
 
@@ -1718,6 +1724,7 @@ def _evaluate_row(
                 harmful=base.harm.harmful if base.harm is not None else False,
                 harm_only=harm_only,
                 metrics=base.metrics,
+                package_hash=base.package.terms_hash if base.package else None,
             )
         )
 
@@ -2107,6 +2114,126 @@ AGAINST_FALLBACK = "fallback.py on the same rows"
 AGAINST_UNGUARDED = "unguarded model pick on the same rows"
 
 
+def _labelled_not_clean(done: Any) -> bool:
+    """A fault, or a logged fallback event that names what triggered it."""
+    if done.faults:
+        return True
+    return any(
+        getattr(event, "kind", None) == "fallback"
+        and getattr(event, "payload", {}).get("trigger")
+        for event in done.events
+    )
+
+
+class ScriptedAgentClient:
+    """Stands in for the model client, in the shape the agents call. No network.
+
+    Every agent answers with the same first offered package, or with an ID that
+    was never offered when `hostile`. It always agrees, so only code can stop it.
+    """
+
+    def __init__(self, hostile: bool = False) -> None:
+        self.hostile = hostile
+        self.beta = SimpleNamespace(messages=SimpleNamespace(create=self._create))
+
+    def with_options(self, *args: Any, **options: Any) -> "ScriptedAgentClient":
+        return self
+
+    def _create(self, **_: Any) -> Any:
+        choice = "P99" if self.hostile else "P00"
+        text = json.dumps(
+            {
+                "acceptable_package_ids": [choice],
+                "ranking": [choice],
+                "declined": [],
+                "reason_codes": [],
+                "note_readings": [],
+                "model_note": "",
+            }
+        )
+        return SimpleNamespace(
+            stop_reason="end_turn",
+            content=[SimpleNamespace(type="text", text=text)],
+            usage=SimpleNamespace(input_tokens=0, output_tokens=0),
+            model="scripted-no-model",
+        )
+
+
+def _plumbing_failed(done: Any) -> bool:
+    """The scripted reply never reached the gate, so this proves nothing."""
+    return "internal_error" in _fault_texts(done.faults)
+
+
+def protocol_gate_control(
+    backends: Backends, builder: PanelBuilder, failures: list[str]
+) -> None:
+    """Agents that agree to anything, through the real protocol path.
+
+    Intact, the unsafe package must not come out. With its rule disabled it must,
+    which proves this control can notice the gate going. A hostile reply naming a
+    package that was never offered must end in a fault and a legal result.
+    """
+    run = backends.run_negotiation
+    name = "Agents agreeing to anything, stopped by the protocol gate"
+    against = "scripted agents through protocol, then the rule disabled"
+    if run is None:
+        builder.not_reached(name, against, "app.negotiation.protocol has not landed")
+        builder.not_reached(
+            "Reply naming a package never offered ends in a fault",
+            "scripted hostile agents through protocol",
+            "app.negotiation.protocol has not landed",
+        )
+        return
+    cases = [c for c in injected_cases() if c.decision_stage]
+    held = noticed = reached = 0
+    for case in cases:
+        intact = run(case.scenario, MODE_RECORDED, client=ScriptedAgentClient())
+        with disabled_rule(case.rule_id):
+            mutated = run(case.scenario, MODE_RECORDED, client=ScriptedAgentClient())
+        if _plumbing_failed(intact) or _plumbing_failed(mutated):
+            continue
+        reached += 1
+        held += _chosen(_as_decision(intact.decision)) != case.unsafe
+        noticed += _chosen(_as_decision(mutated.decision)) == case.unsafe
+    if reached == 0:
+        builder.not_reached(
+            name, against, "scripted replies never reached the gate (internal error)"
+        )
+    else:
+        builder.rate(f"{name}: unsafe package kept out", held, reached, against)
+        builder.rate(
+            f"{name}: mutation noticed, unsafe package let through",
+            noticed,
+            reached,
+            against,
+            note=f"{len(cases) - reached} of {len(cases)} cases NOT_REACHED"
+            if reached != len(cases)
+            else "",
+        )
+        if held != reached:
+            failures.append("an unsafe package came out of the protocol gate")
+        if noticed != reached:
+            failures.append("disabling a rule went unnoticed at the protocol gate")
+
+    done = run(
+        control_scenario(), MODE_RECORDED, client=ScriptedAgentClient(hostile=True)
+    )
+    hostile_name = "Reply naming a package never offered ends in a fault"
+    if _plumbing_failed(done):
+        builder.not_reached(
+            hostile_name,
+            "scripted hostile agents through protocol",
+            "scripted replies never reached the gate (internal error)",
+        )
+    else:
+        ok = bool(done.faults) and str(done.path) != PATH_CONSENSUS
+        builder.rate(
+            hostile_name, int(ok), 1, "scripted hostile agents through protocol"
+        )
+        if not ok:
+            failures.append("a reply naming an unoffered package was not a fault")
+
+
 def controls_panel(meta: RunMeta, backends: Backends) -> tuple[Panel, list[str]]:
     """Injected violations, mutation runs and controls, on hand-built scenarios."""
     builder = PanelBuilder(EvidenceClass.TEST, "Controls on hand-built scenarios", meta)
@@ -2191,7 +2318,7 @@ def controls_panel(meta: RunMeta, backends: Backends) -> tuple[Panel, list[str]]
                 passed += 1
             else:
                 failures.append(f"control {control.control_id} failed via protocol")
-            if done.faults:
+            if _labelled_not_clean(done):
                 logged_as_fault += 1
         builder.rate(
             "Controls that must succeed, through protocol mode off",
@@ -2200,20 +2327,15 @@ def controls_panel(meta: RunMeta, backends: Backends) -> tuple[Panel, list[str]]
             "expected answers worked by hand",
         )
         builder.rate(
-            "Mode off runs logged as a fault, not a clean fallback",
+            "Mode off runs labelled as a fault or a fallback trigger, never clean",
             logged_as_fault,
             len(controls),
-            "plan: an LLM-off run is logged as a fault",
+            "plan: an LLM-off run is never logged as a clean fallback",
         )
         if logged_as_fault != len(controls):
             failures.append("a mode off run was not logged as a fault")
 
-    builder.not_reached(
-        "Unsafe package offered by an agent, stopped by the protocol gate",
-        "protocol gate with a fake client",
-        "AWAITS protocol: no fake client yet drives this path. The rules are "
-        "proven above, but this route to them is unproven",
-    )
+    protocol_gate_control(backends, builder, failures)
     builder.not_reached(
         "Hand-calculated scenarios checked by someone who did not write the code",
         "independent reviewer",
@@ -2349,7 +2471,8 @@ def rules_only_panel(
         group_rates(cause, [r for r in done if r.cause == cause])
 
     fallback_note = (
-        "100% by construction in mode off, so it says nothing about the agents"
+        "every deal in mode off is a fallback by construction, so this is the deal "
+        "rate and says nothing about the agents"
     )
     if protocol_ran:
         builder.rate(
@@ -2474,6 +2597,20 @@ def rules_only_panel(
                 len(with_package),
                 against,
             )
+        both = [
+            (r.package_hash, b.package_hash)
+            for r in deal_rows
+            for b in r.baselines
+            if b.name == base.value and b.has_package
+        ]
+        builder.rate(
+            f"Fallback picks the same package as {base.value}",
+            sum(mine == theirs for mine, theirs in both),
+            len(both),
+            against,
+            note="how much the cost ranking adds over this baseline",
+            empty_reason=empty_reason,
+        )
         for field_name, label, unit in _OUTCOME_FIELDS:
             for legal_only, suffix in (
                 (False, "all its packages"),
@@ -2514,12 +2651,16 @@ def rules_only_panel(
         "harm.py, own logic",
         empty_reason=empty_reason,
     )
-    kinds: Counter[str] = Counter()
     checks: Counter[tuple[str, str]] = Counter()
     for result in deal_rows:
-        for check, kind, _ in result.disagreements:
-            kinds[kind] += 1
-            checks[(check, kind)] += 1
+        checks.update({(check, kind) for check, kind, _ in result.disagreements})
+    for (check, kind), count in sorted(checks.items()):
+        builder.rate(
+            f"harm.py versus rules: {kind} on {check}",
+            count,
+            len(deal_rows),
+            "rules/ on the same final package",
+        )
     for kind in DisagreementKind:
         builder.rate(
             f"harm.py versus rules: {kind.value}",
@@ -2574,7 +2715,7 @@ def rules_only_panel(
         "Chosen package changes under at least one alternate weight",
         sum(any(r.weight_changes.values()) for r in weight_rows),
         len(weight_rows),
-        "each weight doubled and halved",
+        "each weight scaled by 2 and by 10, both ways",
         empty_reason=empty_reason,
     )
     variants = sorted({v for r in weight_rows for v in r.weight_changes})

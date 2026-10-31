@@ -4,6 +4,7 @@ The fakes follow the agreed interfaces. Tests using them prove the harness, not
 those modules. No test here makes a model call.
 """
 
+import importlib.util
 import json
 import random
 from collections import Counter
@@ -31,6 +32,14 @@ from app.negotiation.options import PackageBoundError, enumerate_packages
 from app.negotiation.rules import check_package
 from app.negotiation.utility import weight_sensitivity
 from tests.negotiation.factories import random_scenario
+
+_COMMAND_PATH = Path(__file__).parents[2] / "scripts" / "evaluate.py"
+_COMMAND_SPEC = importlib.util.spec_from_file_location(
+    "evaluate_command", _COMMAND_PATH
+)
+assert _COMMAND_SPEC is not None and _COMMAND_SPEC.loader is not None
+evaluate_command = importlib.util.module_from_spec(_COMMAND_SPEC)
+_COMMAND_SPEC.loader.exec_module(evaluate_command)
 
 HOT_DESTINATIONS = [f"D{i:02d}" for i in range(40)]
 
@@ -135,13 +144,19 @@ class FakeProtocol:
     def __init__(self, calls_per_run: int = 6) -> None:
         self.calls_per_run = calls_per_run
         self.modes: Counter[str] = Counter()
+        self.scripted_modes: Counter[str] = Counter()
         self.unguarded_modes: Counter[str] = Counter()
 
     def run_negotiation(
         self, scenario: Scenario, mode: str, sink: Any = None, client: Any = None
     ) -> FakeNegotiation:
-        self.modes[mode] += 1
+        # A scripted client is a control with no model behind it, so count apart.
+        scripted = isinstance(client, ev.ScriptedAgentClient)
+        (self.scripted_modes if scripted else self.modes)[mode] += 1
         decision = decide(scenario)
+        if isinstance(client, ev.ScriptedAgentClient) and client.hostile:
+            path = ev.PATH_FALLBACK if isinstance(decision, Deal) else ev.PATH_NO_DEAL
+            return FakeNegotiation(decision, path, 1, ("hallucinated",), 3)
         if mode == ev.MODE_OFF:
             path = ev.PATH_FALLBACK if isinstance(decision, Deal) else ev.PATH_NO_DEAL
             return FakeNegotiation(decision, path, 0, ("llm_off",), 0)
@@ -445,8 +460,29 @@ def test_fast_weight_sensitivity_matches_utility() -> None:
     assert compared > 0
 
 
-def test_alternate_weights_double_and_halve_each_weight() -> None:
-    assert len(ev.alternate_weights()) == 10
+def test_weight_sensitivity_can_fire() -> None:
+    """A measure that can never fire would prove nothing. Here A1 is busy, so the
+    default moves to B1 for 50, against 400 of hold fuel to wait for A1. A gate move
+    at 10 times the weight costs 500, so the choice flips to waiting."""
+    busy = (ev.GateOccupancy(gate_id="A1", flight_id="O", start_min=60, end_min=100),)
+    scenario = ev.control_scenario(gate_occupancies=busy)
+    decision = decide(scenario)
+    assert isinstance(decision, Deal)
+    assert decision.package == ev._pkg(gate_id="B1")
+    legal = [p for p in enumerate_packages(scenario) if not check_package(scenario, p)]
+    fast = ev._weight_changes(scenario, legal, decision.package)
+    assert fast["per_gate_move x10"] is True
+    assert fast["per_gate_move x2"] is False
+    variants = ev.alternate_weights()
+    for name, weights in variants.items():
+        assert fast[name] == weight_sensitivity(scenario, weights).changed, name
+
+
+def test_alternate_weights_scale_each_weight_both_ways() -> None:
+    variants = ev.alternate_weights()
+    assert len(variants) == 20
+    assert variants["per_gate_move x10"].per_gate_move == 500
+    assert variants["fuel_per_kg /10"].fuel_per_kg == 1  # floored, never zero
 
 
 # --- Frozen split -----------------------------------------------------------
@@ -1096,6 +1132,69 @@ def test_mode_off_decision_differing_from_fallback_is_a_failure(tmp_path: Path) 
     assert any("differ from fallback.decide" in f for f in report.failures)
 
 
+def test_a_logged_fallback_trigger_counts_as_not_clean() -> None:
+    @dataclass(frozen=True)
+    class Event:
+        kind: str
+        payload: dict[str, str]
+
+    @dataclass(frozen=True)
+    class Done:
+        faults: tuple[str, ...]
+        events: tuple[Event, ...]
+
+    assert ev._labelled_not_clean(Done(("x",), ()))
+    assert ev._labelled_not_clean(
+        Done((), (Event("fallback", {"trigger": "llm_off"}),))
+    )
+    assert not ev._labelled_not_clean(Done((), (Event("fallback", {}),)))
+    assert not ev._labelled_not_clean(Done((), (Event("result", {"trigger": "x"}),)))
+    assert not ev._labelled_not_clean(Done((), ()))
+
+
+def test_scripted_client_answers_in_the_agent_shape_without_a_model() -> None:
+    client = ev.ScriptedAgentClient()
+    response = client.with_options(timeout=1).beta.messages.create(model="x")
+    reply = json.loads(response.content[0].text)
+    assert reply["acceptable_package_ids"] == ["P00"] == reply["ranking"]
+    hostile = ev.ScriptedAgentClient(hostile=True)
+    response = hostile.beta.messages.create()
+    assert json.loads(response.content[0].text)["ranking"] == ["P99"]
+
+
+def test_protocol_gate_control_notices_a_protocol_that_lets_unsafe_through() -> None:
+    case = next(c for c in ev.injected_cases() if c.decision_stage)
+    template = decide(ev.control_scenario())
+    assert isinstance(template, Deal)
+
+    def yes_man(scenario: Scenario, mode: str, **_: Any) -> FakeNegotiation:
+        # No gate: it always returns the first enumerated package.
+        package = enumerate_packages(scenario)[0]
+        bad = template.model_copy(update={"package": package})
+        return FakeNegotiation(bad, ev.PATH_CONSENSUS, 1, (), 3)
+
+    builder = ev.PanelBuilder(ev.EvidenceClass.TEST, "t", _meta())
+    failures: list[str] = []
+    backends = replace(fake_backends(), run_negotiation=yes_man)
+    ev.protocol_gate_control(backends, builder, failures)
+    assert "an unsafe package came out of the protocol gate" in failures
+    assert case.rule_id  # the registry supplied a case
+
+
+def test_protocol_gate_control_is_not_reached_when_replies_cannot_arrive() -> None:
+    template = decide(ev.control_scenario())
+
+    def broken(scenario: Scenario, mode: str, **_: Any) -> FakeNegotiation:
+        return FakeNegotiation(template, ev.PATH_FALLBACK, 0, ("internal_error",), 0)
+
+    builder = ev.PanelBuilder(ev.EvidenceClass.TEST, "t", _meta())
+    failures: list[str] = []
+    backends = replace(fake_backends(), run_negotiation=broken)
+    ev.protocol_gate_control(backends, builder, failures)
+    assert {m.status for m in builder.measures} == {ev.MeasureStatus.NOT_REACHED}
+    assert not failures
+
+
 def test_mode_off_logged_as_clean_is_a_failure(tmp_path: Path) -> None:
     def clean(scenario: Scenario, mode: str, **_: Any) -> FakeNegotiation:
         decision = decide(scenario)
@@ -1105,6 +1204,11 @@ def test_mode_off_logged_as_clean_is_a_failure(tmp_path: Path) -> None:
     backends = replace(fake_backends(), run_negotiation=clean)
     report = ev.run_evaluation(_request(tmp_path), backends)
     assert any("not logged as a fault" in f for f in report.failures)
+    assert any(
+        m.name.startswith("Mode off runs labelled") and m.k == 0
+        for p in report.panels
+        for m in p.measures
+    )
 
 
 def test_recorded_frozen_run_with_guarded_and_unguarded_panels(tmp_path: Path) -> None:
@@ -1279,6 +1383,61 @@ def test_process_pool_returns_rows_in_order() -> None:
     rows = _rows(6)
     results = ev.evaluate_rows(rows, ev.RowConfig(), ev.load_backends(), workers=2)
     assert [r.key for r in results] == [ev.row_key(row) for _, row in rows]
+
+
+def test_the_command_refuses_live_without_confirmation_and_prints_the_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = FakeProtocol()
+    monkeypatch.setattr(ev, "load_backends", lambda: fake_backends(fake))
+    code = evaluate_command.main(
+        ["--mode", "live", "--split", "frozen", "--results-dir", str(tmp_path)]
+    )
+    out = capsys.readouterr().out
+    assert code == evaluate_command.EXIT_REFUSED
+    assert "Planned live calls: 140" in out
+    assert "REFUSED" in out
+    assert not fake.modes
+    assert not fake.unguarded_modes
+
+
+def test_the_command_runs_live_only_with_a_covering_confirmation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = FakeProtocol()
+    monkeypatch.setattr(ev, "load_backends", lambda: fake_backends(fake))
+    base = ["--mode", "live", "--split", "tune", "--results-dir", str(tmp_path)]
+    base += ["--workers", "1", "--synthetic-seeds", "1", "--generator-rows", "0"]
+    code = evaluate_command.main([*base, "--confirm-live-calls", "59"])
+    assert code == evaluate_command.EXIT_REFUSED
+    assert not fake.modes["live"]
+    code = evaluate_command.main([*base, "--confirm-live-calls", "60"])
+    assert code == evaluate_command.EXIT_OK
+    assert fake.modes["live"] == 10
+    assert "Planned live calls: 60" in capsys.readouterr().out
+
+
+def test_the_command_exit_codes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    results = ["--results-dir", str(tmp_path), "--workers", "1"]
+    empty = ev.Backends(missing=("app.negotiation.dot.sample_rows",))
+    monkeypatch.setattr(ev, "load_backends", lambda: empty)
+    assert evaluate_command.main(results) == evaluate_command.EXIT_OK
+    incomplete = evaluate_command.main(["--sample", "5", *results])
+    assert incomplete == evaluate_command.EXIT_INCOMPLETE
+    assert evaluate_command.main(["--sample", "-1", *results]) == (
+        evaluate_command.EXIT_REFUSED
+    )
+    assert "Evaluation results" in capsys.readouterr().out
+
+    def clean(scenario: Scenario, mode: str, **_: Any) -> FakeNegotiation:
+        return FakeNegotiation(decide(scenario), ev.PATH_FALLBACK, 0, (), 0)
+
+    broken = replace(fake_backends(), run_negotiation=clean)
+    monkeypatch.setattr(ev, "load_backends", lambda: broken)
+    failed = evaluate_command.main(results)
+    assert failed == evaluate_command.EXIT_CONTROL_FAILED
 
 
 def test_stratified_rows_are_balanced_and_unique() -> None:
