@@ -17,33 +17,62 @@ from app.negotiation.contracts import (
     Violation,
     ViolationCause,
 )
-from app.negotiation.options import enumerate_packages, enumeration_gaps
+from app.negotiation.options import (
+    PackageBoundError,
+    enumerate_packages,
+    enumeration_gaps,
+)
 from app.negotiation.rules import check_package
 from app.negotiation.utility import DEFAULT_WEIGHTS, CostWeights, compute_cost
+
+
+def _fault(reason: str, packages_considered: int = 0) -> NoDeal:
+    return NoDeal(
+        reason_type=NoDealReason.SYSTEM_FAULT,
+        binding_rule_ids=(),
+        eliminations=(),
+        packages_considered=packages_considered,
+        nearest_package=None,
+        nearest_violations=(),
+        reason=reason,
+    )
+
+
+def _representative(
+    rule_id: str, failures: list[tuple[Package, tuple[Violation, ...]]]
+) -> Violation | None:
+    """The first violation of this rule in package order, preferring one that
+    carries an observed value and a limit over a missing-data one."""
+    fallback: Violation | None = None
+    for _, violations in failures:
+        for violation in violations:
+            if violation.rule_id != rule_id:
+                continue
+            if violation.cause is ViolationCause.CONSTRAINT:
+                return violation
+            fallback = fallback or violation
+    return fallback
 
 
 def decide(scenario: Scenario, weights: CostWeights = DEFAULT_WEIGHTS) -> Decision:
     """Pick the cheapest package that passes every rule, else `NoDeal`.
 
-    Raises `PackageBoundError` if the candidate set exceeds the bound.
+    Never raises for a bad scenario. If nothing could be enumerated, or the
+    candidate set exceeds the package bound, the result is
+    `NoDeal(SYSTEM_FAULT)`: an empty or inconsistent input is a fault, not a
+    verdict that nothing is legal.
     """
-    packages = enumerate_packages(scenario)
+    try:
+        packages = enumerate_packages(scenario)
+    except PackageBoundError as error:
+        return _fault(f"too many candidate packages: {error}")
     if not packages:
         gaps = enumeration_gaps(scenario)
-        return NoDeal(
-            reason_type=(
-                NoDealReason.SYSTEM_FAULT if gaps else NoDealReason.NOTHING_LEGAL
-            ),
-            binding_rule_ids=(),
-            eliminations=(),
-            packages_considered=0,
-            nearest_package=None,
-            nearest_violations=(),
-            reason=(
-                "no candidate packages: unknown " + ", ".join(gaps)
-                if gaps
-                else "no candidate packages in the planning window"
-            ),
+        return _fault(
+            "no candidate packages: unknown " + ", ".join(gaps)
+            if gaps
+            else "no candidate packages: the runway list, gate list or planning "
+            "window is empty or inconsistent"
         )
 
     best: tuple[tuple[int, tuple[int, str, str, int]], Package] | None = None
@@ -71,24 +100,32 @@ def decide(scenario: Scenario, weights: CostWeights = DEFAULT_WEIGHTS) -> Decisi
             packages_legal=legal,
         )
 
+    failures.sort(key=lambda f: f[0].sort_key)
     ranked = sorted(eliminated.items(), key=lambda item: (-item[1], item[0]))
     top = ranked[0][1]
+    binding = tuple(rule_id for rule_id, n in ranked if n == top)
+    binding_violations = tuple(
+        v
+        for rule_id in binding
+        if (v := _representative(rule_id, failures)) is not None
+    )
     # Nearest: fewest distinct rules broken, then fewest violations, then the
     # code tie-break, so the choice never depends on iteration accident.
     nearest, nearest_violations = min(
         failures,
         key=lambda f: (len({v.rule_id for v in f[1]}), len(f[1]), f[0].sort_key),
     )
-    # A fault, not a verdict, when missing data is behind every package's failure.
-    faulted = all(
-        any(v.cause is ViolationCause.MISSING_DATA for v in violations)
+    # A fault, not a verdict, when any package is blocked only by missing data:
+    # supplying the data might make it legal.
+    faulted = any(
+        all(v.cause is ViolationCause.MISSING_DATA for v in violations)
         for _, violations in failures
     )
     return NoDeal(
         reason_type=NoDealReason.SYSTEM_FAULT
         if faulted
         else NoDealReason.NOTHING_LEGAL,
-        binding_rule_ids=tuple(rule_id for rule_id, n in ranked if n == top),
+        binding_rule_ids=binding,
         eliminations=tuple(
             RuleElimination(rule_id=rule_id, packages_eliminated=n)
             for rule_id, n in ranked
@@ -97,8 +134,9 @@ def decide(scenario: Scenario, weights: CostWeights = DEFAULT_WEIGHTS) -> Decisi
         nearest_package=nearest,
         nearest_violations=nearest_violations,
         reason=(
-            "missing data breaks every candidate package"
+            "a candidate package is blocked only by missing or invalid data"
             if faulted
             else "every candidate package breaks at least one hard rule"
         ),
+        binding_violations=binding_violations,
     )

@@ -3,17 +3,25 @@
 from app.negotiation import rule_values as rv
 from app.negotiation.contracts import (
     Domain,
+    FlightRules,
     Package,
     PublicReason,
     Rule,
     Scenario,
     Violation,
+    WakeCategory,
+)
+from app.negotiation.rules.shared import (
+    gates_with_id,
+    poor_or_unknown_at,
+    runway_group,
 )
 
 WAKE_SEPARATION = "ATC-WAKE-SEP"
 RUNWAY_CLOSED = "ATC-RWY-CLOSED"
 TAXIWAY_CLOSED = "ATC-TWY-CLOSED"
 RUNWAY_THROUGHPUT = "ATC-RWY-THROUGHPUT"
+SLOT_WINDOW = "ATC-SLOT-WINDOW"
 
 
 def _violation(
@@ -35,13 +43,16 @@ def _violation(
     )
 
 
-def _missing(rule_id: str, name: str, source: str) -> Violation:
-    return Violation.missing_data(rule_id, Domain.ATC, name, source)
+def _missing(
+    rule_id: str, name: str, source: str, reason: str = "unknown"
+) -> Violation:
+    return Violation.missing_data(rule_id, Domain.ATC, name, source, reason)
 
 
-def required_separation_min(leader_nm: int) -> int:
-    """Minutes needed to fly `leader_nm` at the approach speed, rounded up."""
-    speed_kt = rv.rule_value(rv.APPROACH_GROUND_SPEED_KT).value
+def required_separation_min(leader_nm: int, follower: WakeCategory) -> int:
+    """Minutes needed to fly `leader_nm` at the follower's approach speed,
+    rounded up."""
+    speed_kt = rv.approach_speed(follower).value
     per_hour = rv.rule_value(rv.MINUTES_PER_HOUR).value
     return (leader_nm * per_hour + speed_kt - 1) // speed_kt
 
@@ -51,22 +62,42 @@ def check_wake_separation(
 ) -> tuple[Violation, ...]:
     """In-trail separation against every other arrival on the same runway.
 
-    `observed` is the gap in minutes and `limit` the minimum gap.
+    Parallel runways in one group count as one runway. The scenario's own
+    flight is skipped. An arrival that names a runway the scenario does not
+    list is a missing-data violation, never dropped. `observed` is the gap in
+    minutes and `limit` the minimum gap.
     """
-    source = "scenario.other_arrivals, scenario.wake_category"
+    source = "scenario.other_arrivals, scenario.wake_category, scenario.runways"
     wake = scenario.wake_category.value
     arrivals = scenario.other_arrivals.value
+    runways = scenario.runways.value
+    own_id = scenario.flight_id.value
     missing: list[Violation] = []
     if wake is None:
         missing.append(_missing(WAKE_SEPARATION, "own wake category", source))
     if arrivals is None:
         missing.append(_missing(WAKE_SEPARATION, "other arrivals", source))
-    if wake is None or arrivals is None:
+    if runways is None:
+        missing.append(_missing(WAKE_SEPARATION, "runway list", source))
+    if wake is None or arrivals is None or runways is None:
         return tuple(missing)
 
+    known = {r.runway_id for r in runways}
+    same_runway = runway_group(runways, package.slot.runway_id)
     found: list[Violation] = []
     for other in arrivals:
-        if other.runway_id != package.slot.runway_id:
+        if own_id is not None and other.flight_id == own_id:
+            continue
+        if other.runway_id not in known:
+            found.append(
+                _missing(
+                    WAKE_SEPARATION,
+                    f"runway {other.runway_id} of arrival {other.flight_id}",
+                    source,
+                )
+            )
+            continue
+        if other.runway_id not in same_runway:
             continue
         # At equal times the other flight is treated as the leader; either
         # order fails because the required gap is positive.
@@ -75,7 +106,7 @@ def check_wake_separation(
             (other.wake_category, wake) if other_leads else (wake, other.wake_category)
         )
         sep = rv.wake_separation(leader, follower)
-        need_min = required_separation_min(sep.value)
+        need_min = required_separation_min(sep.value, follower)
         gap_min = abs(package.slot.time_min - other.time_min)
         if gap_min < need_min:
             found.append(
@@ -94,7 +125,10 @@ def check_wake_separation(
 
 
 def check_runway_closed(scenario: Scenario, package: Package) -> tuple[Violation, ...]:
-    """The runway must be known and open. A closed runway is 1 against a limit of 0."""
+    """The runway must be known and open. A closed runway is 1 against a limit of 0.
+
+    If the ID is listed more than once, any closed entry closes it.
+    """
     source = f"scenario.runways ({scenario.runways.provenance.value})"
     runways = scenario.runways.value
     if runways is None:
@@ -118,15 +152,29 @@ def check_runway_closed(scenario: Scenario, package: Package) -> tuple[Violation
 
 
 def check_taxiway_closed(scenario: Scenario, package: Package) -> tuple[Violation, ...]:
-    """The taxiway serving the gate must be known and open."""
+    """The taxiway serving the gate must be known and open.
+
+    A gate listed twice is a missing-data violation. If a taxiway ID is listed
+    more than once, any closed entry closes it.
+    """
     source = f"scenario.gates, scenario.taxiways ({scenario.taxiways.provenance.value})"
     gates = scenario.gates.value
     taxiways = scenario.taxiways.value
     if gates is None or taxiways is None:
         return (_missing(TAXIWAY_CLOSED, "gate or taxiway map", source),)
-    gate = next((g for g in gates if g.gate_id == package.gate_id), None)
-    if gate is None:
+    listed = gates_with_id(gates, package.gate_id)
+    if not listed:
         return (_missing(TAXIWAY_CLOSED, f"gate {package.gate_id}", source),)
+    if len(listed) > 1:
+        return (
+            _missing(
+                TAXIWAY_CLOSED,
+                f"gate {package.gate_id} (listed more than once)",
+                source,
+                "ambiguous",
+            ),
+        )
+    gate = listed[0]
     routes = [t for t in taxiways if t.taxiway_id == gate.taxiway_id]
     if not routes:
         return (_missing(TAXIWAY_CLOSED, f"taxiway {gate.taxiway_id}", source),)
@@ -147,23 +195,52 @@ def check_taxiway_closed(scenario: Scenario, package: Package) -> tuple[Violatio
 def check_runway_throughput(
     scenario: Scenario, package: Package
 ) -> tuple[Violation, ...]:
-    """No rolling hour containing this arrival may exceed the runway cap."""
+    """No rolling hour containing this arrival may exceed the runway cap.
+
+    Parallel runways in one group count as one runway; the scenario's own
+    flight is skipped; an arrival naming an unlisted runway is a missing-data
+    violation. The cap follows the airport's conditions at the ETA, not the
+    flight's own rules: a poor or unknown forecast at the ETA uses the IFR cap,
+    otherwise the VFR cap.
+    """
     arrivals = scenario.other_arrivals.value
-    flight_rules = scenario.flight_rules.value
-    source = "scenario.other_arrivals, scenario.flight_rules"
+    runways = scenario.runways.value
+    own_id = scenario.flight_id.value
+    source = "scenario.other_arrivals, scenario.runways, scenario.destination_forecast"
     missing: list[Violation] = []
     if arrivals is None:
         missing.append(_missing(RUNWAY_THROUGHPUT, "other arrivals", source))
-    if flight_rules is None:
-        missing.append(_missing(RUNWAY_THROUGHPUT, "flight rules", source))
-    if arrivals is None or flight_rules is None:
+    if runways is None:
+        missing.append(_missing(RUNWAY_THROUGHPUT, "runway list", source))
+    if arrivals is None or runways is None:
         return tuple(missing)
-    cap = rv.runway_hourly_arrivals(flight_rules)
 
     hour = rv.rule_value(rv.MINUTES_PER_HOUR).value
-    runway_id = package.slot.runway_id
     mine = package.slot.time_min
-    times = [a.time_min for a in arrivals if a.runway_id == runway_id]
+    conditions = (
+        FlightRules.IFR
+        if poor_or_unknown_at(scenario.destination_forecast.value, mine)
+        else FlightRules.VFR
+    )
+    cap = rv.runway_hourly_arrivals(conditions)
+
+    known = {r.runway_id for r in runways}
+    same_runway = runway_group(runways, package.slot.runway_id)
+    found: list[Violation] = []
+    times: list[int] = []
+    for other in arrivals:
+        if own_id is not None and other.flight_id == own_id:
+            continue
+        if other.runway_id not in known:
+            found.append(
+                _missing(
+                    RUNWAY_THROUGHPUT,
+                    f"runway {other.runway_id} of arrival {other.flight_id}",
+                    source,
+                )
+            )
+        elif other.runway_id in same_runway:
+            times.append(other.time_min)
     times.append(mine)
     # The busiest hour containing this arrival starts at some arrival that is
     # no later than this one and less than an hour before it.
@@ -173,18 +250,76 @@ def check_runway_throughput(
         if start <= mine < start + hour
     )
     if worst > cap.value:
-        return (
+        found.append(
             _violation(
                 RUNWAY_THROUGHPUT,
-                f"{worst} arrivals within an hour on runway {runway_id}; "
-                f"cap is {cap.value} under {flight_rules.value.upper()}",
+                f"{worst} arrivals within an hour on runway {package.slot.runway_id}"
+                f"; cap is {cap.value} under {conditions.value.upper()} conditions "
+                "at the ETA",
                 rv.reference(cap),
                 worst,
                 cap.value,
                 "arrivals per hour",
-            ),
+            )
         )
-    return ()
+    return tuple(found)
+
+
+def check_slot_window(scenario: Scenario, package: Package) -> tuple[Violation, ...]:
+    """The slot must lie inside the planning window and on its grid.
+
+    Fails closed on unknown window bounds. The grid starts at the earliest
+    arrival and steps by the slot step.
+    """
+    source = "scenario.earliest_arrival_min, scenario.latest_arrival_min"
+    earliest = scenario.earliest_arrival_min.value
+    latest = scenario.latest_arrival_min.value
+    missing: list[Violation] = []
+    if earliest is None:
+        missing.append(_missing(SLOT_WINDOW, "earliest arrival", source))
+    if latest is None:
+        missing.append(_missing(SLOT_WINDOW, "latest arrival", source))
+    if earliest is None or latest is None:
+        return tuple(missing)
+
+    slot = package.slot.time_min
+    found: list[Violation] = []
+    if slot < earliest:
+        found.append(
+            _violation(
+                SLOT_WINDOW,
+                f"slot {slot} is before the earliest arrival {earliest}",
+                source,
+                slot,
+                earliest,
+                "min",
+            )
+        )
+    if slot > latest:
+        found.append(
+            _violation(
+                SLOT_WINDOW,
+                f"slot {slot} is after the latest arrival {latest}",
+                source,
+                slot,
+                latest,
+                "min",
+            )
+        )
+    step = rv.rule_value(rv.SLOT_STEP_MIN)
+    off_grid = (slot - earliest) % step.value
+    if off_grid != 0:
+        found.append(
+            _violation(
+                SLOT_WINDOW,
+                f"slot {slot} is {off_grid} min off the {step.value} min grid",
+                rv.reference(step),
+                off_grid,
+                0,
+                "min off grid",
+            )
+        )
+    return tuple(found)
 
 
 RULES: tuple[Rule, ...] = (
@@ -219,5 +354,14 @@ RULES: tuple[Rule, ...] = (
         description="Arrivals per rolling hour on the runway must not exceed the cap",
         public_reason=PublicReason.CAPACITY_LIMIT,
         check=check_runway_throughput,
+    ),
+    Rule(
+        rule_id=SLOT_WINDOW,
+        domain=Domain.ATC,
+        source="scenario.earliest_arrival_min, scenario.latest_arrival_min",
+        description="The arrival slot must be inside the planning window and on "
+        "the slot grid",
+        public_reason=PublicReason.SCHEDULE_LIMIT,
+        check=check_slot_window,
     ),
 )

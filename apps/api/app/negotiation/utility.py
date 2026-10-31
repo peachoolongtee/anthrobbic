@@ -3,8 +3,12 @@
 Costs only rank packages that already pass every rule. They never decide
 legality. All weights live in `DEFAULT_WEIGHTS`.
 
-Domain split: the pilot bears fuel burn, ATC bears connections put at risk by
-arrival delay, and ground bears gate moves, overtime and turnaround delay.
+Domain split: the pilot bears fuel burn, ATC bears arrival delay and the
+connections it puts at risk, and ground bears gate moves, overtime and
+turnaround delay.
+
+Turbulence is not costed. It reaches the decision only through the agents'
+notes; no number here stands for it.
 """
 
 from app.negotiation import rule_values as rv
@@ -26,15 +30,20 @@ class CostWeights(FrozenModel):
     per_gate_move: int
     overtime_per_min: int
     turnaround_delay_per_min: int
+    # Charged to ATC for each minute the arrival lands after the earliest slot.
+    # The default keeps older call sites that omit it working.
+    arrival_delay_per_min: int = 10
 
 
-# Demo assumptions, not calibrated against any airline's costs.
+# Demo assumptions, not calibrated against any airline's costs. Ten units a
+# minute means five minutes of delay costs as much as one gate move.
 DEFAULT_WEIGHTS = CostWeights(
     fuel_per_kg=2,
     per_passenger_at_risk=100,
     per_gate_move=50,
     overtime_per_min=20,
     turnaround_delay_per_min=30,
+    arrival_delay_per_min=10,
 )
 
 
@@ -110,9 +119,15 @@ def compute_cost(
         * weights.turnaround_delay_per_min
     )
 
+    earliest = scenario.earliest_arrival_min.value
+    if earliest is None:
+        unknown.append("earliest_arrival_min")
+    delay_min = 0 if earliest is None else max(0, package.slot.time_min - earliest)
+    arrival_delay_cost = delay_min * weights.arrival_delay_per_min
+
     by_domain = DomainCosts(
         pilot=fuel_cost,
-        atc=connection_cost,
+        atc=connection_cost + arrival_delay_cost,
         ground=move_cost + overtime_cost + delay_cost,
     )
     return CostBreakdown(
@@ -121,6 +136,7 @@ def compute_cost(
         gate_moves=move_cost,
         overtime=overtime_cost,
         turnaround_delay=delay_cost,
+        arrival_delay=arrival_delay_cost,
         by_domain=by_domain,
         total=by_domain.pilot + by_domain.atc + by_domain.ground,
         unknown_inputs=tuple(sorted(set(unknown))),

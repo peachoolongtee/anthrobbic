@@ -84,6 +84,7 @@ _RULE_REJECTIONS: Mapping[str, str] = {
     "ATC-RWY-CLOSED": "Rejected: the arrival runway is closed or unknown.",
     "ATC-TWY-CLOSED": "Rejected: the taxiway serving the gate is closed or unknown.",
     "ATC-RWY-THROUGHPUT": "Rejected: too many arrivals in an hour on the runway.",
+    "ATC-SLOT-WINDOW": "Rejected: the arrival slot is outside the planning window.",
     "PLT-FUEL-POLICY": "Rejected: landing fuel falls below the policy reserve.",
     "GND-GATE-OVERLAP": "Rejected: the gate stay overlaps another flight.",
     "GND-GATE-SIZE": "Rejected: the aircraft does not fit the gate.",
@@ -160,6 +161,7 @@ _RULE_UNITS = frozenset(
         "closed taxiways",
         "size class",
         "min of delay",
+        "min off grid",
         "impossible actions",
     }
 )
@@ -422,6 +424,7 @@ def _cost_lines(cost: CostBreakdown) -> tuple[CostLine, ...]:
         CostLine(name="gate moves", units=cost.gate_moves),
         CostLine(name="ground overtime", units=cost.overtime),
         CostLine(name="turnaround delay", units=cost.turnaround_delay),
+        CostLine(name="arrival delay", units=cost.arrival_delay),
         CostLine(name="total", units=cost.total),
     )
 

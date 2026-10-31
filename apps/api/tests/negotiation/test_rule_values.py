@@ -45,38 +45,50 @@ def test_fuel_reserve_is_labelled_as_policy() -> None:
     assert "FAA InFO 08004" in entry.source
 
 
-def test_alternate_minimums_come_from_121_619() -> None:
+def test_alternate_minimums_are_policy_shaped_on_121_619() -> None:
     for key, value in (
         (rv.ALTERNATE_MIN_CEILING_FT, 2000),
         (rv.ALTERNATE_MIN_VISIBILITY_TENTH_MI, 30),
         (rv.ALTERNATE_WINDOW_MIN, 60),
     ):
         entry = rv.rule_value(key)
-        assert (entry.value, entry.status) == (value, Status.CONFIRMED)
-        assert "121.619(a)" in entry.source
+        assert (entry.value, entry.status) == (value, Status.POLICY)
+        assert entry.source == "shaped on 14 CFR 121.619(a), a dispatch rule"
 
 
 def test_planning_values() -> None:
-    assert rv.runway_hourly_arrivals(FlightRules.IFR).value == 30
-    assert rv.runway_hourly_arrivals(FlightRules.VFR).value == 40
-    assert rv.runway_hourly_arrivals(FlightRules.IFR).status is Status.CONFIRMED
+    ifr = rv.runway_hourly_arrivals(FlightRules.IFR)
+    vfr = rv.runway_hourly_arrivals(FlightRules.VFR)
+    assert (ifr.value, vfr.value) == (30, 40)
+    for entry in (ifr, vfr):
+        assert entry.status is Status.ASSUMPTION
+        assert entry.source == "FAA rule-of-thumb slides, 2006"
     assert rv.turnaround(AircraftSize.NARROW_BODY).value == 25
     assert rv.turnaround(AircraftSize.WIDE_BODY).value == 60
     for size in (AircraftSize.NARROW_BODY, AircraftSize.WIDE_BODY):
         assert rv.turnaround(size).status is Status.SECONDARY
         assert "EUROCONTROL" in rv.turnaround(size).source
-    for key, value in ((rv.APPROACH_GROUND_SPEED_KT, 130), (rv.GATE_BUFFER_MIN, 15)):
+    regional = rv.turnaround(AircraftSize.REGIONAL)
+    assert (regional.value, regional.status) == (20, Status.ASSUMPTION)
+    for key, value in (
+        (rv.APPROACH_GROUND_SPEED_KT, 130),
+        (rv.APPROACH_GROUND_SPEED_SMALL_KT, 100),
+        (rv.GATE_BUFFER_MIN, 15),
+    ):
         assert rv.rule_value(key).value == value
         assert rv.rule_value(key).status is Status.ASSUMPTION
 
 
-def test_wake_values_are_confirmed_and_state_the_simplification() -> None:
+def test_wake_values_are_secondary_and_state_the_simplification() -> None:
     for leader in WakeCategory:
         for follower in WakeCategory:
             entry = rv.wake_separation(leader, follower)
-            assert entry.status is Status.CONFIRMED
+            assert entry.status is Status.SECONDARY
+            assert entry.unit == "nautical miles"
             assert "7110.65BB" in entry.source
             assert "RECAT" in entry.source
+            assert "en route" in entry.source
+            assert "simplification" in entry.source
 
 
 def test_every_aircraft_size_has_a_turnaround() -> None:

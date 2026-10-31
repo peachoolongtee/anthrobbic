@@ -149,7 +149,14 @@ def random_scenario(seed: int, small: bool = False) -> Scenario:
 
     runway_ids = ["R1", "R2", "R3"][: rng.randrange(1, 3 if small else 4)]
     taxiway_ids = ["T1", "T2", "T3"][: rng.randrange(1, 3 if small else 4)]
-    runways = tuple(Runway(runway_id=r, closed=rng.random() < 0.25) for r in runway_ids)
+    runways = tuple(
+        Runway(
+            runway_id=r,
+            closed=rng.random() < 0.25,
+            parallel_group=rng.choice([None, None, "P"]),
+        )
+        for r in runway_ids
+    )
     taxiways = tuple(
         Taxiway(taxiway_id=t, closed=rng.random() < 0.2) for t in taxiway_ids
     )

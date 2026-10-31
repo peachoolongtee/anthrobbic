@@ -17,6 +17,7 @@ def test_the_mapping_is_exactly_this() -> None:
         "ATC-RWY-CLOSED": "resource_closed",
         "ATC-TWY-CLOSED": "resource_closed",
         "ATC-RWY-THROUGHPUT": "capacity_limit",
+        "ATC-SLOT-WINDOW": "schedule_limit",
         "PLT-FUEL-POLICY": "infeasible_for_another_domain",
         "GND-GATE-OVERLAP": "resource_conflict",
         "GND-GATE-SIZE": "equipment_mismatch",

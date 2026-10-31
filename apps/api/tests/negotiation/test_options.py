@@ -137,25 +137,23 @@ def test_gaps_and_empty_enumeration() -> None:
 
 def test_package_bound_is_enforced_exactly() -> None:
     limit = rv.rule_value(rv.MAX_PACKAGES).value
-    # One runway and one gate: 1 DIRECT plus 2 per later slot.
-    # n slots give 1 + 2 (n - 1) = 2n - 1 packages.
-    runways = (Runway(runway_id="R1", closed=False),)
-    gates = (Gate(gate_id="G1", taxiway_id="T1", max_size=AircraftSize.NARROW_BODY),)
     step = rv.rule_value(rv.SLOT_STEP_MIN).value
 
     def with_slots(n: int):  # noqa: ANN202
+        # Before departure, one runway and one gate give one package per slot.
         return make_scenario(
-            runways=runways,
-            gates=gates,
+            decision_point=DecisionPoint.PRE_DEPARTURE,
+            runways=(Runway(runway_id="R1", closed=False),),
+            gates=(
+                Gate(gate_id="G1", taxiway_id="T1", max_size=AircraftSize.NARROW_BODY),
+            ),
             earliest_arrival_min=0,
             latest_arrival_min=step * (n - 1),
         )
 
-    at_limit = (limit + 1) // 2  # 2n - 1 == limit when limit is odd
-    n_ok = at_limit if (2 * at_limit - 1) <= limit else at_limit - 1
-    assert len(enumerate_packages(with_slots(n_ok))) <= limit
+    assert len(enumerate_packages(with_slots(limit))) == limit
     with pytest.raises(PackageBoundError):
-        enumerate_packages(with_slots(n_ok + 1))
+        enumerate_packages(with_slots(limit + 1))
 
 
 def test_bound_raises_instead_of_truncating() -> None:

@@ -29,7 +29,7 @@ from tests.negotiation.factories import make_scenario, random_scenario
 
 API_ROOT = Path(__file__).resolve().parents[2]
 BIG_SEEDS = range(300)
-SMALL_SEEDS = range(60)
+SMALL_SEEDS = range(150)
 
 
 def test_random_scenarios_are_a_meaningful_sample() -> None:

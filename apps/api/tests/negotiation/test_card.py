@@ -526,4 +526,4 @@ def test_a_hand_made_cost_breakdown_is_shown_as_given() -> None:
         unknown_inputs=(),
     )
     card = decision_card(make_scenario(), BASELINE_PACKAGE, cost)
-    assert [c.units for c in card.costs] == [1, 2, 3, 4, 5, 15]
+    assert [c.units for c in card.costs] == [1, 2, 3, 4, 5, 0, 15]

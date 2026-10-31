@@ -12,7 +12,8 @@ Pinned rule values (approach speed 130 kt, so a mile of separation costs
   turnaround: narrow-body 25 min, wide-body 60 min
   minimum connection 30 min
 Pinned weights: 2 per kg of fuel, 100 per passenger at risk, 50 per gate move,
-  20 per overtime minute, 30 per minute of turnaround delay.
+  20 per overtime minute, 30 per minute of turnaround delay, 10 per minute of
+  arrival delay after the earliest slot (charged to ATC).
 
 Common base (see `worked`): airborne, IFR, own wake LARGE, narrow-body, earliest
 arrival 100, latest 110, so slots 100, 105, 110. Taxi-in 10 min, so gate-in is
@@ -26,7 +27,9 @@ Packages considered with 1 runway and 2 gates: slot 100 has DIRECT only (2
 packages); slots 105 and 110 each have HOLD and VECTOR (4 packages each); 10 in
 all. Delay costs with the base: HOLD 5 min = 5 x 40 = 200 kg = 400; HOLD 10 min
 = 400 kg = 800; VECTOR 5 min = 5 x 50 = 250 kg = 500. A gate other than G1 adds
-a gate move of 50.
+a gate move of 50. Arrival delay adds 10 a minute: 5 min = 50, 10 min = 100.
+A gate is held until the next departure when that is later than gate-in plus
+the turnaround (no tow is modelled); the base departs at 300.
 """
 
 from dataclasses import dataclass
@@ -122,6 +125,13 @@ def heavy_at(time_min: int) -> tuple[OtherArrival, ...]:
     )
 
 
+def many_gates(n: int) -> list[Gate]:
+    return [
+        Gate(gate_id=f"G{i}", taxiway_id="T1", max_size=AircraftSize.NARROW_BODY)
+        for i in range(1, n + 1)
+    ]
+
+
 def pk(runway: str, time_min: int, gate: str, action: FlightPlanAction) -> Package:
     return make_package(time_min, runway, gate, action)
 
@@ -141,8 +151,9 @@ DEALS = [
     Deal_("free", worked(), pk("R1", 100, "G1", DIRECT), 0, 10, 10),
     # W2. Another LARGE lands at 100, so our LARGE needs 2 min behind it.
     # 100: gap 0 < 2, illegal (2 packages). 105: gap 5, legal.
-    # HOLD 5 min on G1 = 200 kg x 2 = 400; VECTOR = 500; G2 adds 50; slot 110
-    # HOLD = 800. Cheapest is HOLD at 105 on G1 = 400. Legal: 10 - 2 = 8.
+    # HOLD 5 min on G1 = 200 kg x 2 = 400, plus 5 min of delay = 50, so 450;
+    # VECTOR = 500 + 50; G2 adds 50; slot 110 HOLD = 800 + 100. Cheapest is
+    # HOLD at 105 on G1 = 450. Legal: 10 - 2 = 8.
     Deal_(
         "follows a large",
         worked(
@@ -156,7 +167,7 @@ DEALS = [
             )
         ),
         pk("R1", 105, "G1", HOLD),
-        400,
+        450,
         10,
         8,
     ),
@@ -174,12 +185,12 @@ DEALS = [
         10,
     ),
     # W4. HEAVY at 101. At 100 the gap is 1 < 2, illegal. At 105 the gap is
-    # 4 >= 3, legal. Cheapest legal: HOLD at 105 on G1 = 400. Legal: 8.
+    # 4 >= 3, legal. Cheapest legal: HOLD at 105 on G1 = 400 + 50 = 450. Legal: 8.
     Deal_(
         "one minute inside the wake limit",
         worked(other_arrivals=heavy_at(101)),
         pk("R1", 105, "G1", HOLD),
-        400,
+        450,
         10,
         8,
     ),
@@ -187,12 +198,13 @@ DEALS = [
     # 6450 - 4000 - 200 = 2250 = the 2250 required: exactly at the limit, legal.
     # VECTOR at 105 burns 250, landing 2200 < 2250, illegal. At 110 HOLD burns
     # 400, landing 2050, illegal; VECTOR 500, landing 1950, illegal. Only HOLD at
-    # 105 survives (2 gates), so legal = 2; G1 costs 200 x 2 = 400.
+    # 105 survives (2 gates), so legal = 2; G1 costs 200 x 2 = 400, plus 50 for
+    # 5 min of delay = 450.
     Deal_(
         "fuel exactly at the policy limit",
         worked(other_arrivals=heavy_at(101), fuel_on_board_kg=6_450),
         pk("R1", 105, "G1", HOLD),
-        400,
+        450,
         10,
         2,
     ),
@@ -258,9 +270,9 @@ DEALS = [
     ),
     # W10. Before departure, HEAVY at 101 rules out 100. A ground delay burns no
     # airborne fuel, so with 6449 kg aboard (too little for an airborne hold)
-    # landing fuel is 6449 - 4000 = 2449 >= 2250. Slots 105 and 110 each cost 0
-    # (no fuel, G1, no overtime, no turnaround delay); the earlier one wins the
-    # tie. Packages: 2 + 2 + 2 = 6; legal 4.
+    # landing fuel is 6449 - 4000 = 2449 >= 2250. Slot 105 costs 5 min of delay
+    # = 50 (no fuel, G1, no overtime, no turnaround delay); slot 110 costs
+    # 10 x 10 = 100. So 105 wins with 50. Packages: 2 + 2 + 2 = 6; legal 4.
     Deal_(
         "ground delay before departure",
         worked(
@@ -269,7 +281,7 @@ DEALS = [
             fuel_on_board_kg=6_449,
         ),
         pk("R1", 105, "G1", GROUND),
-        0,
+        50,
         6,
         4,
     ),
@@ -307,6 +319,133 @@ DEALS = [
         10,
         2,
     ),
+    # W13. R1 and R2 are parallel runways in one group, and a LARGE lands on R2
+    # at 100. They count as one runway, so our LARGE needs 2 min behind it on
+    # either. At 100 all 4 packages (2 runways x 2 gates, DIRECT) are illegal.
+    # At 105 the gap is 5, legal: 2 runways x 2 gates x 2 actions x 2 slots = 16
+    # legal of 20. Cheapest: HOLD at 105 on R1 (first by the tie-break), G1 =
+    # 400 + 50 = 450.
+    Deal_(
+        "parallel runways are one runway",
+        worked(
+            runways=(
+                Runway(runway_id="R1", closed=False, parallel_group="P"),
+                Runway(runway_id="R2", closed=False, parallel_group="P"),
+            ),
+            other_arrivals=(
+                OtherArrival(
+                    flight_id="LRG",
+                    wake_category=WakeCategory.LARGE,
+                    runway_id="R2",
+                    time_min=100,
+                ),
+            ),
+        ),
+        pk("R1", 105, "G1", HOLD),
+        450,
+        20,
+        16,
+    ),
+    # W14. The same traffic with no parallel group: R1 is independent of R2, so
+    # DIRECT at 100 on R1 is legal and costs 0. Only the 2 packages at 100 on R2
+    # itself (gap 0) are illegal, so 18 of 20 are legal.
+    Deal_(
+        "independent runways",
+        worked(
+            runways=(
+                Runway(runway_id="R1", closed=False),
+                Runway(runway_id="R2", closed=False),
+            ),
+            other_arrivals=(
+                OtherArrival(
+                    flight_id="LRG",
+                    wake_category=WakeCategory.LARGE,
+                    runway_id="R2",
+                    time_min=100,
+                ),
+            ),
+        ),
+        pk("R1", 100, "G1", DIRECT),
+        0,
+        20,
+        18,
+    ),
+    # W15. Another flight holds G1 from 150 to 170, and ours departs at 200. With
+    # no tow the aircraft keeps G1 until 200, so every stay on G1 (110 to 200
+    # at 100; 115 to 200 at 105; 120 to 200 at 110) overlaps 150 to 170 by far
+    # more than the buffer. G1 is out. G2 is free: DIRECT at 100 on G2 costs a
+    # gate move, 50. Legal: G2 only, 1 + 2 + 2 = 5 of 10.
+    Deal_(
+        "gate held until the next departure",
+        worked(
+            next_departure_min=200,
+            gate_occupancies=(
+                GateOccupancy(
+                    gate_id="G1", flight_id="OTHER", start_min=150, end_min=170
+                ),
+            ),
+        ),
+        pk("R1", 100, "G2", DIRECT),
+        50,
+        10,
+        5,
+    ),
+    # W16. The scenario's own flight appears in the traffic list and in the gate
+    # occupancies. Neither counts against it: DIRECT at 100 on G1 costs 0 and
+    # all 10 packages are legal.
+    Deal_(
+        "own flight is not its own traffic",
+        worked(
+            other_arrivals=(
+                OtherArrival(
+                    flight_id="AB123",
+                    wake_category=WakeCategory.LARGE,
+                    runway_id="R1",
+                    time_min=100,
+                ),
+            ),
+            gate_occupancies=(
+                GateOccupancy(
+                    gate_id="G1", flight_id="AB123", start_min=110, end_min=135
+                ),
+            ),
+        ),
+        pk("R1", 100, "G1", DIRECT),
+        0,
+        10,
+        10,
+    ),
+    # W17. Pre-departure, window 100 to 300 (41 slots). G1 is occupied 90 to 205.
+    # Moving to G2 now costs a gate move, 50. Waiting for G1 needs gate-in at
+    # 205 + 15 = 220, so slot 210 or later: 110 min of ground delay = 110 x 10 =
+    # 1100. 50 < 1100, so DIRECT at 100 on G2 wins. A long wait must not beat a
+    # gate move. Packages: 2 gates x (1 + 40) = 82. Legal: all 41 on G2, plus G1
+    # at slots 210 to 300 (19 slots; 210 is exactly 15 clear) = 60.
+    Deal_(
+        "a long ground delay does not beat a gate move",
+        worked(
+            decision_point=DecisionPoint.PRE_DEPARTURE,
+            latest_arrival_min=300,
+            gate_occupancies=(
+                GateOccupancy(gate_id="G1", flight_id="OLD", start_min=90, end_min=205),
+            ),
+        ),
+        pk("R1", 100, "G2", DIRECT),
+        50,
+        82,
+        60,
+    ),
+    # W18. Exactly 2000 packages (one runway, 400 gates x 5) is allowed. All are
+    # legal on identical terms, so the cost is 0 and the tie-break picks the
+    # smallest gate ID as text, "G1", at 100.
+    Deal_(
+        "exactly at the package bound",
+        worked(gates=tuple(many_gates(400))),
+        pk("R1", 100, "G1", DIRECT),
+        0,
+        2000,
+        2000,
+    ),
 ]
 
 
@@ -338,7 +477,9 @@ def test_worked_cost_components() -> None:
     # By domain: ground carries gate moves, overtime and turnaround delay.
     assert (c7.by_domain.ground, c7.by_domain.pilot, c7.by_domain.atc) == (250, 0, 0)
     w4 = decide(DEALS[3].scenario).cost  # type: ignore[union-attr]
-    assert (w4.fuel_burn, w4.by_domain.pilot, w4.total) == (400, 400, 400)
+    # W4: fuel 400 to the pilot, arrival delay 5 min x 10 = 50 to ATC.
+    assert (w4.fuel_burn, w4.by_domain.pilot, w4.total) == (400, 400, 450)
+    assert (w4.arrival_delay, w4.by_domain.atc) == (50, 50)
 
 
 def test_connections_at_risk_are_charged_to_atc() -> None:
@@ -350,11 +491,11 @@ def test_connections_at_risk_are_charged_to_atc() -> None:
     )
     result = decide(scenario)
     assert isinstance(result, Deal)
-    # HOLD at 105 on G1: fuel 400 + connections 1000 = 1400.
+    # HOLD at 105 on G1: fuel 400 + connections 1000 + arrival delay 50 = 1450.
     assert result.package == pk("R1", 105, "G1", HOLD)
     assert (result.cost.fuel_burn, result.cost.connections_at_risk) == (400, 1000)
-    assert result.cost.by_domain.atc == 1000
-    assert result.cost.total == 1400
+    assert result.cost.by_domain.atc == 1050
+    assert result.cost.total == 1450
 
 
 def no_deal(scenario: Any) -> NoDeal:
@@ -434,17 +575,28 @@ def test_unknown_runways_leave_nothing_to_enumerate() -> None:
     assert "runways" in result.reason
 
 
-def test_an_empty_window_is_not_a_fault() -> None:
-    result = no_deal(worked(latest_arrival_min=99))
-    assert result.reason_type is NoDealReason.NOTHING_LEGAL
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"latest_arrival_min": 99},
+        {"runways": ()},
+        {"gates": ()},
+    ],
+    ids=["latest before earliest", "no runways", "no gates"],
+)
+def test_an_empty_or_inconsistent_input_is_a_fault(overrides: dict[str, Any]) -> None:
+    result = no_deal(worked(**overrides))
+    assert result.reason_type is NoDealReason.SYSTEM_FAULT
     assert result.packages_considered == 0
+    assert result.nearest_package is None
 
 
-def test_missing_data_on_some_packages_only_is_still_nothing_legal() -> None:
+def test_a_package_blocked_only_by_missing_data_makes_it_a_fault() -> None:
     # HEAVY at 101 and 6449 kg, as in the one-kg-short case, but the hold rate is
-    # unknown. HOLD packages now fail for missing data; VECTOR packages fail the
-    # fuel limit for real, and DIRECT at 100 fails wake separation with no missing
-    # data at all. Missing data does not block every package.
+    # unknown. HOLD packages fail only because of the missing hold rate, so
+    # supplying it might make one legal: that is a fault, not a verdict. VECTOR
+    # packages fail the fuel limit for real and DIRECT at 100 fails wake
+    # separation.
     result = no_deal(
         worked(
             other_arrivals=heavy_at(101),
@@ -452,8 +604,187 @@ def test_missing_data_on_some_packages_only_is_still_nothing_legal() -> None:
             hold_burn_kg_per_min=None,
         )
     )
-    assert result.reason_type is NoDealReason.NOTHING_LEGAL
+    assert result.reason_type is NoDealReason.SYSTEM_FAULT
     assert result.binding_rule_ids == ("PLT-FUEL-POLICY",)
+
+
+def test_missing_data_alongside_a_real_violation_is_still_nothing_legal() -> None:
+    # R1 is closed (a real limit, on all 10 packages) and fuel on board is
+    # unknown (missing data, on all 10). No package is blocked only by missing
+    # data, because every one also hits the closed runway. Both rules eliminate
+    # 10 packages, so both bind, in ID order.
+    result = no_deal(
+        worked(runways=(Runway(runway_id="R1", closed=True),), fuel_on_board_kg=None)
+    )
+    assert result.reason_type is NoDealReason.NOTHING_LEGAL
+    assert result.binding_rule_ids == ("ATC-RWY-CLOSED", "PLT-FUEL-POLICY")
+    assert [(e.rule_id, e.packages_eliminated) for e in result.eliminations] == [
+        ("ATC-RWY-CLOSED", 10),
+        ("PLT-FUEL-POLICY", 10),
+    ]
+
+
+def test_eliminations_count_packages_not_violations() -> None:
+    # One package (window 100 to 100, one runway, one gate) with two wake
+    # conflicts: LARGE at 100 (gap 0) and at 101 (gap 1), both under 2 min.
+    # Two violations, but one package eliminated.
+    arrivals = tuple(
+        OtherArrival(
+            flight_id=f"L{t}",
+            wake_category=WakeCategory.LARGE,
+            runway_id="R1",
+            time_min=t,
+        )
+        for t in (100, 101)
+    )
+    result = no_deal(
+        worked(latest_arrival_min=100, gates=(G1,), other_arrivals=arrivals)
+    )
+    assert result.packages_considered == 1
+    assert [(e.rule_id, e.packages_eliminated) for e in result.eliminations] == [
+        ("ATC-WAKE-SEP", 1)
+    ]
+    assert len(result.nearest_violations) == 2
+
+
+def test_nearest_package_prefers_fewer_violations_when_rule_counts_tie() -> None:
+    # One gate. LARGE at 100 and HEAVY at 101 give DIRECT at 100 two wake
+    # violations (gaps 0 and 1 against 2). At 105 and 110 wake is fine (gaps
+    # 5 and 4 against 3) but 6449 kg fails fuel once each. One rule each, so
+    # fewer violations decides: the first HOLD at 105 (1 violation) beats
+    # DIRECT at 100 (2) even though DIRECT sorts first.
+    arrivals = (
+        *heavy_at(101),
+        OtherArrival(
+            flight_id="LRG",
+            wake_category=WakeCategory.LARGE,
+            runway_id="R1",
+            time_min=100,
+        ),
+    )
+    result = no_deal(
+        worked(gates=(G1,), other_arrivals=arrivals, fuel_on_board_kg=6_449)
+    )
+    assert result.nearest_package == pk("R1", 105, "G1", HOLD)
+    assert [(v.rule_id, v.observed, v.limit) for v in result.nearest_violations] == [
+        ("PLT-FUEL-POLICY", 2249, 2250)
+    ]
+
+
+def test_nearest_package_prefers_fewer_rules_over_fewer_violations() -> None:
+    # One gate, fuel 6449. Three LARGE arrivals at 99, 100 and 101 give DIRECT
+    # at 100 three wake violations and nothing else: 1 rule, 3 violations.
+    # LARGE at 106 and 111 give each HOLD and VECTOR at 105 and 110 one wake
+    # violation (gap 1) plus a fuel violation: 2 rules, 2 violations. Fewer
+    # rules wins, so DIRECT at 100 is nearest despite having the most
+    # violations.
+    arrivals = tuple(
+        OtherArrival(
+            flight_id=f"L{t}",
+            wake_category=WakeCategory.LARGE,
+            runway_id="R1",
+            time_min=t,
+        )
+        for t in (99, 100, 101, 106, 111)
+    )
+    result = no_deal(
+        worked(gates=(G1,), other_arrivals=arrivals, fuel_on_board_kg=6_449)
+    )
+    assert result.packages_considered == 5
+    assert result.nearest_package == pk("R1", 100, "G1", DIRECT)
+    # Gaps 1, 0, 1 against the 2 min needed, in arrival order.
+    assert [(v.observed, v.limit) for v in result.nearest_violations] == [
+        (1, 2),
+        (0, 2),
+        (1, 2),
+    ]
+    # Wake eliminates all 5 packages, fuel the 4 delayed ones.
+    assert [(e.rule_id, e.packages_eliminated) for e in result.eliminations] == [
+        ("ATC-WAKE-SEP", 5),
+        ("PLT-FUEL-POLICY", 4),
+    ]
+    assert result.binding_rule_ids == ("ATC-WAKE-SEP",)
+
+
+def test_nearest_package_is_not_just_the_first_package() -> None:
+    # G1 is occupied 95-140, so every G1 package breaks the overlap rule, and
+    # HEAVY at 101 breaks wake separation at 100 on both gates. With 6449 kg
+    # every delayed package breaks fuel. G1 packages break two rules. On G2,
+    # DIRECT at 100 breaks only wake and the delayed ones only fuel, so G2
+    # DIRECT at 100 is the first of the one-rule packages.
+    result = no_deal(
+        worked(
+            other_arrivals=heavy_at(101),
+            fuel_on_board_kg=6_449,
+            gate_occupancies=(
+                GateOccupancy(gate_id="G1", flight_id="OLD", start_min=95, end_min=140),
+            ),
+        )
+    )
+    assert result.nearest_package == pk("R1", 100, "G2", DIRECT)
+    assert [v.rule_id for v in result.nearest_violations] == ["ATC-WAKE-SEP"]
+
+
+def test_binding_violations_carry_observed_value_and_limit() -> None:
+    # One kg short: the first package to break the fuel policy, in package
+    # order, is HOLD at 105 on G1, landing with 6449 - 4000 - 200 = 2249 against
+    # 2250.
+    result = no_deal(worked(other_arrivals=heavy_at(101), fuel_on_board_kg=6_449))
+    assert [
+        (v.rule_id, v.observed, v.limit, v.unit) for v in result.binding_violations
+    ] == [("PLT-FUEL-POLICY", 2249, 2250, "kg")]
+    # Hard turnaround: HOLD at 105 has 135 - 115 = 20 min against 25.
+    turnaround = no_deal(
+        worked(
+            other_arrivals=heavy_at(101),
+            next_departure_min=135,
+            next_leg_turnaround_hard=True,
+        )
+    )
+    assert [
+        (v.rule_id, v.observed, v.limit, v.unit) for v in turnaround.binding_violations
+    ] == [("GND-TURNAROUND", 20, 25, "min")]
+    closed = no_deal(worked(runways=(Runway(runway_id="R1", closed=True),)))
+    assert [(v.rule_id, v.observed, v.limit) for v in closed.binding_violations] == [
+        ("ATC-RWY-CLOSED", 1, 0)
+    ]
+
+
+def test_binding_violation_falls_back_to_missing_data_when_that_is_all_there_is() -> (
+    None
+):
+    result = no_deal(worked(fuel_on_board_kg=None))
+    assert [(v.rule_id, v.observed) for v in result.binding_violations] == [
+        ("PLT-FUEL-POLICY", None)
+    ]
+
+
+def test_binding_violation_prefers_a_real_limit_over_missing_data() -> None:
+    # The hold rate is unknown, so the first package to fail fuel, HOLD at 105,
+    # fails only for missing data. The next, VECTOR at 105, lands with
+    # 6449 - 4000 - 250 = 2199 against 2250: a real limit, which the card can
+    # show with numbers, so it is the one reported.
+    result = no_deal(
+        worked(
+            other_arrivals=heavy_at(101),
+            fuel_on_board_kg=6_449,
+            hold_burn_kg_per_min=None,
+        )
+    )
+    assert [(v.rule_id, v.observed, v.limit) for v in result.binding_violations] == [
+        ("PLT-FUEL-POLICY", 2199, 2250)
+    ]
+
+
+def test_every_binding_rule_gets_one_violation() -> None:
+    result = no_deal(
+        worked(runways=(Runway(runway_id="R1", closed=True),), fuel_on_board_kg=None)
+    )
+    # The closed runway has a real limit; the fuel rule only missing data.
+    assert [v.rule_id for v in result.binding_violations] == [
+        "ATC-RWY-CLOSED",
+        "PLT-FUEL-POLICY",
+    ]
 
 
 def test_unknown_decision_point_is_a_fault_named_by_the_fuel_rule() -> None:
@@ -464,3 +795,12 @@ def test_unknown_decision_point_is_a_fault_named_by_the_fuel_rule() -> None:
     assert result.packages_considered == 14
     assert result.reason_type is NoDealReason.SYSTEM_FAULT
     assert result.binding_rule_ids == ("PLT-FUEL-POLICY",)
+
+
+def test_one_package_over_the_bound_is_a_fault_not_an_exception() -> None:
+    # 401 gates x 5 packages = 2005 > 2000.
+    result = no_deal(worked(gates=tuple(many_gates(401))))
+    assert result.reason_type is NoDealReason.SYSTEM_FAULT
+    assert result.packages_considered == 0
+    assert result.nearest_package is None
+    assert "too many" in result.reason

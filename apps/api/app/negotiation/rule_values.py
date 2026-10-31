@@ -33,15 +33,17 @@ class RuleValue(BaseModel):
 
 
 # Wake separation uses the legacy classes, not RECAT, and the current order
-# rather than the 2015 text. Every pair is checked on one runway and the leader
-# is on approach, so the values for "small behind heavy/large on the same
-# runway" apply, and behind a super the low-and-slow values apply (at or below
-# FL240 and under 250 kt). Small behind a B757 (4 NM) is not modelled because
-# there is no B757 category.
+# rather than the 2015 text. In that order the legacy-class minima are listed
+# under en route and are applied here to arrivals as a simplification. Every
+# pair is checked on one runway and the leader is on approach, so the values for
+# "small behind heavy/large on the same runway" apply, and behind a super the
+# low-and-slow values apply (at or below FL240 and under 250 kt). Small behind
+# a B757 (4 NM) is not modelled because there is no B757 category.
 _WAKE_SOURCE = (
-    "FAA JO 7110.65BB para 5-5-4 (legacy classes; simplification, real "
-    "terminals use RECAT; leader on approach so the low-slow behind-super "
-    "values apply)"
+    "FAA JO 7110.65BB para 5-5-4, current order not the 2015 text. The legacy "
+    "minima are listed there under en route and are applied here to arrivals "
+    "as a simplification; real terminals use RECAT. Leader on approach, so the "
+    "low-slow behind-super values apply"
 )
 _ASSUMED = "assumption: demo default, not from a regulation"
 
@@ -54,7 +56,8 @@ RUNWAY_HOURLY_ARRIVALS_IFR = "runway_hourly_arrivals.ifr"
 RUNWAY_HOURLY_ARRIVALS_VFR = "runway_hourly_arrivals.vfr"
 MINUTES_PER_HOUR = "minutes_per_hour"
 GATE_BUFFER_MIN = "gate_buffer_min"
-APPROACH_GROUND_SPEED_KT = "approach_ground_speed_kt"
+APPROACH_GROUND_SPEED_KT = "approach_ground_speed_kt"  # every class but small
+APPROACH_GROUND_SPEED_SMALL_KT = "approach_ground_speed_kt.small"
 MIN_CONNECTION_MIN = "min_connection_min"
 SLOT_STEP_MIN = "slot_step_min"
 MAX_PACKAGES = "max_packages"
@@ -104,7 +107,7 @@ def _build() -> Mapping[str, RuleValue]:
             value=nm,
             unit="nautical miles",
             source=_WAKE_SOURCE,
-            status=Status.CONFIRMED,
+            status=Status.SECONDARY,
         )
         for leader, follower, nm in _WAKE_LISTED
     ]
@@ -114,7 +117,7 @@ def _build() -> Mapping[str, RuleValue]:
             value=3,
             unit="nautical miles",
             source=f"{_WAKE_SOURCE}; radar minimum for pairs not listed",
-            status=Status.CONFIRMED,
+            status=Status.SECONDARY,
         ),
         RuleValue(
             key=FUEL_RESERVE_MIN,
@@ -130,22 +133,22 @@ def _build() -> Mapping[str, RuleValue]:
             key=ALTERNATE_WINDOW_MIN,
             value=60,
             unit="minutes either side of ETA",
-            source="14 CFR 121.619(a)",
-            status=Status.CONFIRMED,
+            source="shaped on 14 CFR 121.619(a), a dispatch rule",
+            status=Status.POLICY,
         ),
         RuleValue(
             key=ALTERNATE_MIN_CEILING_FT,
             value=2000,
             unit="feet; no alternate needed at or above",
-            source="14 CFR 121.619(a)",
-            status=Status.CONFIRMED,
+            source="shaped on 14 CFR 121.619(a), a dispatch rule",
+            status=Status.POLICY,
         ),
         RuleValue(
             key=ALTERNATE_MIN_VISIBILITY_TENTH_MI,
             value=30,
             unit="tenths of a statute mile; no alternate needed at or above",
-            source="14 CFR 121.619(a)",
-            status=Status.CONFIRMED,
+            source="shaped on 14 CFR 121.619(a), a dispatch rule",
+            status=Status.POLICY,
         ),
         RuleValue(
             key=MINUTES_PER_HOUR,
@@ -158,22 +161,29 @@ def _build() -> Mapping[str, RuleValue]:
             key=RUNWAY_HOURLY_ARRIVALS_IFR,
             value=30,
             unit="arrivals per runway per rolling hour",
-            source="FAA rules-of-thumb slides, 2006",
-            status=Status.CONFIRMED,
+            source="FAA rule-of-thumb slides, 2006",
+            status=Status.ASSUMPTION,
         ),
         RuleValue(
             key=RUNWAY_HOURLY_ARRIVALS_VFR,
             value=40,
             unit="arrivals per runway per rolling hour",
-            source="FAA rules-of-thumb slides, 2006",
-            status=Status.CONFIRMED,
+            source="FAA rule-of-thumb slides, 2006",
+            status=Status.ASSUMPTION,
         ),
         _assumption(GATE_BUFFER_MIN, 15, "minutes between gate occupancies"),
         _assumption(
             APPROACH_GROUND_SPEED_KT,
             130,
             "knots",
-            "final approach speed; converts miles of separation to minutes",
+            "final approach speed for every class but small; converts miles of "
+            "separation to minutes",
+        ),
+        _assumption(
+            APPROACH_GROUND_SPEED_SMALL_KT,
+            100,
+            "knots",
+            "final approach speed for a small follower",
         ),
         _assumption(
             turnaround_key(AircraftSize.REGIONAL),
@@ -229,6 +239,17 @@ def runway_hourly_arrivals(rules: FlightRules) -> RuleValue:
         RUNWAY_HOURLY_ARRIVALS_IFR
         if rules is FlightRules.IFR
         else RUNWAY_HOURLY_ARRIVALS_VFR
+    )
+    return RULE_VALUES[key]
+
+
+def approach_speed(follower: WakeCategory) -> RuleValue:
+    """Final approach speed of the following aircraft, which sets how many
+    minutes a mile of separation takes."""
+    key = (
+        APPROACH_GROUND_SPEED_SMALL_KT
+        if follower is WakeCategory.SMALL
+        else APPROACH_GROUND_SPEED_KT
     )
     return RULE_VALUES[key]
 

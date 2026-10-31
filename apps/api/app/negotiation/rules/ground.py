@@ -9,6 +9,7 @@ from app.negotiation.contracts import (
     Scenario,
     Violation,
 )
+from app.negotiation.rules.shared import gates_with_id
 
 GATE_OVERLAP = "GND-GATE-OVERLAP"
 GATE_SIZE = "GND-GATE-SIZE"
@@ -34,14 +35,27 @@ def _violation(
     )
 
 
-def _missing(rule_id: str, name: str, source: str) -> Violation:
-    return Violation.missing_data(rule_id, Domain.GROUND, name, source)
+def _missing(
+    rule_id: str, name: str, source: str, reason: str = "unknown"
+) -> Violation:
+    return Violation.missing_data(rule_id, Domain.GROUND, name, source, reason)
+
+
+def taxi_problem(scenario: Scenario) -> str | None:
+    """ "unknown" or "invalid" (negative) when taxi-in cannot be used, else None."""
+    taxi = scenario.taxi_in_min.value
+    if taxi is None:
+        return "unknown"
+    return "invalid" if taxi < 0 else None
 
 
 def gate_in_min(scenario: Scenario, package: Package) -> int | None:
-    """When the aircraft reaches the gate: landing slot plus taxi-in."""
+    """When the aircraft reaches the gate: landing slot plus taxi-in. None if
+    taxi-in is unknown or invalid."""
     taxi = scenario.taxi_in_min.value
-    return None if taxi is None else package.slot.time_min + taxi
+    if taxi is None or taxi < 0:
+        return None
+    return package.slot.time_min + taxi
 
 
 def turnaround_min(scenario: Scenario) -> rv.RuleValue | None:
@@ -50,30 +64,71 @@ def turnaround_min(scenario: Scenario) -> rv.RuleValue | None:
     return None if size is None else rv.turnaround(size)
 
 
+def gate_stay_end_min(scenario: Scenario, package: Package) -> int | None:
+    """When the aircraft frees its gate.
+
+    No tow is modelled, so it holds the gate until its next departure when that
+    is known and later than gate-in plus the minimum turnaround; otherwise it
+    holds it for the minimum turnaround.
+    """
+    start = gate_in_min(scenario, package)
+    stay = turnaround_min(scenario)
+    if start is None or stay is None:
+        return None
+    end = start + stay.value
+    depart = scenario.next_departure_min.value
+    return end if depart is None or depart <= end else depart
+
+
 def check_gate_overlap(scenario: Scenario, package: Package) -> tuple[Violation, ...]:
     """The aircraft's gate stay, plus buffer, must not touch another's.
 
+    The scenario's own flight is skipped. An occupancy that names a gate the
+    scenario does not list is a missing-data violation, never dropped.
     `observed` is the clear gap in minutes between the two stays (negative when
     they overlap) and `limit` is the buffer.
     """
     buffer = rv.rule_value(rv.GATE_BUFFER_MIN)
     source = rv.reference(buffer)
     start = gate_in_min(scenario, package)
+    end = gate_stay_end_min(scenario, package)
     stay = turnaround_min(scenario)
     occupancies = scenario.gate_occupancies.value
+    gates = scenario.gates.value
+    own_id = scenario.flight_id.value
     missing: list[Violation] = []
-    if start is None:
-        missing.append(_missing(GATE_OVERLAP, "taxi-in time", source))
+    taxi = taxi_problem(scenario)
+    if taxi is not None:
+        missing.append(_missing(GATE_OVERLAP, "taxi-in time", source, taxi))
     if stay is None:
         missing.append(_missing(GATE_OVERLAP, "aircraft size", source))
     if occupancies is None:
         missing.append(_missing(GATE_OVERLAP, "gate occupancies", source))
-    if start is None or stay is None or occupancies is None:
+    if gates is None:
+        missing.append(_missing(GATE_OVERLAP, "gate map", source))
+    if (
+        start is None
+        or end is None
+        or stay is None
+        or occupancies is None
+        or gates is None
+    ):
         return tuple(missing)
 
-    end = start + stay.value
+    known = {g.gate_id for g in gates}
     found: list[Violation] = []
     for other in occupancies:
+        if own_id is not None and other.flight_id == own_id:
+            continue
+        if other.gate_id not in known:
+            found.append(
+                _missing(
+                    GATE_OVERLAP,
+                    f"gate {other.gate_id} of occupancy {other.flight_id}",
+                    source,
+                )
+            )
+            continue
         if other.gate_id != package.gate_id:
             continue
         clear_min = max(start - other.end_min, other.start_min - end)
@@ -94,7 +149,7 @@ def check_gate_overlap(scenario: Scenario, package: Package) -> tuple[Violation,
 
 
 def check_gate_size(scenario: Scenario, package: Package) -> tuple[Violation, ...]:
-    """The gate must be known and large enough for the aircraft.
+    """The gate must be known, listed once, and large enough for the aircraft.
 
     `observed` is the aircraft's size class and `limit` the gate's maximum.
     """
@@ -109,9 +164,19 @@ def check_gate_size(scenario: Scenario, package: Package) -> tuple[Violation, ..
     if size is None or gates is None:
         return tuple(missing)
 
-    gate = next((g for g in gates if g.gate_id == package.gate_id), None)
-    if gate is None:
+    listed = gates_with_id(gates, package.gate_id)
+    if not listed:
         return (_missing(GATE_SIZE, f"gate {package.gate_id}", source),)
+    if len(listed) > 1:
+        return (
+            _missing(
+                GATE_SIZE,
+                f"gate {package.gate_id} (listed more than once)",
+                source,
+                "ambiguous",
+            ),
+        )
+    gate = listed[0]
     if size > gate.max_size:
         return (
             _violation(
@@ -143,8 +208,9 @@ def check_turnaround(scenario: Scenario, package: Package) -> tuple[Violation, .
     missing: list[Violation] = []
     if depart is None:
         missing.append(_missing(TURNAROUND, "next departure", source))
-    if start is None:
-        missing.append(_missing(TURNAROUND, "taxi-in time", source))
+    taxi = taxi_problem(scenario)
+    if taxi is not None:
+        missing.append(_missing(TURNAROUND, "taxi-in time", source, taxi))
     if stay is None:
         missing.append(_missing(TURNAROUND, "aircraft size", source))
     if depart is None or start is None or stay is None:

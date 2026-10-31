@@ -18,8 +18,8 @@ from app.negotiation.contracts import (
     Rule,
     Scenario,
     Violation,
-    WeatherPeriod,
 )
+from app.negotiation.rules.shared import is_poor
 
 FUEL_POLICY = "PLT-FUEL-POLICY"
 
@@ -91,10 +91,24 @@ def extra_burn_kg(scenario: Scenario, package: Package) -> int | None:
     return None if rate is None else delay * rate
 
 
-def _poor(period: WeatherPeriod) -> bool:
-    ceiling = rv.rule_value(rv.ALTERNATE_MIN_CEILING_FT).value
-    visibility = rv.rule_value(rv.ALTERNATE_MIN_VISIBILITY_TENTH_MI).value
-    return period.ceiling_ft < ceiling or period.visibility_tenth_mi < visibility
+# Quantities that cannot be real if they break these bounds. Bad data fails
+# closed, the same as missing data.
+_MUST_BE_POSITIVE = frozenset({"cruise_burn_kg_per_min", "hold_burn_kg_per_min"})
+_MUST_NOT_BE_NEGATIVE = frozenset(
+    {"fuel_on_board_kg", "trip_fuel_kg", "alternate_fuel_kg"}
+)
+
+
+def _problem(name: str, value: object) -> str | None:
+    """ "unknown" or "invalid" when a needed input cannot be used, else None."""
+    if value is None:
+        return "unknown"
+    if isinstance(value, int) and not isinstance(value, bool):
+        if name in _MUST_BE_POSITIVE and value <= 0:
+            return "invalid"
+        if name in _MUST_NOT_BE_NEGATIVE and value < 0:
+            return "invalid"
+    return None
 
 
 def alternate_required(scenario: Scenario, package: Package) -> bool:
@@ -125,7 +139,7 @@ def alternate_required(scenario: Scenario, package: Package) -> bool:
         covered_to = max(covered_to, period.end_min)
     if covered_to < window_end:
         return True
-    return any(_poor(p) for p in relevant)
+    return any(is_poor(p) for p in relevant)
 
 
 def project_fuel(scenario: Scenario, package: Package) -> FuelProjection | None:
@@ -174,9 +188,9 @@ def check_fuel_policy(scenario: Scenario, package: Package) -> tuple[Violation, 
     if package.action is FlightPlanAction.HOLD:
         needed["hold_burn_kg_per_min"] = scenario.hold_burn_kg_per_min.value
     missing = [
-        Violation.missing_data(FUEL_POLICY, Domain.PILOT, name, source)
+        Violation.missing_data(FUEL_POLICY, Domain.PILOT, name, source, problem)
         for name, value in needed.items()
-        if value is None
+        if (problem := _problem(name, value)) is not None
     ]
     decision_point = scenario.decision_point.value
     if missing or decision_point is None:

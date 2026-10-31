@@ -78,8 +78,13 @@ class Sourced[T](FrozenModel):
 
 
 class Runway(FrozenModel):
+    """A runway. Runways sharing a `parallel_group` are treated as one runway
+    for wake separation and throughput (FAA JO 7110.65: parallel runways less
+    than 2,500 ft apart count as a single runway). None means independent."""
+
     runway_id: str
     closed: bool
+    parallel_group: str | None = None
 
 
 class Taxiway(FrozenModel):
@@ -265,11 +270,21 @@ class Violation(FrozenModel):
     cause: ViolationCause = ViolationCause.CONSTRAINT
 
     @classmethod
-    def missing_data(cls, rule_id: str, domain: Domain, name: str, source: str) -> Self:
+    def missing_data(
+        cls,
+        rule_id: str,
+        domain: Domain,
+        name: str,
+        source: str,
+        reason: str = "unknown",
+    ) -> Self:
+        """A fail-closed violation. `reason` is "unknown" for an absent value
+        and "invalid" for one that cannot be real, such as a negative fuel
+        quantity."""
         return cls(
             rule_id=rule_id,
             domain=domain,
-            message=f"{name} unknown, so the rule fails closed",
+            message=f"{name} {reason}, so the rule fails closed",
             source=source,
             observed=None,
             limit=None,
@@ -292,6 +307,7 @@ class CostBreakdown(FrozenModel):
     gate_moves: int
     overtime: int
     turnaround_delay: int
+    arrival_delay: int = 0
     by_domain: DomainCosts
     total: int
     # Soft inputs that were unknown and so contributed nothing (or, for the
@@ -351,7 +367,13 @@ def intersect_responses(
 
 
 class Consensus(FrozenModel):
-    """All three domains accepted one package and every rule passed."""
+    """All three domains accepted one package and every rule passed.
+
+    This is a record of what the domains said, not proof. Constructing one
+    checks only that each domain accepted once; it does not run the rules. The
+    protocol must re-check the package with `check_package` before treating a
+    `Consensus` as a deal.
+    """
 
     turn: int = Field(ge=1)
     package: Package
@@ -399,6 +421,9 @@ class NoDeal(FrozenModel):
     nearest_package: Package | None
     nearest_violations: tuple[Violation, ...]
     reason: str
+    # One representative violation, with observed value and limit, per binding
+    # rule. The card shows these.
+    binding_violations: tuple[Violation, ...] = ()
 
 
 type Decision = Deal | NoDeal
