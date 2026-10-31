@@ -34,9 +34,9 @@ Follow `runbook.md` first. Then:
 
 **Click, in order:**
 
-1. Point at the agent strip (ATC 4 › 12, Pilot 8 › 8, Ground 7 › 12), then at the amber route on the map. The map is illustrative: the plan's action is a hold, so a hold is drawn and labelled "Illustrative hold". It is not tracked.
+1. Point at the agent strip (ATC 4 › 12, Pilot 8 › 8, Ground 7 › 12), then at the route on the map. The **Try to break it** card at the bottom right starts closed, so the route is clear. The map is illustrative: the plan's action is a hold, so a hold is drawn and labelled "Illustrative hold". It is not tracked.
 2. At the bottom, click **Negotiation** (in the bar with Plan, Negotiation, Log, Evidence).
-3. Point at **Turn 1**, the three columns ATC, Pilot, Ground, each "Would accept N plans", and the dashed note marked **Unverified**. Then scroll to **Turn 2** and point at ATC's and Ground's "Withdrew its objection to" and the notes beside them.
+3. The drawer opens on the outcome and the turns. Point at **Turn 1**, the three columns ATC, Pilot, Ground, each "Would accept N plans", and the dashed note marked **Unverified**. Then scroll to **Turn 2** and point at ATC's and Ground's "Withdrew its objection to" and the notes beside them.
 4. Click the **X** (Close) at the top right of the drawer.
 5. Point at the right panel: "Agents agreed", "Passes the rules checked", "2 turns".
 
@@ -59,8 +59,8 @@ The view shows each agent's accepted count, reasons in plain words, objections w
 **Click, in order:**
 
 1. On the right panel, point at the small letter marks next to the plan facts, and the line under them: "R real, D derived from the file, S synthetic." Hovering one shows the word.
-2. In the **Try to break it** card, click **Late change**. This blocks the plan's gate on the server while the screen keeps the old plan.
-3. In the **Sign off** panel, tick **I approve these decisions** and **Send these requests**, then click **Approve**.
+2. Click the **Try to break it** heading to open the card, which stays open for the rest of the talk. Click **Late change**. This blocks the plan's gate on the server while the screen keeps the old plan.
+3. In the **Sign off** panel, the two boxes sit directly above **Approve**, with no scrolling. Tick **I approve these decisions** and **Send these requests**, then click **Approve**.
 4. A red alert appears: "This plan is out of date. Sign-off refused: the airport changed after you looked." In the Sign off panel the refusal reads "Refused: the airport changed after you looked", and it names "Gate occupancy".
 5. In the **Try to break it** card, click **Tamper log**. It opens the **Log** view. Point at "Tampered copy: detected" and "First bad entry". If you have time, point at "The log checks out." for the real log. Click the **X** to close the drawer.
 
@@ -87,7 +87,7 @@ The view shows each agent's accepted count, reasons in plain words, objections w
 
 ## Beat 5. The numbers (2:30 to 3:00). Budget 75 words, spoken text 60
 
-**Click:** the **Evidence** tab at the bottom. It opens on "Where we differ from the challenge workbook". Scroll to **Rules only**, the headline cards with commit, mode and seed, then **With the model: tuned and unseen flights**. The tab reads the evaluation through the API, so check that it shows the same commit as the file.
+**Click:** the **Evidence** tab at the bottom. It opens on the numbers, with no scrolling: **Rules only** on the left, **With the model: tuned and unseen flights** on the right, each set with its class, commit, mode and seed. "Where we differ from the challenge workbook" and the limits are closed sections under them, then the full tables. The tab reads the evaluation through the API, so check that it shows the same commit as the file.
 
 **Say:**
 
@@ -120,7 +120,7 @@ Also read these before the talk, because judges ask: "NO_GO NOTHING_LEGAL rate, 
 | C5 | Agent strip shows counts per turn | ATC 4 › 12, Pilot 8 › 8, Ground 7 › 12 |
 | C6 | Map draws the route, labelled illustrative, and works with no network | Yes, on a local basemap; the hold is drawn only because this plan's action is a hold |
 | C7 | Bottom bar reads Plan, Negotiation, Log, Evidence; a drawer opens with an X | Yes |
-| C8 | Negotiation shows Turn 1, Turn 2, "Would accept N plans", withdrawn objections and unverified notes | Yes |
+| C8 | Negotiation opens on the outcome and shows Turn 1, Turn 2, "Would accept N plans", withdrawn objections and unverified notes | Yes |
 | C9 | Right panel pills | "Agents agreed", "Passes the rules checked", "2 turns" |
 | C10 | A missing recording shows as a fault | "No recording: ATC, Pilot, Ground" |
 | C11 | Marks R, D, S with a hover name and a legend line | Yes |
@@ -130,7 +130,7 @@ Also read these before the talk, because judges ask: "NO_GO NOTHING_LEGAL rate, 
 | C15 | Runway tiles at MDW | R1, R2 (closed in the scenario), R3 |
 | C16 | No-go wording | Corrected above |
 | C17 | **I've taken this case** | Present, and two-step **Reject plan** too |
-| C18 | Evidence shows headline cards and rows with commit, mode and seed | Yes; re-read the values before the talk |
+| C18 | Evidence opens on the headline numbers with commit, mode and seed, then the rows | Yes; re-read the values before the talk |
 
 ## If something goes wrong on stage
 

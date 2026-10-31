@@ -48,15 +48,16 @@ The new dashboard has two pages: the overview at `/` and the flights page at `/d
 
 3. Load the flight list once (next section), for the 12-flight overview and the 50-flight flights page.
 
-4. Web (port 3000):
+4. Web (port 3000), from a production build, not `pnpm dev:web`, which compiles each page on first use and leaves the map blank for several seconds:
 
    ```bash
-   pnpm dev:web
+   pnpm --filter web build
+   pnpm --filter web start
    ```
 
 5. Open `http://localhost:3000` in the tab you will present from. Skip the intro (see below). Wait until the **Outcomes** panel on the overview shows its ring and counts, which means the 12 recorded runs finished. `[CHECK ON SCREEN]`
 6. Do the wifi-off check (see below), then turn wifi back on or leave it off, as you plan to present.
-7. Click one flight and back, so the flights page has been compiled once in dev mode. Then return to the overview and stay there.
+7. Click one flight and wait for the map, so the flights page and its map have loaded once. Then return to the overview and stay there.
 
 The web app talks to the API at `http://localhost:8000` unless `NEXT_PUBLIC_API_URL` says otherwise. The web build can also run on invented data with `NEXT_PUBLIC_API_MODE=mock`. The page then shows a "Sample data" tag in the top bar and says run outcomes are invented. Never use mock mode on stage.
 
