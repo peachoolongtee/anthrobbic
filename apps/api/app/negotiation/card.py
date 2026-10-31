@@ -252,6 +252,8 @@ _DEFAULT_BASIS: Mapping[str, str] = MappingProxyType(
         "ATC-WAKE-SEP": rv.WAKE_DEFAULT_KEY,
         "PLT-FUEL-POLICY": rv.FUEL_RESERVE_MIN,
         "GND-GATE-OVERLAP": rv.GATE_BUFFER_MIN,
+        "PLT-CREW-DUTY": rv.CREW_MAX_DUTY_MIN,
+        "GND-GATE-NOTICE": rv.GATE_CHANGE_NOTICE_MIN,
     }
 )
 

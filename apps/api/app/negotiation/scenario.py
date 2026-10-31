@@ -252,7 +252,8 @@ class GeneratorParams:
 
     # Runways come from the workbook's active_runways for the airport.
     # Chance each consecutive runway pair (R1+R2, R3+R4) is closely spaced, so
-    # the pair counts as one runway for wake separation and throughput.
+    # the pair counts as one runway for wake separation. Throughput is an
+    # airport total and ignores the pairing.
     p_close_parallel_pair: float = 0.4
     p_runway_closed: tuple[float, float] = (0.25, 0.03)  # weather, late-aircraft
     p_taxiway_closed: tuple[float, float] = (0.15, 0.05)
@@ -762,7 +763,9 @@ def build_scenario(
     )
 
     # Decision time and crew duty start: from the schedule only, no hindsight.
-    departure_min = dot.hhmm_to_min(row.scheduled_departure)
+    # The scheduled departure is an origin-clock time; every scenario time is on
+    # the destination clock, so it is moved across the zone difference first.
+    departure_min = dot.scheduled_departure_min(row)
     if cause == "weather":
         decision_time = scheduled_arrival - p.window_margin_min
     else:

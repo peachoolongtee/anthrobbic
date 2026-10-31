@@ -156,6 +156,32 @@ def scheduled_arrival_rel(dep_hhmm: int, arr_hhmm: int, sched_time: int | None) 
     return arr + (MINUTES_PER_DAY if arr < dep else 0)
 
 
+def clock_offset_min(dep_hhmm: int, arr_hhmm: int, sched_time: int | None) -> int:
+    """Minutes the destination clock runs ahead of the origin clock.
+
+    Worked out from the row's own schedule in the same way, and with the same
+    limits, as `scheduled_arrival_rel`: arrival less departure less block time,
+    folded into plus or minus twelve hours. Zero when there is no block time or
+    the fold is out of range, which is where `scheduled_arrival_rel` also stops
+    using an offset.
+    """
+    if sched_time is None:
+        return 0
+    dep = hhmm_to_min(dep_hhmm)
+    arr = hhmm_to_min(arr_hhmm)
+    offset = (arr - dep - sched_time + 720) % MINUTES_PER_DAY - 720
+    return offset if abs(offset) <= MAX_CLOCK_OFFSET_MIN else 0
+
+
+def scheduled_departure_min(row: DotRow) -> int:
+    """The scheduled departure on the destination clock, which is the clock every
+    scenario time is on. `row.scheduled_departure` itself is on the origin clock."""
+    offset = clock_offset_min(
+        row.scheduled_departure, row.scheduled_arrival, row.scheduled_time
+    )
+    return hhmm_to_min(row.scheduled_departure) + offset
+
+
 def scheduled_arrival_min(row: DotRow) -> int:
     """`scheduled_arrival_rel` for a row. Schedule columns only."""
     return scheduled_arrival_rel(
