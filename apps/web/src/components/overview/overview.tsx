@@ -12,7 +12,7 @@ import { AIRPORTS, routeCodes } from "@/lib/airports";
 import { EASE_OUT, RISE, STAGGER } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import stats from "@/lib/flight-stats.json";
-import { AppNav } from "@/components/app-nav";
+import { APP_HEADER, AppNav } from "@/components/app-nav";
 import { CountUp } from "@/components/count-up";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OrbitingGlobe, type GlobeRoute } from "@/components/landing/orbiting-globe";
@@ -217,7 +217,7 @@ export function Overview() {
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border bg-background/70 px-4 backdrop-blur sm:px-6">
+      <header className={`sticky top-0 ${APP_HEADER}`}>
         <AppNav />
       </header>
 

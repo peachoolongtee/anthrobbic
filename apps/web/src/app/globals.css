@@ -159,7 +159,10 @@
     @apply bg-background text-foreground;
   }
   html {
-    @apply font-sans;
+    @apply font-sans bg-background;
+    /* The overview scrolls and the flights page does not. Keeping the
+       scrollbar's space on both stops the page shifting sideways between them. */
+    scrollbar-gutter: stable;
   }
   /* Larger type on laptop screens and above, for a projector. */
   @media (min-width: 64rem) {

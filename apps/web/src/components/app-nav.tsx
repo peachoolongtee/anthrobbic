@@ -13,6 +13,13 @@ const LINKS = [
   { href: "/dashboard/flights", label: "Flights" },
 ];
 
+/**
+ * The bar that holds AppNav. Both pages use exactly this height and padding,
+ * so the brand and the page links stay put when you switch pages.
+ */
+export const APP_HEADER =
+  "z-20 flex h-12 shrink-0 items-center gap-3 border-b border-border bg-background/70 px-4 backdrop-blur";
+
 /** Brand, the two dashboard pages, and the sample-data tag. */
 export function AppNav() {
   const path = usePathname();
