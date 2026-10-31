@@ -3,7 +3,7 @@
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, Query, Request
+from fastapi import APIRouter, Body, Depends, Query, Request, Response
 
 from app.api.evaluation import read_evaluation
 from app.api.runs import (
@@ -15,6 +15,7 @@ from app.api.runs import (
     VerifyRequest,
 )
 from app.api.wire import (
+    ConsensusLog,
     DecisionResult,
     EligibleCount,
     Evaluation,
@@ -102,6 +103,18 @@ def take_over(service: Service, run_id: str, body: TakeOverRequest) -> DecisionR
 @router.get("/runs/{run_id}/log")
 def get_log(service: Service, run_id: str) -> RunLog:
     return service.log(run_id)
+
+
+@router.get("/runs/{run_id}/consensus-log")
+def get_consensus_log(
+    service: Service, run_id: str, response: Response
+) -> ConsensusLog:
+    """Read-only, any run state. Sent as a file to save."""
+    document = service.consensus_log(run_id)
+    response.headers["Content-Disposition"] = (
+        f'attachment; filename="consensus-log-{document.run_id}.json"'
+    )
+    return document
 
 
 @router.post("/runs/{run_id}/log/verify")

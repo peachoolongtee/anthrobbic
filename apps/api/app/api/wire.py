@@ -3,7 +3,7 @@ so an as-flown outcome column cannot ride along. Mirrors
 `apps/web/src/lib/api-types.ts`.
 """
 
-from typing import Final, Literal
+from typing import Any, Final, Literal
 
 from app.negotiation.agents.base import FaultKind
 from app.negotiation.card import CostLine, ProvenanceLine, Reached, RuleStatus
@@ -294,6 +294,92 @@ class VerifyLogResult(VerifyView):
     # The real log, checked again afterwards.
     real_log_valid: bool
     head: str
+
+
+class DeclinedReason(FrozenModel):
+    package_id: str
+    public_reason: str
+
+
+class AgentMessage(FrozenModel):
+    """One agent's structured reply on one turn. Its own reason codes are
+    unverified; no free text or prompt is included."""
+
+    domain: Domain
+    acceptable_package_ids: tuple[str, ...]
+    ranking: tuple[str, ...]
+    reason_codes: tuple[str, ...]
+    declined: tuple[DeclinedReason, ...]
+    prompt_hash: str
+    served_by: str
+
+
+class ConsensusTurn(FrozenModel):
+    turn: int
+    agents: tuple[AgentMessage, ...]
+    intersection: tuple[str, ...]
+
+
+class HowReached(FrozenModel):
+    path: Literal["consensus", "fallback", "no_go"]
+    # What the card states. None for a no-go, which has no plan.
+    reached: Reached | None
+    # Why the fallback ran, as the protocol logged it. None if it did not.
+    fallback_trigger: str | None
+
+
+class ExportedEntry(FrozenModel):
+    """A log entry exactly as stored, so `verify_entries` accepts the list."""
+
+    seq: int
+    kind: str
+    payload: dict[str, Any]
+    prev_hash: str
+    entry_hash: str
+    ts: str | None = None
+
+
+class ExportedLog(FrozenModel):
+    entries: tuple[ExportedEntry, ...]
+    # The head now, and the head recorded when the run was made.
+    head: str
+    anchored_head: str
+    # The stored file checked against the anchored head. Invalid is reported here
+    # and the entries are still returned as they are on disk.
+    verify: VerifyView
+
+
+class EvaluationReference(FrozenModel):
+    """Which offline evaluation sits beside this run. Not a property of the run."""
+
+    commits: tuple[str, ...]
+    modes: tuple[str, ...]
+
+
+class ConsensusLog(FrozenModel):
+    """The downloadable record of one run. Built only from the run and its log."""
+
+    format: Literal["consensus-log/1"] = "consensus-log/1"
+    run_id: str
+    mode: Mode
+    scenario_id: str
+    # None if the scenario is no longer in the catalogue.
+    scenario: ScenarioSummary | None
+    field_provenance: dict[str, Provenance]
+    state_version: str
+    field_versions: dict[str, str]
+    airport: AirportState
+    injection: Injection | None
+    turns: tuple[ConsensusTurn, ...]
+    removed_packages: tuple[RemovedPackage, ...]
+    removed_total: int
+    decision: DealView | NoGoView
+    card: CardView | None
+    how_reached: HowReached
+    faults: tuple[FaultView, ...]
+    final_decision: FinalDecision | None
+    log: ExportedLog
+    evaluation: EvaluationReference | None
 
 
 class EvaluationRow(FrozenModel):

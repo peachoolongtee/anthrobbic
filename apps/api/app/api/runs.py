@@ -26,13 +26,16 @@ from pydantic import Field, model_validator
 
 from app.api import adapter
 from app.api.catalogue import Catalogue
-from app.api.evaluation import DEFAULT_RESULTS_DIR
+from app.api.evaluation import DEFAULT_RESULTS_DIR, read_evaluation
 from app.api.wire import (
     ALREADY_DECIDED,
     CardView,
+    ConsensusLog,
     DealView,
     DecisionResult,
+    ExportedLog,
     FinalDecision,
+    HowReached,
     Injection,
     NoGoView,
     RemovedPackage,
@@ -67,7 +70,12 @@ from app.negotiation.log import (
     verify_entries,
 )
 from app.negotiation.options import PackageBoundError, enumerate_packages
-from app.negotiation.protocol import Mode, NegotiationResult, run_negotiation
+from app.negotiation.protocol import (
+    Mode,
+    NegotiationResult,
+    TurnRecord,
+    run_negotiation,
+)
 from app.negotiation.recording import DEFAULT_RECORDINGS_DIR, RecordingClient
 from app.negotiation.rules import ALL_RULES, check_package, rule_ids
 from app.negotiation.rules.atc import RUNWAY_CLOSED
@@ -366,6 +374,8 @@ class RunRecord:
     # Guards the state, every decision and its log entry as one step.
     lock: threading.Lock = field(default_factory=threading.Lock)
     final: FinalDecision | None = None
+    # Each agent's structured replies, kept for the consensus log download.
+    turns: tuple[TurnRecord, ...] = ()
 
     def require_intact_log(self) -> None:
         """Caller holds the lock. Stops a decision on a log that does not verify,
@@ -559,6 +569,7 @@ class RunService:
             package=package,
             reached=reached,
             anchor=log.head,
+            turns=result.turns,
         )
         with self._lock:
             self._runs[run_id] = record
@@ -714,6 +725,51 @@ class RunService:
                 verify=adapter.verify_view(result),
                 head=record.log.head,
             )
+
+    def consensus_log(self, run_id: str) -> ConsensusLog:
+        """Everything about the run in one file. Read-only: the log is not written,
+        and an edited log file is reported invalid, with its entries as stored."""
+        record = self._record(run_id)
+        with record.lock:
+            entries, result = record.stored()
+            head = record.log.head
+            final = record.final
+            scenario = record.scenario
+        view = record.view
+        found = self.catalogue.get(view.scenario_id)
+        return ConsensusLog(
+            run_id=view.run_id,
+            mode=view.mode,
+            scenario_id=view.scenario_id,
+            scenario=found.summary if found else None,
+            field_provenance={
+                name: getattr(scenario, name).provenance
+                for name in type(scenario).model_fields
+            },
+            state_version=view.state_version,
+            field_versions=view.field_versions,
+            airport=view.airport,
+            injection=view.injection,
+            turns=tuple(adapter.consensus_turn(t) for t in record.turns),
+            removed_packages=view.removed_packages,
+            removed_total=view.removed_total,
+            decision=view.decision,
+            card=view.card,
+            how_reached=HowReached(
+                path=view.path,
+                reached=record.reached,
+                fallback_trigger=view.fallback_trigger,
+            ),
+            faults=view.faults,
+            final_decision=final,
+            log=ExportedLog(
+                entries=tuple(adapter.exported_entry(e) for e in entries),
+                head=head,
+                anchored_head=record.anchor,
+                verify=adapter.verify_view(result),
+            ),
+            evaluation=adapter.evaluation_reference(read_evaluation(self.results_dir)),
+        )
 
     def verify_log(self, run_id: str, request: VerifyRequest) -> VerifyLogResult:
         """With `tamper`, checks an edited copy. The real log is never altered."""
