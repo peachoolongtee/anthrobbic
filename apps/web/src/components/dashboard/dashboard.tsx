@@ -7,26 +7,25 @@ import {
   CircleAlert,
   FileText,
   FlaskConical,
+  Map as MapIcon,
   MessagesSquare,
-  PlaneLanding,
   ScrollText,
-  Wrench,
   X,
   type LucideIcon,
 } from "lucide-react";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { Button } from "@/components/ui/button";
 import { FINAL_DECISION_LABEL, isApproved, refusalBanner, signoffStatusLabel } from "@/lib/labels";
+import { planActionFromLabel } from "@/lib/plan-action";
 import { cn } from "@/lib/utils";
 import { AgentStrip } from "@/components/dashboard/agent-strip";
-import RunwayLoader from "@/components/ui/runway-loader";
 import { AirportMap } from "@/components/dashboard/airport-map";
-import { ApproachView } from "@/components/dashboard/approach-view";
 import { BreakItDock, BreakNotice, SceneHint } from "@/components/dashboard/break-it-dock";
 import { DelaySpreadView } from "@/components/dashboard/delay-spread";
 import { EvidenceView } from "@/components/dashboard/evidence-view";
 import { FindFlight } from "@/components/dashboard/find-flight";
 import { FlightList } from "@/components/dashboard/flight-list";
+import { FlightMap } from "@/components/dashboard/flight-map";
 import { LogView } from "@/components/dashboard/log-view";
 import { ModeBanner } from "@/components/dashboard/mode-banner";
 import { NegotiationView } from "@/components/dashboard/negotiation-view";
@@ -36,15 +35,16 @@ import { PlanSummary } from "@/components/dashboard/plan-summary";
 import { SignoffPanel } from "@/components/dashboard/signoff-panel";
 import { EmptyPanel, ErrorPanel, LoadingBlock } from "@/components/dashboard/states";
 
-type Tab = "details" | "negotiation" | "log" | "evidence" | "break";
+type Tab = "details" | "negotiation" | "log" | "evidence";
 
 const TABS: { id: Tab; label: string; Icon: LucideIcon }[] = [
   { id: "details", label: "Plan", Icon: FileText },
   { id: "negotiation", label: "Negotiation", Icon: MessagesSquare },
   { id: "log", label: "Log", Icon: ScrollText },
   { id: "evidence", label: "Evidence", Icon: FlaskConical },
-  { id: "break", label: "Try to break it", Icon: Wrench },
 ];
+
+const NO_FLIGHTS: never[] = [];
 
 // The 3D airport loads only when chosen, so three.js stays off the first load.
 const AirportScene = dynamic(() => import("@/components/dashboard/safe-airport-scene"), {
@@ -65,6 +65,7 @@ export function Dashboard() {
   const [view, setView] = useState<View>("map");
   // The clear area between the panels, where the map frames the route.
   const clearArea = useRef<HTMLDivElement>(null);
+  const [breakOpen, setBreakOpen] = useState(false);
 
   const run = d.runState.status === "ready" ? d.runState.run : null;
   const running = d.runState.status === "loading";
@@ -91,16 +92,15 @@ export function Dashboard() {
       <ModeBanner mode={d.mode} onModeChange={d.setMode} disabled={running || d.selectedId === null} />
 
       <div className="relative flex flex-1 flex-col gap-3 p-3 lg:block lg:min-h-0 lg:overflow-hidden lg:p-0">
-        {/* Backdrop: the approach to the arrival airport, or the 3D airport.
-            Full-bleed on large screens, a box above the panels on small ones. */}
+        {/* Backdrop: the flight map or the 3D airport. Full-bleed on large
+            screens, a box above the panels on small ones. */}
         {view === "map" ? (
-          <ApproachView
-            run={running ? null : run}
+          <FlightMap
+            planAction={planActionFromLabel(run?.card?.action_facts.find((f) => f.key === "action")?.value)}
+            flights={d.scenarios.status === "ready" ? d.scenarios.data : NO_FLIGHTS}
             selected={selected}
-            overrides={d.overrides}
-            pending={running}
             frame={clearArea}
-            className="relative h-80 w-full rounded-2xl border border-border lg:absolute lg:inset-0 lg:h-full lg:rounded-none lg:border-0"
+            className="relative h-72 rounded-2xl border border-border lg:absolute lg:inset-0 lg:h-auto lg:rounded-none lg:border-0"
           />
         ) : (
           <div className="relative h-96 overflow-hidden rounded-2xl border border-border lg:absolute lg:inset-0 lg:h-auto lg:rounded-none lg:border-0">
@@ -157,19 +157,8 @@ export function Dashboard() {
           className="relative flex flex-col gap-3 lg:pointer-events-none lg:absolute lg:inset-y-0 lg:right-[24.5rem] lg:left-[20.5rem] lg:gap-0 [&>*]:pointer-events-auto"
         >
           {/* Not drawn: marks the space below the agent strip and above the
-              view buttons, where the approach is drawn. Hidden on small screens. */}
-          <div ref={clearArea} aria-hidden className="pointer-events-none! absolute inset-x-4 top-28 bottom-16 max-lg:hidden" />
-
-          {/* While a plan is being made, the stage says so. */}
-          {running && (
-            <div
-              role="status"
-              data-card-theme
-              className={cn(PANEL, "dark z-20 h-40 overflow-hidden lg:absolute lg:top-1/2 lg:left-1/2 lg:w-[26rem] lg:-translate-x-1/2 lg:-translate-y-1/2")}
-            >
-              <RunwayLoader label="Agents are negotiating a recovery plan" showProgress={false} background="transparent" />
-            </div>
-          )}
+              try-to-break-it card, for framing the route. Hidden on small screens. */}
+          <div ref={clearArea} aria-hidden className={cn("pointer-events-none! absolute inset-x-0 top-28 max-lg:hidden", breakOpen ? "bottom-[21rem]" : "bottom-32")} />
           <div className="flex justify-center lg:absolute lg:top-3 lg:left-1/2 lg:-translate-x-1/2">
             <AgentStrip run={running ? null : run} mode={d.mode} />
           </div>
@@ -182,7 +171,7 @@ export function Dashboard() {
           >
             {(
               [
-                { id: "map", label: "Approach", Icon: PlaneLanding },
+                { id: "map", label: "Map", Icon: MapIcon },
                 { id: "airport", label: "Airport 3D", Icon: Box },
               ] as const
             ).map(({ id, label, Icon }) => (
@@ -207,10 +196,55 @@ export function Dashboard() {
             outcome={d.outcome}
             className={cn(
               "z-30 flex justify-center lg:absolute lg:left-1/2 lg:w-[min(28rem,100%)] lg:-translate-x-1/2",
-              // Never over the drawer's first lines.
-              tab ? "lg:bottom-[4.75rem]" : "lg:top-28",
+              // Never over the drawer's first lines, nor over the open card's Reset.
+              tab ? "lg:bottom-[4.75rem]" : breakOpen ? "lg:top-2" : "lg:top-28",
             )}
           />
+
+          {/* Every try-to-break-it control in one card: the runway diagram (or
+              a hint in 3D, where the scene is clickable) and the other actions. */}
+          <div className={cn(PANEL, "p-3 lg:absolute lg:right-0 lg:bottom-[4.25rem] lg:w-[22rem]", running && "opacity-80")}>
+            <BreakItDock
+              run={run}
+              overrides={d.overrides}
+              busy={d.busy}
+              disabled={running}
+              open={breakOpen}
+              onToggle={() => setBreakOpen((o) => !o)}
+              onUnsafe={(rule) => {
+                setTab("negotiation");
+                d.injectUnsafe(rule);
+              }}
+              onStale={d.changeAfterViewing}
+              onTamper={() => {
+                setTab("log");
+                d.tamperLog();
+              }}
+              onReset={d.reset}
+              onDisrupt={(kind, next, title) => {
+                setTab(null);
+                d.disrupt(kind, next, title);
+              }}
+            >
+              {view === "map" ? (
+                <AirportMap
+                  run={run}
+                  overrides={d.overrides}
+                  disabled={running || d.busy !== null || run === null}
+                  onRunway={(id) => {
+                    setTab(null);
+                    d.closeRunway(id);
+                  }}
+                  onGate={(id) => {
+                    setTab(null);
+                    d.blockGate(id);
+                  }}
+                />
+              ) : (
+                <SceneHint />
+              )}
+            </BreakItDock>
+          </div>
 
           {/* Drawer with the detail views */}
           {tab && (
@@ -254,47 +288,6 @@ export function Dashboard() {
                   </RunGate>
                 )}
                 {tab === "evidence" && <EvidenceView />}
-                {tab === "break" && (
-                  <BreakItDock
-                    run={run}
-                    overrides={d.overrides}
-                    busy={d.busy}
-                    disabled={running}
-                    onUnsafe={(rule) => {
-                      setTab("negotiation");
-                      d.injectUnsafe(rule);
-                    }}
-                    onStale={d.changeAfterViewing}
-                    onTamper={() => {
-                      setTab("log");
-                      d.tamperLog();
-                    }}
-                    onReset={d.reset}
-                    onDisrupt={(kind, next, title) => {
-                      setTab(null);
-                      setView("map");
-                      d.disrupt(kind, next, title);
-                    }}
-                  >
-                    {view === "map" ? (
-                      <AirportMap
-                        run={run}
-                        overrides={d.overrides}
-                        disabled={running || d.busy !== null || run === null}
-                        onRunway={(id) => {
-                          setTab(null);
-                          d.closeRunway(id);
-                        }}
-                        onGate={(id) => {
-                          setTab(null);
-                          d.blockGate(id);
-                        }}
-                      />
-                    ) : (
-                      <SceneHint />
-                    )}
-                  </BreakItDock>
-                )}
               </div>
             </section>
           )}
