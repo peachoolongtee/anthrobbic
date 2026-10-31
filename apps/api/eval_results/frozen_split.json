@@ -1,0 +1,267 @@
+{
+  "grouping": {
+    "excluded_month": 10,
+    "frozen_destinations": [
+      "ATL",
+      "BUF",
+      "CLE",
+      "CMI",
+      "DAL",
+      "EWR",
+      "IAH",
+      "IND",
+      "LAS",
+      "LAX",
+      "MKE",
+      "MOB",
+      "MSP",
+      "OMA",
+      "PHL",
+      "PNS",
+      "RAP"
+    ],
+    "frozen_months": [
+      7,
+      8,
+      9,
+      11,
+      12
+    ],
+    "rule": "hold out by season and destination airport",
+    "tune_destinations": [
+      "BNA",
+      "BWI",
+      "DEN",
+      "DTW",
+      "FLL",
+      "JAX",
+      "MDW",
+      "ORD",
+      "RSW",
+      "SFO"
+    ],
+    "tune_months": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ]
+  },
+  "pool_per_cause": 600,
+  "rows": [
+    {
+      "cause": "weather",
+      "destination": "DEN",
+      "key": "2015|6|16|UA|1672|IAH|DEN|1430",
+      "month": 6,
+      "role": "tune"
+    },
+    {
+      "cause": "weather",
+      "destination": "ORD",
+      "key": "2015|4|5|OO|5222|ASE|ORD|1156",
+      "month": 4,
+      "role": "tune"
+    },
+    {
+      "cause": "weather",
+      "destination": "RSW",
+      "key": "2015|6|29|DL|2329|DTW|RSW|1206",
+      "month": 6,
+      "role": "tune"
+    },
+    {
+      "cause": "weather",
+      "destination": "MDW",
+      "key": "2015|6|15|WN|4832|DCA|MDW|1945",
+      "month": 6,
+      "role": "tune"
+    },
+    {
+      "cause": "weather",
+      "destination": "SFO",
+      "key": "2015|1|12|UA|1662|DCA|SFO|830",
+      "month": 1,
+      "role": "tune"
+    },
+    {
+      "cause": "late_aircraft",
+      "destination": "FLL",
+      "key": "2015|3|12|B6|1371|LGA|FLL|2130",
+      "month": 3,
+      "role": "tune"
+    },
+    {
+      "cause": "late_aircraft",
+      "destination": "JAX",
+      "key": "2015|6|9|MQ|3112|MIA|JAX|1410",
+      "month": 6,
+      "role": "tune"
+    },
+    {
+      "cause": "late_aircraft",
+      "destination": "BNA",
+      "key": "2015|1|25|WN|431|DTW|BNA|1640",
+      "month": 1,
+      "role": "tune"
+    },
+    {
+      "cause": "late_aircraft",
+      "destination": "DTW",
+      "key": "2015|2|19|WN|2872|BNA|DTW|1950",
+      "month": 2,
+      "role": "tune"
+    },
+    {
+      "cause": "late_aircraft",
+      "destination": "BWI",
+      "key": "2015|4|5|WN|2638|FLL|BWI|2135",
+      "month": 4,
+      "role": "tune"
+    },
+    {
+      "cause": "weather",
+      "destination": "IND",
+      "key": "2015|11|15|AA|2304|DFW|IND|1832",
+      "month": 11,
+      "role": "frozen"
+    },
+    {
+      "cause": "weather",
+      "destination": "MOB",
+      "key": "2015|11|17|EV|4238|IAH|MOB|1910",
+      "month": 11,
+      "role": "frozen"
+    },
+    {
+      "cause": "weather",
+      "destination": "CLE",
+      "key": "2015|11|21|EV|4304|ORD|CLE|1730",
+      "month": 11,
+      "role": "frozen"
+    },
+    {
+      "cause": "weather",
+      "destination": "RAP",
+      "key": "2015|7|6|MQ|3295|DFW|RAP|1850",
+      "month": 7,
+      "role": "frozen"
+    },
+    {
+      "cause": "weather",
+      "destination": "ATL",
+      "key": "2015|8|13|DL|2330|TPA|ATL|1440",
+      "month": 8,
+      "role": "frozen"
+    },
+    {
+      "cause": "weather",
+      "destination": "EWR",
+      "key": "2015|8|21|UA|1933|IAH|EWR|1916",
+      "month": 8,
+      "role": "frozen"
+    },
+    {
+      "cause": "weather",
+      "destination": "CMI",
+      "key": "2015|12|2|MQ|3394|ORD|CMI|830",
+      "month": 12,
+      "role": "frozen"
+    },
+    {
+      "cause": "weather",
+      "destination": "MSP",
+      "key": "2015|11|11|DL|2245|RSW|MSP|1542",
+      "month": 11,
+      "role": "frozen"
+    },
+    {
+      "cause": "weather",
+      "destination": "PHL",
+      "key": "2015|12|24|DL|1494|ATL|PHL|845",
+      "month": 12,
+      "role": "frozen"
+    },
+    {
+      "cause": "weather",
+      "destination": "BUF",
+      "key": "2015|12|24|DL|1159|ATL|BUF|1343",
+      "month": 12,
+      "role": "frozen"
+    },
+    {
+      "cause": "late_aircraft",
+      "destination": "OMA",
+      "key": "2015|8|19|OO|4489|MSP|OMA|1735",
+      "month": 8,
+      "role": "frozen"
+    },
+    {
+      "cause": "late_aircraft",
+      "destination": "PNS",
+      "key": "2015|8|20|MQ|3116|MIA|PNS|2135",
+      "month": 8,
+      "role": "frozen"
+    },
+    {
+      "cause": "late_aircraft",
+      "destination": "IND",
+      "key": "2015|7|15|EV|4395|EWR|IND|629",
+      "month": 7,
+      "role": "frozen"
+    },
+    {
+      "cause": "late_aircraft",
+      "destination": "LAS",
+      "key": "2015|11|30|WN|1153|TUS|LAS|1650",
+      "month": 11,
+      "role": "frozen"
+    },
+    {
+      "cause": "late_aircraft",
+      "destination": "LAS",
+      "key": "2015|7|23|DL|1431|CVG|LAS|1615",
+      "month": 7,
+      "role": "frozen"
+    },
+    {
+      "cause": "late_aircraft",
+      "destination": "LAX",
+      "key": "2015|12|18|WN|2255|SFO|LAX|900",
+      "month": 12,
+      "role": "frozen"
+    },
+    {
+      "cause": "late_aircraft",
+      "destination": "MKE",
+      "key": "2015|12|21|WN|2484|PHX|MKE|2040",
+      "month": 12,
+      "role": "frozen"
+    },
+    {
+      "cause": "late_aircraft",
+      "destination": "DAL",
+      "key": "2015|12|30|WN|32|HOU|DAL|1400",
+      "month": 12,
+      "role": "frozen"
+    },
+    {
+      "cause": "late_aircraft",
+      "destination": "IAH",
+      "key": "2015|9|10|OO|4984|DTW|IAH|1748",
+      "month": 9,
+      "role": "frozen"
+    },
+    {
+      "cause": "late_aircraft",
+      "destination": "ATL",
+      "key": "2015|12|30|WN|3161|HOU|ATL|1825",
+      "month": 12,
+      "role": "frozen"
+    }
+  ],
+  "split_hash": "5674b1ff7e14bdab626be9c9aa9eaca6f1773c3155566d23b0ab739c186d84fc",
+  "split_seed": 20261031
+}
