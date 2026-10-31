@@ -1,6 +1,6 @@
 # Judge card: things you can try
 
-One page. Start on the **Overview**, click any delayed flight in **Arrivals**, or open **Flights** in the top bar and pick one from the left list. Everything runs on this laptop.
+One page. Start on the **Overview**, click any delayed flight in **Arrivals**, or open **Flights** in the top bar and pick one from the left list. Everything runs on this laptop, except **Live**, which calls the model.
 
 ## What you are looking at
 
@@ -14,7 +14,7 @@ The map and the 3D airport are illustrative. The route is a curve between two ai
 
 - **Overview** (home page): a globe headed "Demo flights", labelled as an illustration, an **Arrivals** list of 12 flights, and 2015 record counts. Panels are tagged "Demo flights" or "US DOT 2015" (real counts).
 - **Flights**: the flight list on the left, the map in the middle with the agent strip (ATC, Pilot, Ground) above it, a **Try to break it** card at the bottom right of the map (closed at first; click its heading to open it), a bottom bar with **Plan**, **Negotiation**, **Log** and **Evidence**, and the plan summary and **Sign off** on the right. A **Map** and **Airport 3D** switch sits at the top left of the map area.
-- **Run mode** at the top right: **Model off**, **Recorded** or **Live**. A flight marked "Recorded" opens in Recorded; any other opens in Model off. Live is refused on this laptop.
+- **Run mode** at the top right: **Model off**, **Recorded** or **Live**. A flight marked "Recorded" opens in Recorded; any other opens in Model off. Live is available only when the API is started with `ALLOW_LIVE=1`. Live spends money, so please leave it to the presenter.
 
 ## Things to try
 
