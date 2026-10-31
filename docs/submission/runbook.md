@@ -38,7 +38,7 @@ The demo runs on Live. Use two terminal tabs, both at the repo root.
 
    The coordinator's test used this form. Relying on `.env` alone was not tested.
 
-   Shortcut: `pnpm dev:api:live` loads `apps/api/.env` into the process with `uv run --env-file`, so it needs `ALLOW_LIVE=1` and the key in that file. It also reloads on code changes, so use the form above for the talk itself.
+   Shortcut: `pnpm dev:api:live` loads `apps/api/.env` into the process with `uv run --env-file`, so it needs the key in that file, and `ALLOW_LIVE=1` either there or on the command: `ALLOW_LIVE=1 pnpm dev:api:live`. With `ALLOW_LIVE` blank, as in `.env.example`, Live is refused. It also reloads on code changes, so use the form above for the talk itself.
 
 2. Web, built so the flights page starts in Live:
 
@@ -99,7 +99,7 @@ The new dashboard has two pages: the overview at `/` and the flights page at `/d
 6. Do the wifi-off check (see below), then turn wifi back on or leave it off, as you plan to present.
 7. Click one flight and wait for the map, so the flights page and its map have loaded once. Then return to the overview and stay there.
 
-The web app talks to the API at `http://localhost:8000` unless `NEXT_PUBLIC_API_URL` says otherwise. The web build can also run on invented data with `NEXT_PUBLIC_API_MODE=mock`. The page, named Magic Airbus in the top bar, then shows a "Mock sample data" tag in the top bar and says run outcomes are invented. Never use mock mode on stage.
+The web app talks to the API at `http://localhost:8000` unless `NEXT_PUBLIC_API_URL` says otherwise. The web build can also run on invented data with `NEXT_PUBLIC_API_MODE=mock`. The page, named Magic Airbuzz in the top bar, then shows a "Mock sample data" tag in the top bar and says run outcomes are invented. Never use mock mode on stage.
 
 ## Skip the intro
 

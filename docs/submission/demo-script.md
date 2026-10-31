@@ -1,6 +1,6 @@
-# Demo script: 3 minutes, five beats, on Live, Magic Airbus dashboard
+# Demo script: 3 minutes, five beats, on Live, Magic Airbuzz dashboard
 
-Autonomous SG 2026, Airbus track, Challenge 2. Read aloud at 150 words a minute. The spoken text is 295 words in total on the two-turn path (about 118 seconds of speech), which leaves about 62 seconds for the clicks. You speak over the wait for the live run. Each beat has its own word budget in its heading. Rehearse once with a timer.
+Autonomous SG 2026, Airbus track, Challenge 2. Read aloud at 150 words a minute. The spoken text is 312 words in total on the two-turn path (about 125 seconds of speech), which leaves about 55 seconds for the clicks. You speak over the wait for the live run. Each beat has its own word budget in its heading. Rehearse once with a timer.
 
 Every click and screen text below was checked on the integrated design at 1280x720, on the real API with the real dataset, the saved WN4832 answers, and every non-local request aborted, with Live faked by relabelling a saved run. A real Live answer differs, which is why the wording depends on the screen. The results are at the end.
 
@@ -16,9 +16,11 @@ Follow `runbook.md` first. Then:
 2. The demo runs on **Live**: the flights page starts in Live, built as the runbook says, and runs only the flight you pick. One run-through makes up to 6 model calls, about $0.15. Check the network. Restart the API before each rehearsal: a used approval is refused until then.
 3. Know where WN4832 is. In the overview's **Arrivals** table (scroll down past the globe), look for the row "WN4832", "DCA → MDW". The table holds 50 flights, 10 to a page, those with saved answers first, then by scheduled arrival. WN4832 is row 6 of page 2, so click **Next** once. Do not click another flight first: each one you pick in Live spends up to 6 calls.
 
+4. Know the bottom bar. At 1280x720 it shows icons without words, from left to right: **Plan** (page), **Negotiation** (speech bubbles), **Log** (scroll), **Evidence** (flask), then after a divider **Try to break it** (wrench) and **Reset every change** (circular arrow). Hover shows each name. On a wider screen the words appear.
+
 **Stage rule.** If the Live run has not come back after 40 seconds (the strip counts them), or it shows faults, click **Recorded** and say "the live call did not come back, so this is a saved run". Then use the recorded wording in beat 2.
 
-**In Live, do not** click another flight, a runway, a gate, a preset, **Inject**, **Reset every change** or **Make a new recovery plan**. Each one is a new run. The clicks below keep to those that spend nothing until **Model off** in beat 4.
+**In Live, do not** click another flight, a runway, a gate, a preset, **Inject**, **Reset every change** or **Make a new recovery plan**. Each one is a new run. The clicks below keep to those that spend nothing until **Recorded** in beat 4.
 
 ## Beat 1. The user (0:00 to 0:22). Budget 55 words, spoken text 52
 
@@ -65,10 +67,10 @@ This runs on the live plan. Name no gate: read what the screen names.
 **Click, in order:**
 
 1. On the right panel, point at the small letter marks next to the plan facts, and the line under them: "R real, D derived from the file, S synthetic." Hovering one shows the word.
-2. Click the **Try to break it** heading to open the card, which stays open for the rest of the talk. Click **Late change**. This blocks the plan's gate on the server while the screen keeps the old plan, and spends nothing.
+2. Click **Try to break it** (the wrench) in the bottom bar. A panel slides in from the left over the flight list and stays open through beat 4. The map, the plan and **Sign off** stay in view. Click **Late change** in the panel. This blocks the plan's gate on the server while the screen keeps the old plan, and spends nothing.
 3. In the **Sign off** panel, the two boxes sit directly above **Approve**, with no scrolling. Tick **I approve these decisions** and **Send these requests**, then click **Approve**.
 4. A red alert appears: "This plan is out of date. Sign-off refused: the airport changed after you looked." In the Sign off panel the refusal reads "Refused: the airport changed after you looked", and it names what changed. Point at what it names. Do not click **Make a new recovery plan**: in Live that is a new run.
-5. In the **Try to break it** card, click **Tamper log**. It opens the **Log** view. Point at "Tampered copy: detected" and "First bad entry". Click the **X** to close the drawer.
+5. In the panel, click **Tamper log**. It opens the **Log** view beside the panel. Point at "Tampered copy: detected" and "First bad entry". Click the **X** at the top of that drawer, not the panel's.
 
 **Say:**
 
@@ -78,31 +80,32 @@ This runs on the live plan. Name no gate: read what the screen names.
 >
 > Every message goes into a hash-chained log. I edit a copy: caught, with the first bad entry.
 
-## Beat 4. The failure (1:35 to 2:10). Budget 87 words, spoken text 57
+## Beat 4. The failure (1:35 to 2:15). Budget 87 words, spoken text 74
 
 No model calls and no waiting: each click below answers at once.
 
 **Click, in order:**
 
-1. Click **Model off** at the top right, first. The strip reads "The agents did not run".
-2. Click **Reset every change** (the circular arrow at the top of the **Try to break it** card). It clears the blocked gate.
-3. On the diagram in the card (keep **Map** selected, not **Airport 3D**), click **R1**, then **R3**. R2 at MDW is already closed in this scenario and cannot be clicked. R1 gives a rules-only plan. R3 gives the no-go.
-4. Point at the right panel: "No-go" and "No-go: no recovery plan passes". Click **Plan** at the bottom and point at "No legal recovery plan", "No-go: nothing is legal", "Rules that block every plan" and "Closest plan". Click the **X**.
-5. Point at the Sign off panel: "Nothing to approve." Click **I've taken this case**. It reads "Logged: this case is with the duty manager. Nothing was approved or requested."
+1. Click **Recorded** at the top right, first. The presenter's Live build offers only **Live** and **Recorded**. The plan shows "No recording" faults, because the blocked gate is not what was saved.
+2. Click **Reset every change** (the circular arrow in the bottom bar, or at the top of the panel). It clears the blocked gate and returns to the saved run.
+3. On the diagram in the panel (keep **Map** selected, not **Airport 3D**), click **R1**. R2 at MDW is already closed in this scenario and cannot be clicked. The screen lists "No recording: ATC, Pilot, Ground" and a rule-based plan. Say the line below.
+4. Click **R3**. That gives the no-go.
+5. Point at the right panel: "No-go" and "No-go: no recovery plan passes". Click the first icon in the bottom bar (**Plan**) and point at "No legal recovery plan", "No-go: nothing is legal", "Rules that block every plan" and "Closest plan". Click the **X** at the top of that drawer.
+6. Point at the Sign off panel: "Nothing to approve." Click **I've taken this case**. It reads "Logged: this case is with the duty manager. Nothing was approved or requested."
 
 **Say:**
 
-> Now I close every runway. No model is needed for this: when nothing is legal, code says so. It names the rules that block every plan, and shows the closest one. This is a no-go. No-go means no plan was cleared and a person decides. It does not mean the flight should not land. Nothing was approved.
+> Now I close a runway. The saved answers do not cover that, so: no recording, and the rules choose. Now every runway. No model is needed for this: when nothing is legal, code says so. It names the rules that block every plan, and shows the closest one. This is a no-go. No-go means no plan was cleared and a person decides. It does not mean the flight should not land. Nothing was approved.
 
-## Beat 5. The numbers (2:10 to 2:45). Budget 87 words, spoken text 72
+## Beat 5. The numbers (2:15 to 2:50). Budget 87 words, spoken text 72
 
-**Click:** the **Evidence** tab at the bottom. It opens on the numbers, with no scrolling: **Rules only** on the left, **With the model: tuned and unseen flights** on the right, each set with its class, commit, mode and seed. Point at those for the 3150 and the 0. The 14, the turn count and the 9 of 14 are in **Full results: with the model**, further down; scroll there only if asked. "Where we differ from the challenge workbook" and the limits are closed sections under them, then the full tables. The tab reads the evaluation through the API, so check that it shows the same commit as the file.
+**Click:** first close the **Try to break it** panel (its **X**, or Esc), because with it open the drawer is narrower and the numbers need scrolling. Then click the **Evidence** tab at the bottom. It opens on the numbers, with no scrolling: **Rules only** on the left, **With the model: tuned and unseen flights** on the right, each set with its class, commit, mode and seed. Point at those for the 3150 and the 0. The 14, the turn count and the 9 of 14 are in **Full results: with the model**, further down; scroll there only if asked. "Where we differ from the challenge workbook" and the limits are closed sections under them, then the full tables. The tab reads the evaluation through the API, so check that it shows the same commit as the file.
 
 **Say:**
 
 > Rules only, 5000 flights, model off. First-come-first-served broke a rule on 3150 of 5000. Our final plans: 0 of 3919. A rule of thumb that checks the rules also breaks none, so the gate does the safety work. Live, 20 unseen flights: 14 reached the agents, all 14 agreed on turn 1, and 9 of 14 cost more than the fallback. Agents are not shown to beat the rules. Simulated, not savings.
 
-The 15 seconds to 3:00 are spare, for a live call at the slow end.
+The 10 seconds to 3:00 are spare, for a live call at the slow end.
 
 ## Where the spoken numbers come from
 
@@ -138,7 +141,7 @@ Also read these before the talk, because judges ask: "NO_GO NOTHING_LEGAL rate, 
 | # | Checked | Result |
 |---|---|---|
 | C1 | The intro plays once per tab and a click skips it | Yes |
-| C2 | Toggle reads Model off, Recorded, Live; a flight with saved answers opens in Recorded | Yes |
+| C2 | Toggle reads Live, Recorded in the Live build; Model off, Recorded, Live otherwise; there, a flight with saved answers opens in Recorded | Yes |
 | C3 | WN4832 DCA to MDW is in the overview **Arrivals** list | Yes, page 2, row 6 of the 50-flight table; row 4 of 200 on the flights page |
 | C4 | Clicking it opens the flights page with that flight selected and a Recorded run | Yes |
 | C5 | Agent strip shows counts per turn | ATC 4 › 12, Pilot 8 › 8, Ground 7 › 12 |
@@ -156,7 +159,7 @@ Also read these before the talk, because judges ask: "NO_GO NOTHING_LEGAL rate, 
 | C17 | **I've taken this case** | Present, and two-step **Reject plan** too |
 | C18 | Evidence opens on the headline numbers with commit, mode and seed, then the rows | Yes; re-read the values before the talk |
 | C19 | With the Live setting on: no run until a flight is picked, one POST for one pick, from a row or the overview, in the production build and under dev double effects; no "Recorded" tag; working strip and panel; faults shown when refused or failed; **Recorded** recovers | Yes, on a counted fake Live response, with no model call |
-| C20 | Beats 3 and 4 on a Live plan, with **Model off** first | Yes, on the fake: no further Live POST, each off run under 150 ms |
+| C20 | Beats 3 and 4 on a Live plan, with **Recorded** first | Yes, on the fake: no further Live POST |
 | C21 | Live on WN4832 for real | Run once by the coordinator: 6 calls, 2 turns, 0 faults. Not rerun for these checks |
 
 ## If something goes wrong on stage
