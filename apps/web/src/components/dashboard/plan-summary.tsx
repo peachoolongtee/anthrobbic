@@ -26,12 +26,12 @@ const CAUSE_ICON = { weather: CloudLightning, late_aircraft: PlaneLanding } as c
 /** An icon for each fact key; unknown keys fall back to their label. */
 const FACT_ICON: Record<string, LucideIcon> = { runway: PlaneLanding, gate: DoorOpen, handling: RotateCw };
 
-/** A small label shown as an icon, with the word on hover and for screen readers. */
+/** A small label: an icon with its word beside it, so both read from a distance. */
 function IconLabel({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
   return (
-    <span title={label} className="inline-flex text-muted-foreground">
-      <Icon aria-hidden className="size-4" />
-      <span className="sr-only">{label}</span>
+    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+      <Icon aria-hidden className="size-3.5" />
+      {label}
     </span>
   );
 }
@@ -84,7 +84,11 @@ export function PlanSummary({
     card?.action_facts
       .filter((f) => !IN_HEADER.has(f.key))
       .map((f) =>
-        f.key === "slot" && run?.decision.kind === "DEAL" ? { ...f, label: "Runway", value: run.decision.package.runway_id } : f,
+        f.key === "slot" && run?.decision.kind === "DEAL"
+          ? { ...f, label: "Runway", value: run.decision.package.runway_id }
+          : f.key === "action"
+            ? { ...f, label: "Action" }
+            : f,
       ) ?? [];
   const deal = run?.decision.kind === "DEAL" ? run.decision : null;
 
@@ -112,8 +116,8 @@ export function PlanSummary({
           </dd>
         </div>
         <div className="text-right">
-          <dt><IconLabel icon={Hourglass} label="Minutes late" /></dt>
-          <dd className="font-display text-lg font-semibold text-beacon">+{flight.delay_minutes}</dd>
+          <dt><IconLabel icon={Hourglass} label="Late" /></dt>
+          <dd className="font-display text-lg font-semibold text-beacon">+{flight.delay_minutes} min</dd>
         </div>
       </dl>
 
