@@ -1,6 +1,6 @@
 """Hard rules, grouped by domain. `ALL_RULES` is the one registry."""
 
-from app.negotiation.contracts import Package, Rule, Scenario, Violation
+from app.negotiation.contracts import Package, PublicReason, Rule, Scenario, Violation
 from app.negotiation.rules import atc, ground, pilot
 
 ALL_RULES: tuple[Rule, ...] = atc.RULES + pilot.RULES + ground.RULES
@@ -22,3 +22,12 @@ def rule_ids() -> tuple[str, ...]:
 def check_package(scenario: Scenario, package: Package) -> tuple[Violation, ...]:
     """Run every rule and return all violations, in registry order."""
     return tuple(v for rule in ALL_RULES for v in rule.check(scenario, package))
+
+
+def public_reason(rule_id: str) -> PublicReason:
+    """The coarse, value-free reason class for a rule ID, safe to show to other
+    domains. Raises KeyError for an unknown rule."""
+    for rule in ALL_RULES:
+        if rule.rule_id == rule_id:
+            return rule.public_reason
+    raise KeyError(rule_id)

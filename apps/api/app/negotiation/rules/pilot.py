@@ -14,6 +14,7 @@ from app.negotiation.contracts import (
     Domain,
     FlightPlanAction,
     Package,
+    PublicReason,
     Rule,
     Scenario,
     Violation,
@@ -41,9 +42,17 @@ ALLOWED_ACTIONS: MappingProxyType[DecisionPoint, tuple[FlightPlanAction, ...]] =
 )
 
 
-def _violation(message: str, source: str) -> Violation:
+def _violation(
+    message: str, source: str, observed: int, limit: int, unit: str
+) -> Violation:
     return Violation(
-        rule_id=FUEL_POLICY, domain=Domain.PILOT, message=message, source=source
+        rule_id=FUEL_POLICY,
+        domain=Domain.PILOT,
+        message=message,
+        source=source,
+        observed=observed,
+        limit=limit,
+        unit=unit,
     )
 
 
@@ -165,7 +174,7 @@ def check_fuel_policy(scenario: Scenario, package: Package) -> tuple[Violation, 
     if package.action is FlightPlanAction.HOLD:
         needed["hold_burn_kg_per_min"] = scenario.hold_burn_kg_per_min.value
     missing = [
-        _violation(f"{name} unknown", source)
+        Violation.missing_data(FUEL_POLICY, Domain.PILOT, name, source)
         for name, value in needed.items()
         if value is None
     ]
@@ -175,7 +184,11 @@ def check_fuel_policy(scenario: Scenario, package: Package) -> tuple[Violation, 
 
     projection = project_fuel(scenario, package)
     if projection is None:  # unreachable while `needed` covers every input
-        return (_violation("fuel projection unavailable", source),)
+        return (
+            Violation.missing_data(
+                FUEL_POLICY, Domain.PILOT, "fuel projection input", source
+            ),
+        )
 
     found: list[Violation] = []
     if package.action not in ALLOWED_ACTIONS[decision_point]:
@@ -183,6 +196,9 @@ def check_fuel_policy(scenario: Scenario, package: Package) -> tuple[Violation, 
             _violation(
                 f"{package.action.value} is not possible {decision_point.value}",
                 source,
+                1,
+                0,
+                "impossible actions",
             )
         )
     if projection.delay_min < 0:
@@ -190,12 +206,19 @@ def check_fuel_policy(scenario: Scenario, package: Package) -> tuple[Violation, 
             _violation(
                 f"slot is {-projection.delay_min} min before the earliest arrival",
                 source,
+                projection.delay_min,
+                0,
+                "min of delay",
             )
         )
     if package.action is FlightPlanAction.DIRECT and projection.delay_min != 0:
         found.append(
             _violation(
-                f"direct cannot absorb a {projection.delay_min} min delay", source
+                f"direct cannot absorb a {projection.delay_min} min delay",
+                source,
+                projection.delay_min,
+                0,
+                "min of delay",
             )
         )
     if projection.landing_fuel_kg < projection.required_kg:
@@ -209,6 +232,9 @@ def check_fuel_policy(scenario: Scenario, package: Package) -> tuple[Violation, 
                 f"({reserve.value} min reserve, {alternate_note}); a demo policy "
                 "limit, not a regulation",
                 source,
+                projection.landing_fuel_kg,
+                projection.required_kg,
+                "kg",
             )
         )
     return tuple(found)
@@ -216,12 +242,14 @@ def check_fuel_policy(scenario: Scenario, package: Package) -> tuple[Violation, 
 
 RULES: tuple[Rule, ...] = (
     Rule(
-        FUEL_POLICY,
-        Domain.PILOT,
-        "demo policy shaped on 14 CFR 121.639 and FAA InFO 08004; "
+        rule_id=FUEL_POLICY,
+        domain=Domain.PILOT,
+        source="demo policy shaped on 14 CFR 121.639 and FAA InFO 08004; "
         "alternate test from 14 CFR 121.619(a)",
-        "Policy limit: landing fuel, after any hold and any required alternate, "
-        "covers the final reserve",
-        check_fuel_policy,
+        description="Policy limit: landing fuel, after any hold and any required "
+        "alternate, covers the final reserve",
+        # Fuel state is private to the pilot; others only learn it is infeasible.
+        public_reason=PublicReason.INFEASIBLE_FOR_ANOTHER_DOMAIN,
+        check=check_fuel_policy,
     ),
 )

@@ -10,6 +10,7 @@ arrival delay, and ground bears gate moves, overtime and turnaround delay.
 from app.negotiation import rule_values as rv
 from app.negotiation.contracts import (
     CostBreakdown,
+    Deal,
     DomainCosts,
     FrozenModel,
     Package,
@@ -123,4 +124,39 @@ def compute_cost(
         by_domain=by_domain,
         total=by_domain.pilot + by_domain.atc + by_domain.ground,
         unknown_inputs=tuple(sorted(set(unknown))),
+    )
+
+
+class WeightSensitivity(FrozenModel):
+    """Whether different weights would change which package the fallback picks.
+
+    A package is None when the fallback returns `NoDeal`, which no weights can
+    change: weights only rank packages that already pass every rule.
+    """
+
+    default_package: Package | None
+    alternate_package: Package | None
+    changed: bool
+
+
+def weight_sensitivity(
+    scenario: Scenario,
+    alternate: CostWeights,
+    default: CostWeights = DEFAULT_WEIGHTS,
+) -> WeightSensitivity:
+    """Run the fallback under both weight sets and compare the chosen packages.
+
+    Build `alternate` with `DEFAULT_WEIGHTS.model_copy(update={...})`.
+    """
+    # Imported here because the fallback itself depends on this module.
+    from app.negotiation.fallback import decide
+
+    def chosen(weights: CostWeights) -> Package | None:
+        decision = decide(scenario, weights)
+        return decision.package if isinstance(decision, Deal) else None
+
+    before = chosen(default)
+    after = chosen(alternate)
+    return WeightSensitivity(
+        default_package=before, alternate_package=after, changed=before != after
     )

@@ -1,7 +1,14 @@
 """Air traffic control rules. Each is pure and returns every violation."""
 
 from app.negotiation import rule_values as rv
-from app.negotiation.contracts import Domain, Package, Rule, Scenario, Violation
+from app.negotiation.contracts import (
+    Domain,
+    Package,
+    PublicReason,
+    Rule,
+    Scenario,
+    Violation,
+)
 
 WAKE_SEPARATION = "ATC-WAKE-SEP"
 RUNWAY_CLOSED = "ATC-RWY-CLOSED"
@@ -9,8 +16,27 @@ TAXIWAY_CLOSED = "ATC-TWY-CLOSED"
 RUNWAY_THROUGHPUT = "ATC-RWY-THROUGHPUT"
 
 
-def _violation(rule_id: str, message: str, source: str) -> Violation:
-    return Violation(rule_id=rule_id, domain=Domain.ATC, message=message, source=source)
+def _violation(
+    rule_id: str,
+    message: str,
+    source: str,
+    observed: int,
+    limit: int,
+    unit: str,
+) -> Violation:
+    return Violation(
+        rule_id=rule_id,
+        domain=Domain.ATC,
+        message=message,
+        source=source,
+        observed=observed,
+        limit=limit,
+        unit=unit,
+    )
+
+
+def _missing(rule_id: str, name: str, source: str) -> Violation:
+    return Violation.missing_data(rule_id, Domain.ATC, name, source)
 
 
 def required_separation_min(leader_nm: int) -> int:
@@ -23,15 +49,18 @@ def required_separation_min(leader_nm: int) -> int:
 def check_wake_separation(
     scenario: Scenario, package: Package
 ) -> tuple[Violation, ...]:
-    """In-trail separation against every other arrival on the same runway."""
+    """In-trail separation against every other arrival on the same runway.
+
+    `observed` is the gap in minutes and `limit` the minimum gap.
+    """
     source = "scenario.other_arrivals, scenario.wake_category"
     wake = scenario.wake_category.value
     arrivals = scenario.other_arrivals.value
     missing: list[Violation] = []
     if wake is None:
-        missing.append(_violation(WAKE_SEPARATION, "own wake category unknown", source))
+        missing.append(_missing(WAKE_SEPARATION, "own wake category", source))
     if arrivals is None:
-        missing.append(_violation(WAKE_SEPARATION, "other arrivals unknown", source))
+        missing.append(_missing(WAKE_SEPARATION, "other arrivals", source))
     if wake is None or arrivals is None:
         return tuple(missing)
 
@@ -56,27 +85,35 @@ def check_wake_separation(
                     f"{other.runway_id}; {leader.value} then {follower.value} "
                     f"needs {sep.value} nm = {need_min} min",
                     rv.reference(sep),
+                    gap_min,
+                    need_min,
+                    "min",
                 )
             )
     return tuple(found)
 
 
 def check_runway_closed(scenario: Scenario, package: Package) -> tuple[Violation, ...]:
-    """The runway must be known and open."""
+    """The runway must be known and open. A closed runway is 1 against a limit of 0."""
     source = f"scenario.runways ({scenario.runways.provenance.value})"
     runways = scenario.runways.value
     if runways is None:
-        return (_violation(RUNWAY_CLOSED, "runway status unknown", source),)
+        return (_missing(RUNWAY_CLOSED, "runway status", source),)
     runway_id = package.slot.runway_id
     matches = [r for r in runways if r.runway_id == runway_id]
     if not matches:
+        return (_missing(RUNWAY_CLOSED, f"runway {runway_id}", source),)
+    if any(r.closed for r in matches):
         return (
             _violation(
-                RUNWAY_CLOSED, f"runway {runway_id} is not in the scenario", source
+                RUNWAY_CLOSED,
+                f"runway {runway_id} is closed",
+                source,
+                1,
+                0,
+                "closed runways",
             ),
         )
-    if any(r.closed for r in matches):
-        return (_violation(RUNWAY_CLOSED, f"runway {runway_id} is closed", source),)
     return ()
 
 
@@ -86,30 +123,22 @@ def check_taxiway_closed(scenario: Scenario, package: Package) -> tuple[Violatio
     gates = scenario.gates.value
     taxiways = scenario.taxiways.value
     if gates is None or taxiways is None:
-        return (_violation(TAXIWAY_CLOSED, "gate or taxiway map unknown", source),)
+        return (_missing(TAXIWAY_CLOSED, "gate or taxiway map", source),)
     gate = next((g for g in gates if g.gate_id == package.gate_id), None)
     if gate is None:
-        return (
-            _violation(
-                TAXIWAY_CLOSED, f"gate {package.gate_id} is not in the scenario", source
-            ),
-        )
+        return (_missing(TAXIWAY_CLOSED, f"gate {package.gate_id}", source),)
     routes = [t for t in taxiways if t.taxiway_id == gate.taxiway_id]
     if not routes:
-        return (
-            _violation(
-                TAXIWAY_CLOSED,
-                f"taxiway {gate.taxiway_id} for gate {gate.gate_id} is not in the "
-                "scenario",
-                source,
-            ),
-        )
+        return (_missing(TAXIWAY_CLOSED, f"taxiway {gate.taxiway_id}", source),)
     if any(t.closed for t in routes):
         return (
             _violation(
                 TAXIWAY_CLOSED,
                 f"taxiway {gate.taxiway_id} serving gate {gate.gate_id} is closed",
                 source,
+                1,
+                0,
+                "closed taxiways",
             ),
         )
     return ()
@@ -124,12 +153,13 @@ def check_runway_throughput(
     source = "scenario.other_arrivals, scenario.flight_rules"
     missing: list[Violation] = []
     if arrivals is None:
-        missing.append(_violation(RUNWAY_THROUGHPUT, "other arrivals unknown", source))
+        missing.append(_missing(RUNWAY_THROUGHPUT, "other arrivals", source))
     if flight_rules is None:
-        missing.append(_violation(RUNWAY_THROUGHPUT, "flight rules unknown", source))
+        missing.append(_missing(RUNWAY_THROUGHPUT, "flight rules", source))
     if arrivals is None or flight_rules is None:
         return tuple(missing)
     cap = rv.runway_hourly_arrivals(flight_rules)
+
     hour = rv.rule_value(rv.MINUTES_PER_HOUR).value
     runway_id = package.slot.runway_id
     mine = package.slot.time_min
@@ -149,6 +179,9 @@ def check_runway_throughput(
                 f"{worst} arrivals within an hour on runway {runway_id}; "
                 f"cap is {cap.value} under {flight_rules.value.upper()}",
                 rv.reference(cap),
+                worst,
+                cap.value,
+                "arrivals per hour",
             ),
         )
     return ()
@@ -156,31 +189,35 @@ def check_runway_throughput(
 
 RULES: tuple[Rule, ...] = (
     Rule(
-        WAKE_SEPARATION,
-        Domain.ATC,
-        "FAA JO 7110.65 5-5-4",
-        "Wake in-trail separation against other arrivals on the runway",
-        check_wake_separation,
+        rule_id=WAKE_SEPARATION,
+        domain=Domain.ATC,
+        source="FAA JO 7110.65BB para 5-5-4",
+        description="Wake in-trail separation against other arrivals on the runway",
+        public_reason=PublicReason.SAFETY_MARGIN,
+        check=check_wake_separation,
     ),
     Rule(
-        RUNWAY_CLOSED,
-        Domain.ATC,
-        "scenario.runways",
-        "The arrival runway must be known and open",
-        check_runway_closed,
+        rule_id=RUNWAY_CLOSED,
+        domain=Domain.ATC,
+        source="scenario.runways",
+        description="The arrival runway must be known and open",
+        public_reason=PublicReason.RESOURCE_CLOSED,
+        check=check_runway_closed,
     ),
     Rule(
-        TAXIWAY_CLOSED,
-        Domain.ATC,
-        "scenario.taxiways",
-        "The taxiway serving the gate must be known and open",
-        check_taxiway_closed,
+        rule_id=TAXIWAY_CLOSED,
+        domain=Domain.ATC,
+        source="scenario.taxiways",
+        description="The taxiway serving the gate must be known and open",
+        public_reason=PublicReason.RESOURCE_CLOSED,
+        check=check_taxiway_closed,
     ),
     Rule(
-        RUNWAY_THROUGHPUT,
-        Domain.ATC,
-        "rule_values.runway_hourly_arrivals (IFR/VFR)",
-        "Arrivals per rolling hour on the runway must not exceed the cap",
-        check_runway_throughput,
+        rule_id=RUNWAY_THROUGHPUT,
+        domain=Domain.ATC,
+        source="rule_values.runway_hourly_arrivals (IFR/VFR)",
+        description="Arrivals per rolling hour on the runway must not exceed the cap",
+        public_reason=PublicReason.CAPACITY_LIMIT,
+        check=check_runway_throughput,
     ),
 )

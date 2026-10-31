@@ -5,10 +5,12 @@ scenario-local reference instant and quantities are integers, so every result
 is exact and serialises identically on every run.
 """
 
-from collections.abc import Callable
+import hashlib
+import json
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import IntEnum, StrEnum
-from typing import Literal, Self
+from typing import ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -179,17 +181,101 @@ class ArrivalSlot(FrozenModel):
     time_min: int
 
 
+_ACTION_RANK = {action: rank for rank, action in enumerate(FlightPlanAction)}
+
+
 class Package(FrozenModel):
-    slot: ArrivalSlot
-    gate_id: str
-    action: FlightPlanAction
+    """The decision terms: where and when to land, which gate, how to absorb delay.
+
+    The authority labels are metadata only and change no behaviour. Next-leg
+    handling is the airline's too, but is not a term of this package.
+    """
+
+    AUTHORITY: ClassVar[Mapping[str, tuple[str, ...]]] = {
+        "airline_decides": ("gate_id",),
+        "requires_request": ("slot", "action"),
+    }
+
+    slot: ArrivalSlot = Field(json_schema_extra={"authority": "requires_request"})
+    gate_id: str = Field(json_schema_extra={"authority": "airline_decides"})
+    action: FlightPlanAction = Field(
+        json_schema_extra={"authority": "requires_request"}
+    )
+
+    @property
+    def terms_hash(self) -> str:
+        """SHA-256 of the decision terms only, as canonical JSON.
+
+        Nothing but the slot, gate and action is hashed, so explanations,
+        provenance and reasons cannot change it.
+        """
+        terms = {
+            "runway_id": self.slot.runway_id,
+            "time_min": self.slot.time_min,
+            "gate_id": self.gate_id,
+            "action": self.action.value,
+        }
+        canonical = json.dumps(terms, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(canonical.encode()).hexdigest()
+
+    @property
+    def sort_key(self) -> tuple[int, str, str, int]:
+        """Code tie-break order: earliest, then runway, gate, action."""
+        return (
+            self.slot.time_min,
+            self.slot.runway_id,
+            self.gate_id,
+            _ACTION_RANK[self.action],
+        )
+
+
+class ViolationCause(StrEnum):
+    CONSTRAINT = "constraint"  # a real limit was exceeded
+    MISSING_DATA = "missing_data"  # an input was unknown, so the rule failed closed
+
+
+class PublicReason(StrEnum):
+    """Coarse reason classes that may be shown to other domains.
+
+    They carry no private value; the detail stays on `Violation`.
+    """
+
+    INFEASIBLE_FOR_ANOTHER_DOMAIN = "infeasible_for_another_domain"
+    SAFETY_MARGIN = "safety_margin"
+    RESOURCE_CLOSED = "resource_closed"
+    CAPACITY_LIMIT = "capacity_limit"
+    RESOURCE_CONFLICT = "resource_conflict"
+    EQUIPMENT_MISMATCH = "equipment_mismatch"
+    SCHEDULE_LIMIT = "schedule_limit"
 
 
 class Violation(FrozenModel):
+    """One broken rule. `observed` against `limit` is in `unit`.
+
+    For a missing-data violation `observed` is None.
+    """
+
     rule_id: str
     domain: Domain
     message: str
     source: str
+    observed: int | None
+    limit: int | None
+    unit: str
+    cause: ViolationCause = ViolationCause.CONSTRAINT
+
+    @classmethod
+    def missing_data(cls, rule_id: str, domain: Domain, name: str, source: str) -> Self:
+        return cls(
+            rule_id=rule_id,
+            domain=domain,
+            message=f"{name} unknown, so the rule fails closed",
+            source=source,
+            observed=None,
+            limit=None,
+            unit="",
+            cause=ViolationCause.MISSING_DATA,
+        )
 
 
 class DomainCosts(FrozenModel):
@@ -220,25 +306,48 @@ class Proposal(FrozenModel):
     reason: str
 
 
-class ResponseKind(StrEnum):
-    ACCEPT = "accept"
-    REJECT = "reject"
-    COUNTER = "counter"
-
-
 class Response(FrozenModel):
+    """A domain's answer: every package it would accept, best first.
+
+    An empty `acceptable_package_ids` is a refusal. IDs are `terms_hash`.
+    """
+
     turn: int = Field(ge=1)
     responder: Domain
-    kind: ResponseKind
-    package: Package  # the package responded to
-    counter: Package | None = None
+    acceptable_package_ids: tuple[str, ...]
+    ranking: tuple[str, ...]
     reason: str
 
     @model_validator(mode="after")
-    def _counter_matches_kind(self) -> Self:
-        if (self.kind is ResponseKind.COUNTER) != (self.counter is not None):
-            raise ValueError("a counter package is required exactly for COUNTER")
+    def _ranking_covers_acceptable(self) -> Self:
+        if len(set(self.acceptable_package_ids)) != len(self.acceptable_package_ids):
+            raise ValueError("acceptable package IDs must be unique")
+        if sorted(self.ranking) != sorted(self.acceptable_package_ids):
+            raise ValueError("ranking must order exactly the acceptable packages")
         return self
+
+
+def intersect_responses(
+    responses: Sequence[Response], packages: Iterable[Package]
+) -> tuple[Package, ...]:
+    """Packages that all three domains accept, in code tie-break order.
+
+    Fails closed: with a domain missing there is no intersection. Two responses
+    from one domain is a protocol error. IDs that match no given package are
+    dropped, since they cannot be enacted.
+    """
+    by_domain: dict[Domain, Response] = {}
+    for response in responses:
+        if response.responder in by_domain:
+            raise ValueError(f"two responses from {response.responder.value}")
+        by_domain[response.responder] = response
+    if set(by_domain) != set(Domain):
+        return ()
+    common = set.intersection(
+        *(set(r.acceptable_package_ids) for r in by_domain.values())
+    )
+    unique = {p.terms_hash: p for p in packages if p.terms_hash in common}
+    return tuple(sorted(unique.values(), key=lambda p: p.sort_key))
 
 
 class Consensus(FrozenModel):
@@ -270,13 +379,25 @@ class RuleElimination(FrozenModel):
     packages_eliminated: int
 
 
+class NoDealReason(StrEnum):
+    NOTHING_LEGAL = "NOTHING_LEGAL"  # a real constraint blocks every package
+    SYSTEM_FAULT = "SYSTEM_FAULT"  # missing data or a failure blocks every package
+
+
 class NoDeal(FrozenModel):
-    """No package passed every rule. Escalate to the duty manager."""
+    """No package passed every rule. Escalate to the duty manager.
+
+    `nearest_package` is the one failing the fewest rules, so a reader sees what
+    would have to change. It is None only when no package was enumerated.
+    """
 
     kind: Literal["NO_DEAL"] = "NO_DEAL"
+    reason_type: NoDealReason
     binding_rule_ids: tuple[str, ...]
     eliminations: tuple[RuleElimination, ...]
     packages_considered: int
+    nearest_package: Package | None
+    nearest_violations: tuple[Violation, ...]
     reason: str
 
 
@@ -291,4 +412,5 @@ class Rule:
     domain: Domain
     source: str
     description: str
+    public_reason: PublicReason
     check: Callable[[Scenario, Package], tuple[Violation, ...]]
