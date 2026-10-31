@@ -1,4 +1,5 @@
 import {
+  ArrowRight,
   CalendarClock,
   CircleAlert,
   CircleCheck,
@@ -51,6 +52,22 @@ export function landingFact(card: Run["card"] | undefined): { clock: string; pro
   return slot && clock ? { clock, provenance: slot.provenance } : null;
 }
 
+/**
+ * Minutes from one "HH:MM" clock to another, taking the shorter way round
+ * midnight, so 23:55 to 00:20 is +25, not -1415. Null if either is unreadable.
+ */
+function minutesBetween(from: string, to: string): number | null {
+  const at = (clock: string) => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(clock.trim());
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  };
+  const a = at(from);
+  const b = at(to);
+  if (a === null || b === null) return null;
+  const d = (((b - a) % 1440) + 1440) % 1440;
+  return d > 720 ? d - 1440 : d;
+}
+
 function Pill({ ok, icon: Icon, title, children }: { ok: boolean; icon: LucideIcon; title: string; children: React.ReactNode }) {
   const Mark = ok ? CircleCheck : CircleAlert;
   return (
@@ -91,6 +108,7 @@ export function PlanSummary({
             : f,
       ) ?? [];
   const deal = run?.decision.kind === "DEAL" ? run.decision : null;
+  const change = arrival ? minutesBetween(flight.scheduled_arrival, arrival.clock) : null;
   // A system fault judged no plan illegal, so it must not read as "no plan passes".
   const noGoLabel =
     run?.decision.kind === "NO_GO" && run.decision.reason_type === "SYSTEM_FAULT"
@@ -99,32 +117,55 @@ export function PlanSummary({
 
   return (
     <section aria-label="Recovery plan" className="space-y-3">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      {/* pr-8 keeps clear of the panel's hide button in the top-right corner. */}
+      <div className="flex items-center gap-2 pr-8 text-sm text-muted-foreground">
         <span className="font-medium text-foreground">{flight.flight_id}</span>
         <Icon aria-hidden className="size-3.5" />
         <span>{CAUSE_LABEL[flight.cause]}</span>
+        <span className="ml-auto inline-flex items-center gap-1 tabular-nums" title="How late the flight is running">
+          <Hourglass aria-hidden className="size-3.5" />
+          <span className="font-semibold text-beacon">+{flight.delay_minutes} min</span> late
+        </span>
       </div>
       <RouteCodes route={flight.route} size="lg" />
 
-      <dl className="grid grid-cols-3 items-end gap-2 tabular-nums">
+      {/* Before and after: the time the flight was scheduled to land, and the
+          time it lands with this recovery plan, joined by the change between them. */}
+      <div role="group" aria-label="Arrival, before and after" className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 rounded-xl border border-border bg-background/40 p-3 tabular-nums">
         <div>
-          <dt><IconLabel icon={CalendarClock} label="Due" /></dt>
-          <dd className="font-display text-lg font-semibold text-muted-foreground line-through decoration-1">
-            {flight.scheduled_arrival}
-          </dd>
+          <p className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">Before</p>
+          <p className="font-display text-xl font-semibold text-muted-foreground">{flight.scheduled_arrival}</p>
+          <div>
+            <IconLabel icon={CalendarClock} label="Scheduled" />
+          </div>
         </div>
-        <div>
-          <dt><IconLabel icon={Clock} label="Lands" /></dt>
-          <dd className="flex items-center gap-1 font-display text-2xl font-semibold">
+
+        <div aria-hidden className="flex flex-col items-center gap-0.5 px-1">
+          <span className={cn("text-xs font-semibold whitespace-nowrap", change === null ? "text-muted-foreground" : "text-beacon")}>
+            {change === null ? "no plan" : `${change >= 0 ? "+" : "−"}${Math.abs(change)} min`}
+          </span>
+          <span className="flex items-center text-muted-foreground">
+            <span className="h-px w-8 bg-gradient-to-r from-muted-foreground/30 to-beacon/70" />
+            <ArrowRight className="-ml-1 size-3.5 text-beacon" />
+          </span>
+        </div>
+
+        <div className="text-right">
+          <p className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">After</p>
+          <p className="flex items-center justify-end gap-1 font-display text-2xl font-semibold">
             {arrival?.clock ?? "—"}
             {arrival && <ProvenanceMark provenance={arrival.provenance} />}
-          </dd>
+          </p>
+          <div className="flex justify-end">
+            <IconLabel icon={Clock} label={arrival ? "With this plan" : "No plan"} />
+          </div>
         </div>
-        <div className="text-right">
-          <dt><IconLabel icon={Hourglass} label="Late" /></dt>
-          <dd className="font-display text-lg font-semibold text-beacon">+{flight.delay_minutes} min</dd>
-        </div>
-      </dl>
+        {change !== null && (
+          <span className="sr-only">
+            Lands {Math.abs(change)} minutes {change >= 0 ? "later" : "earlier"} than scheduled.
+          </span>
+        )}
+      </div>
 
       {run && (
         <div className="flex flex-wrap gap-1.5">

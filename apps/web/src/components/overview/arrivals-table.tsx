@@ -28,10 +28,10 @@ const OUTCOME_ORDER: Outcome[] = ["agreed", "fallback", "no_go", "fault", "faile
 type SortKey = "flight" | "route" | "arrival" | "delay" | "cause" | "outcome";
 
 const COLUMNS: { key: SortKey | "next"; label: string; width: string }[] = [
-  { key: "flight", label: "Flight", width: "w-[17%]" },
-  { key: "route", label: "Route", width: "w-[20%]" },
+  { key: "flight", label: "Flight", width: "w-[16%]" },
+  { key: "route", label: "Route", width: "w-[19%]" },
   { key: "arrival", label: "Arrival", width: "w-[10%]" },
-  { key: "delay", label: "Delay", width: "w-[9%]" },
+  { key: "delay", label: "Delay", width: "w-[11%]" },
   { key: "cause", label: "Cause", width: "w-[13%]" },
   { key: "outcome", label: "Outcome", width: "w-[16%]" },
   { key: "next", label: "Next leg", width: "w-[15%]" },
@@ -231,8 +231,11 @@ export function ArrivalsTable({
                 <TableCell className="px-3 py-2.5">
                   <span className="flex items-center gap-1.5">
                     <Connector flip />
-                    <span className="font-display font-semibold text-beacon tabular-nums">+{flight.delay_minutes}</span>
-                    <span className="sr-only"> minutes of delay</span>
+                    <span className="font-display font-semibold whitespace-nowrap text-beacon tabular-nums">
+                      +{flight.delay_minutes}
+                      <span className="ml-0.5 text-xs font-medium text-muted-foreground">min</span>
+                    </span>
+                    <span className="sr-only"> of delay</span>
                     {flight.delay_provenance && <ProvenanceMark provenance={flight.delay_provenance} />}
                   </span>
                 </TableCell>

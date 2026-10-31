@@ -212,6 +212,7 @@ export function FlightList({
                       )}
                       <span className="ml-auto flex items-center gap-1 font-display font-semibold text-beacon tabular-nums">
                         +{s.delay_minutes}
+                        <span className="text-xs font-medium text-muted-foreground">min</span>
                         {s.delay_provenance && <ProvenanceMark provenance={s.delay_provenance} />}
                       </span>
                     </div>

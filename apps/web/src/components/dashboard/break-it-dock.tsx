@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   CircleAlert,
   CircleCheck,
-  ChevronDown,
+  ChevronRight,
   FileWarning,
   Info,
   Loader2,
@@ -25,10 +25,12 @@ import { cn } from "@/lib/utils";
 
 interface Props {
   run: Run | null;
+  /** The flight under attack, named at the top of the open panel. */
+  flightId?: string | null;
   overrides: RunOverrides;
   busy: BreakKind | null;
   disabled: boolean;
-  /** Closed by default, so the card does not cover the route on the map. */
+  /** Closed by default: a small bar on the map. Open, it fills a side panel. */
   open: boolean;
   onToggle: () => void;
   onDisrupt: (kind: "runway" | "gate", overrides: RunOverrides, title: string) => void;
@@ -71,9 +73,9 @@ export function BreakItDock(p: Props) {
             onClick={p.onToggle}
             className="flex items-center gap-2 rounded-md outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <Wrench aria-hidden className="size-4 text-muted-foreground" />
+            <Wrench aria-hidden className={cn("size-4", p.open ? "text-primary" : "text-muted-foreground")} />
             Try to break it
-            <ChevronDown aria-hidden className={cn("size-4 text-muted-foreground transition-transform motion-reduce:transition-none", !p.open && "rotate-180")} />
+            {!p.open && <ChevronRight aria-hidden className="size-4 text-muted-foreground" />}
           </button>
         </h2>
         {p.busy !== null && <Loader2 aria-label="Re-running" className="size-4 animate-spin text-muted-foreground" />}
@@ -88,7 +90,19 @@ export function BreakItDock(p: Props) {
         >
           <RotateCcw aria-hidden />
         </Button>
+        {p.open && (
+          <Button size="icon-sm" variant="ghost" onClick={p.onToggle} aria-label="Close" title="Close (Esc)">
+            <X aria-hidden />
+          </Button>
+        )}
       </header>
+
+      {p.open && p.flightId && (
+        <p className="text-xs text-muted-foreground">
+          Attacking <span className="font-mono text-foreground">{p.flightId}</span>. Each result shows on the map, the
+          plan and the sign-off.
+        </p>
+      )}
 
       <div id="break-controls" hidden={!p.open} className="space-y-2">
         <div role="group" aria-label="Disruption presets" className="flex flex-wrap items-center gap-1">
