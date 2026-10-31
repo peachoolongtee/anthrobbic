@@ -21,10 +21,10 @@ Nothing loads a `.env` from the repo root. The root `.env.example` lists every v
 | `SUPABASE_URL` | `apps/api/.env` | A URL for a Supabase project | No. |
 | `SUPABASE_SECRET_KEY` | `apps/api/.env` | A server-only secret key | No. Never put it in the web app. |
 | `CORS_ORIGINS` | `apps/api/.env` | A comma-separated list of browser origins | Only if the web app is not on `http://localhost:3000`. That is the default. |
-| `ALLOW_LIVE` | `apps/api/.env` | A switch. Only `1` allows live model runs | No. Leave it unset. Live runs spend money. |
+| `ALLOW_LIVE` | The process environment, for the live moment | A switch. Only `1` allows live model runs | Only for the live moment (see "Start the API for the live moment"). Live runs spend money. |
 | `FLIGHTS_CSV` | The process environment only | A file path | Only off this laptop. |
 
-Live mode also needs a model credential in the environment. Do not set one for the stage demo. The demo needs no key.
+Live mode also needs a model credential in the process environment. Everything except the live moment works with no key.
 
 ## Start order
 
@@ -120,8 +120,22 @@ Write the test output to a file and read the exit code before relying on it. A p
 ## What to expect today
 
 - **Model off** works with no key. A flight list loads, a run builds, sign-off and the log work.
-- **Recorded** replays saved model answers, and it is the default on the flights page and the only mode the overview uses. `[CHECK ON SCREEN]` The six saved answers in `apps/api/recordings/` do not match the current prompts. In an earlier check, recorded mode on a flight returned the rule-based fallback with "No recording" faults. Until the answers are saved again, the negotiation in the demo is `[RE-RECORD PENDING]`, and the overview will show its flights as "Fallback", not "Agents agreed".
-- **Live** is refused unless `ALLOW_LIVE=1` and a credential is set. Do not use it on stage.
+- **Recorded** replays saved model answers, and it is the default on the flights page and the only mode the overview uses. Leave the mode on Recorded unless you are at the live moment. Any change to runways or gates is not what was recorded, so the rules choose the plan, and the page lists "No recording" and says why.
+- **Live** is available only when the API is started with `ALLOW_LIVE=1` and a credential; otherwise it is refused. It is used once on stage, as the last part of the talk.
+
+## Start the API for the live moment
+
+Start the API with the key in the process environment and `ALLOW_LIVE=1`, from `apps/api/.env`, with this command. It never prints the value:
+
+```bash
+set -a; . apps/api/.env; set +a; ALLOW_LIVE=1 uv --directory apps/api run uvicorn app.main:app --port 8000
+```
+
+The coordinator's test used this form. Relying on `.env` alone was not tested.
+
+- Live needs internet. Check the network before going on. With no network, skip the live moment.
+- A rehearsal that clicks **Live** spends up to 6 calls, about $0.15. Rehearse without it where you can.
+- Leave the mode on **Recorded** otherwise. Recorded stays the default.
 
 ## If a visual fails: the 30-second plan
 
