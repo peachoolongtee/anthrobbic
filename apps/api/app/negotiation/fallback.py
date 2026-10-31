@@ -46,7 +46,7 @@ def decide(scenario: Scenario, weights: CostWeights = DEFAULT_WEIGHTS) -> Decisi
             ),
         )
 
-    best: tuple[int, tuple[int, str, str, int], Package] | None = None
+    best: tuple[tuple[int, tuple[int, str, str, int]], Package] | None = None
     legal = 0
     eliminated: Counter[str] = Counter()
     failures: list[tuple[Package, tuple[Violation, ...]]] = []
@@ -58,12 +58,12 @@ def decide(scenario: Scenario, weights: CostWeights = DEFAULT_WEIGHTS) -> Decisi
             continue
         legal += 1
         cost = compute_cost(scenario, package, weights).total
-        candidate = (cost, package.sort_key, package)
-        if best is None or candidate[:2] < best[:2]:
-            best = candidate
+        rank = (cost, package.sort_key)
+        if best is None or rank < best[0]:
+            best = (rank, package)
 
     if best is not None:
-        chosen = best[2]
+        chosen = best[1]
         return Deal(
             package=chosen,
             cost=compute_cost(scenario, chosen, weights),

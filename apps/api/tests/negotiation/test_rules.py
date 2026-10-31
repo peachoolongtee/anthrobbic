@@ -7,6 +7,7 @@ parametrised over the rule registry, so a rule added without cases fails.
 import math
 from dataclasses import dataclass
 from fractions import Fraction
+from typing import Any
 
 import pytest
 
@@ -16,18 +17,17 @@ from app.negotiation.contracts import (
     DecisionPoint,
     FlightPlanAction,
     FlightRules,
-    Gate,
     GateOccupancy,
     OtherArrival,
     Package,
     Runway,
     Scenario,
     Taxiway,
+    ViolationCause,
     WakeCategory,
     WeatherPeriod,
 )
-from app.negotiation.rules import ALL_RULES, check_package, rule_ids
-from app.negotiation.rules import atc, ground, pilot
+from app.negotiation.rules import ALL_RULES, atc, check_package, ground, pilot, rule_ids
 from tests.negotiation.factories import (
     BASELINE,
     BASELINE_PACKAGE,
@@ -47,14 +47,15 @@ class Case:
     fails: bool
     boundary: bool = False
     violations: int | None = None  # expected count, when it matters
+    expect: tuple[int, int] | None = None  # (observed, limit) of the one violation
 
 
-def ok(name: str, scenario: Scenario, package: Package, **kw: bool) -> Case:
+def ok(name: str, scenario: Scenario, package: Package, **kw: Any) -> Case:
     return Case(name, scenario, package, fails=False, **kw)
 
 
-def bad(name: str, scenario: Scenario, package: Package, **kw: object) -> Case:
-    return Case(name, scenario, package, fails=True, **kw)  # type: ignore[arg-type]
+def bad(name: str, scenario: Scenario, package: Package, **kw: Any) -> Case:
+    return Case(name, scenario, package, fails=True, **kw)
 
 
 def sep_min(leader: WakeCategory, follower: WakeCategory) -> int:
@@ -72,7 +73,7 @@ def arrival(
     )
 
 
-def with_arrivals(*arrivals: OtherArrival, **overrides: object) -> Scenario:
+def with_arrivals(*arrivals: OtherArrival, **overrides: Any) -> Scenario:
     return make_scenario(other_arrivals=tuple(arrivals), **overrides)
 
 
@@ -106,6 +107,7 @@ def wake_cases() -> list[Case]:
                 make_package(90 + need - 1),
                 boundary=True,
                 violations=1,
+                expect=(need - 1, need),
             )
         )
         # Own flight leads the other.
@@ -120,6 +122,7 @@ def wake_cases() -> list[Case]:
                 make_package(200 - need + 1),
                 boundary=True,
                 violations=1,
+                expect=(need - 1, need),
             )
         )
     cases += [
@@ -226,6 +229,7 @@ def throughput_cases() -> list[Case]:
             make_package(mine),
             boundary=True,
             violations=1,
+            expect=(cap + 1, cap),
         ),
         ok(
             "cap arrivals exactly an hour earlier are outside the window",
@@ -311,6 +315,7 @@ def fuel_cases() -> list[Case]:
             BASELINE_PACKAGE,
             boundary=True,
             violations=1,
+            expect=(reserve - 1, reserve),
         ),
         ok(
             "hold, exactly at reserve",
@@ -594,6 +599,7 @@ def overlap_cases() -> list[Case]:
             BASELINE_PACKAGE,
             boundary=True,
             violations=1,
+            expect=(buf - 1, buf),
         ),
         ok(
             "next flight arrives exactly buffer after",
@@ -642,6 +648,7 @@ def size_cases() -> list[Case]:
             make_package(gate_id="A2"),
             boundary=True,
             violations=1,
+            expect=(2, 1),
         ),
         ok("aircraft below gate maximum", make_scenario(), make_package(gate_id="B1")),
         bad("gate not in scenario", make_scenario(), make_package(gate_id="Z9")),
@@ -668,6 +675,7 @@ def turnaround_cases() -> list[Case]:
             BASELINE_PACKAGE,
             boundary=True,
             violations=1,
+            expect=(stay - 1, stay),
         ),
         ok(
             "short but not a hard constraint",
@@ -766,6 +774,13 @@ def test_rule_case(rule_id: str, case: Case) -> None:
     assert bool(found) == case.fails, [v.message for v in found]
     if case.violations is not None:
         assert len(found) == case.violations
+    if case.expect is not None:
+        assert (found[0].observed, found[0].limit) == case.expect
+    for v in found:
+        if v.cause is ViolationCause.MISSING_DATA:
+            assert v.observed is None
+        else:
+            assert v.observed is not None and v.limit is not None and v.unit
     # The aggregate check sees exactly the same violations from this rule.
     aggregate = [
         v for v in check_package(case.scenario, case.package) if v.rule_id == rule_id
