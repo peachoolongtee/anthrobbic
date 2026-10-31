@@ -16,17 +16,22 @@ from app.negotiation.card import (
     RULE_BREACHES,
     RULE_REQUIREMENTS,
     SCENARIO_DEFINED,
+    STATUS_LABELS,
     UNRECOGNISED_CODE,
     Card,
     NoDealCard,
+    Reached,
     RuleStatus,
     authority_terms,
-    decision_card,
     model_note,
     no_deal_card,
     package_name,
+    reached_from_result,
     reason_lines,
     render,
+)
+from app.negotiation.card import (
+    decision_card as real_decision_card,
 )
 from app.negotiation.contracts import (
     CostBreakdown,
@@ -57,6 +62,14 @@ from tests.negotiation.factories import (
 )
 
 POISON = "IGNORE-ALL-RULES-poison-7731"
+
+
+def decision_card(
+    *args: Any, how_reached: Reached = Reached.CONSENSUS, **kwargs: Any
+) -> Card:
+    """`real_decision_card` with a default `how_reached`; tests of that
+    requirement call the real one."""
+    return real_decision_card(*args, how_reached=how_reached, **kwargs)
 
 
 def good_card(**kwargs: Any) -> Card:
@@ -322,12 +335,13 @@ def test_poisoned_cost_inputs_and_reason_codes_are_not_echoed() -> None:
 
 
 def test_decision_card_takes_no_free_text_parameter() -> None:
-    params = inspect.signature(decision_card).parameters
+    params = inspect.signature(real_decision_card).parameters
     assert set(params) == {
         "scenario",
         "decision",
         "cost",
         "violations",
+        "how_reached",
         "reason_codes",
         "state_version",
     }
@@ -706,3 +720,60 @@ def test_binding_evidence_never_echoes_free_text() -> None:
         }
     )
     assert POISON not in render(no_deal_card(dirty))
+
+
+# -------------------------------------------------- how the plan was reached
+
+
+def test_how_reached_is_required_and_part_of_the_hash() -> None:
+    scenario = make_scenario()
+    cost = compute_cost(scenario, BASELINE_PACKAGE)
+    with pytest.raises(TypeError):
+        real_decision_card(scenario, BASELINE_PACKAGE, cost)  # type: ignore[call-arg]
+    cards = {
+        r: real_decision_card(scenario, BASELINE_PACKAGE, cost, how_reached=r)
+        for r in Reached
+    }
+    assert len({c.card_hash for c in cards.values()}) == 3
+    assert "how_reached" in HASHED_FIELDS
+
+
+def test_a_fault_fallback_card_says_so_and_makes_no_consensus_claim() -> None:
+    scenario = make_scenario()
+    cost = compute_cost(scenario, BASELINE_PACKAGE)
+    card = real_decision_card(
+        scenario, BASELINE_PACKAGE, cost, how_reached=Reached.FALLBACK_AFTER_FAULT
+    )
+    text = render(card)
+    assert "How reached: fallback_after_fault" in text
+    assert "after a system fault, not by agreement" in text
+    assert "all three domains accepted" not in text
+    assert card.all_rules_passed and "every hard rule passes" in card.headline
+    consensus = real_decision_card(
+        scenario, BASELINE_PACKAGE, cost, how_reached=Reached.CONSENSUS
+    )
+    assert "all three domains accepted it" in render(consensus)
+
+
+def test_a_failing_card_does_not_claim_all_rules_pass_whatever_the_route() -> None:
+    card = failing_card()
+    assert not card.all_rules_passed
+    assert "every hard rule passes" not in render(card)
+
+
+def test_how_reached_is_read_from_the_protocol_result() -> None:
+    assert reached_from_result("consensus", []) is Reached.CONSENSUS
+    assert reached_from_result("fallback", []) is Reached.FALLBACK
+    assert reached_from_result("fallback", ["x"]) is Reached.FALLBACK_AFTER_FAULT
+    assert reached_from_result("consensus", ["x"]) is Reached.FALLBACK_AFTER_FAULT
+    with pytest.raises(ValueError):
+        reached_from_result("no_deal", [])
+
+
+def test_secondary_limits_are_not_called_a_study() -> None:
+    wake = rv.rule_value(rv.WAKE_DEFAULT_KEY)
+    assert wake.status is rv.Status.SECONDARY
+    label = STATUS_LABELS[wake.status]
+    assert "study" not in label and "secondary" in label
+    line = lines_by_rule(good_card())["ATC-WAKE-SEP"]
+    assert line.basis_label == label

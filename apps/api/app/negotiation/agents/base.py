@@ -356,7 +356,14 @@ def build_request(
     )
 
 
-_KEY_SHAPE = re.compile(r"sk-ant-[A-Za-z0-9_-]+")
+# Credential shapes: provider keys, bearer tokens, JWTs, and any long unbroken
+# run of token characters (hex, base64, base64url) whatever its prefix.
+_KEY_SHAPE = re.compile(
+    r"sk-[A-Za-z0-9_-]{8,}"
+    r"|(?i:bearer)\s+[A-Za-z0-9._~+/=-]+"
+    r"|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_.-]+"
+    r"|(?<![A-Za-z0-9_-])[A-Za-z0-9_+/=-]{32,}(?![A-Za-z0-9_-])"
+)
 
 
 def _safe_detail(exc: Exception) -> str:

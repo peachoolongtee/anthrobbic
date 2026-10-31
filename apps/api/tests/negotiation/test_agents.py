@@ -325,3 +325,25 @@ def test_a_note_cannot_close_its_data_block() -> None:
     rendered = render_notes((note,))
     assert rendered.count("</untrusted_notes>") == 1
     assert rendered.endswith("</untrusted_notes>")
+
+
+def test_safe_detail_scrubs_generic_token_shapes() -> None:
+    from app.negotiation.agents.base import _safe_detail
+
+    secrets = [
+        "sk-ant-api03-AbCdEf0123456789",
+        "sk-proj-AbCdEf0123456789xyz",
+        "Bearer abc.DEF-123_ghi",
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.sig_nature-1",
+        "0123456789abcdef0123456789abcdef01234567",
+        "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU2Nzg5",
+    ]
+    for secret in secrets:
+        response = httpx2.Response(400, request=_REQUEST)
+        exc = anthropic.BadRequestError(
+            f"bad request with {secret} in it", response=response, body=None
+        )
+        detail = _safe_detail(exc)
+        assert secret not in detail, secret
+        assert "[redacted]" in detail
+        assert "bad request with" in detail  # the useful part survives

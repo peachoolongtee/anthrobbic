@@ -13,13 +13,14 @@ import json
 import threading
 from collections.abc import Mapping, MutableSet
 from enum import StrEnum
-from typing import Any, Self
+from typing import Any, Protocol, Self
 
 from pydantic import model_validator
 
 from app.negotiation.card import (
     Card,
     PackageTerm,
+    Reached,
     authority_terms,
     card_hash_of,
     changed_card_fields,
@@ -28,6 +29,7 @@ from app.negotiation.card import (
 )
 from app.negotiation.contracts import FrozenModel, Package, Scenario, Violation
 from app.negotiation.log import EvidenceLog
+from app.negotiation.options import PackageBoundError, enumerate_packages
 from app.negotiation.rules import check_package
 from app.negotiation.utility import DEFAULT_WEIGHTS, CostWeights, compute_cost
 
@@ -83,6 +85,19 @@ class SignOffStatus(StrEnum):
     REFUSED_CARD_CHANGED = "REFUSED_CARD_CHANGED"
     REFUSED_RULES_FAILED = "REFUSED_RULES_FAILED"
     REFUSED_ALREADY_USED = "REFUSED_ALREADY_USED"
+    # Not a package this scenario's enumeration offers, or a comparison-arm pick.
+    REFUSED_NOT_ELIGIBLE = "REFUSED_NOT_ELIGIBLE"
+
+
+class _Pick(Protocol):
+    """Anything that wraps a package and says whether it may be signed off, such
+    as the protocol's `UnguardedResult`, which never may."""
+
+    @property
+    def package(self) -> Package | None: ...
+
+    @property
+    def eligible_for_signoff(self) -> bool: ...
 
 
 class SignOffRequest(FrozenModel):
@@ -138,24 +153,57 @@ def _violation_record(v: Violation) -> dict[str, Any]:
     }
 
 
+def _approved_in_log(log: EvidenceLog, token: str) -> bool:
+    """True if this log already holds an approval for the token, so a restart
+    with an empty `used_tokens` cannot approve twice."""
+    return any(
+        e.kind == "signoff"
+        and e.payload.get("status") == SignOffStatus.APPROVED.value
+        and e.payload.get("token") == token
+        for e in log.entries
+    )
+
+
+def _is_enumerated(scenario: Scenario, package: Package) -> bool:
+    try:
+        offered = enumerate_packages(scenario)
+    except PackageBoundError:
+        return False  # cannot show it was offered, so it is not eligible
+    return any(p.terms_hash == package.terms_hash for p in offered)
+
+
 def sign_off(
     request: SignOffRequest,
-    package: Package,
+    package: Package | _Pick,
     current_scenario: Scenario,
     log: EvidenceLog,
     used_tokens: MutableSet[str],
     *,
+    reached: Reached,
     weights: CostWeights = DEFAULT_WEIGHTS,
 ) -> SignOffOutcome:
     """Decide a sign-off against the current state and record it.
 
-    Checked in this order, and the first failure is the status: token unused,
-    package unchanged, state unchanged, every rule passes, card unchanged.
-    Violations are always reported. Only an approval uses up the token.
+    Checked in this order, and the first failure is the status: token unused
+    (in `used_tokens` and in the log), package unchanged and eligible, state
+    unchanged, every rule passes, package among those enumerated for this
+    scenario, card unchanged. Violations are always reported. Only an approval
+    uses up the token.
 
+    `package` may be a bare `Package` or a pick object with
+    `eligible_for_signoff`; a comparison-arm pick is refused. `reached` is how
+    the plan was chosen (see `reached_from_result`) and is part of the card.
     `weights` must be those the card was built with. The rebuilt card also
     leaves out reasons, since explanations never block a sign-off.
     """
+    if isinstance(package, Package):
+        marked_eligible = True
+    else:
+        picked = package.package
+        if picked is None:
+            raise TypeError("a pick with no package cannot be signed off")
+        marked_eligible = package.eligible_for_signoff is True
+        package = picked
     with _LOCK:
         versions = field_versions(current_scenario)
         current_state = versions_root(versions)
@@ -165,15 +213,18 @@ def sign_off(
             package,
             compute_cost(current_scenario, package, weights),
             violations,
+            how_reached=reached,
             state_version=current_state,
         )
 
         changed: tuple[str, ...] = ()
         changed_card: tuple[str, ...] = ()
-        if request.token in used_tokens:
+        if request.token in used_tokens or _approved_in_log(log, request.token):
             status = SignOffStatus.REFUSED_ALREADY_USED
         elif request.terms_hash != package.terms_hash:
             status = SignOffStatus.REFUSED_PACKAGE_CHANGED
+        elif not marked_eligible:
+            status = SignOffStatus.REFUSED_NOT_ELIGIBLE
         elif request.state_version_seen != current_state:
             status = SignOffStatus.REFUSED_STATE_CHANGED
             changed = changed_state_fields(
@@ -181,6 +232,8 @@ def sign_off(
             )
         elif violations:
             status = SignOffStatus.REFUSED_RULES_FAILED
+        elif not _is_enumerated(current_scenario, package):
+            status = SignOffStatus.REFUSED_NOT_ELIGIBLE
         elif request.card_hash_seen != card.card_hash:
             status = SignOffStatus.REFUSED_CARD_CHANGED
             seen = request.card_field_hashes_seen
@@ -201,6 +254,7 @@ def sign_off(
             "signoff",
             {
                 "status": status.value,
+                "token": request.token,
                 "package_name": package_name(package),
                 "terms_hash": package.terms_hash,
                 "terms_hash_seen": request.terms_hash,
@@ -208,6 +262,7 @@ def sign_off(
                 "state_version_current": current_state,
                 "card_hash_seen": request.card_hash_seen,
                 "card_hash": card.card_hash,
+                "how_reached": reached.value,
                 "decided_by": request.decided_by,
                 "violations": [_violation_record(v) for v in violations],
                 "changed_fields": list(changed),
@@ -235,8 +290,8 @@ def sign_off(
 
 
 _STATUS_LINES: Mapping[SignOffStatus, str] = {
-    SignOffStatus.APPROVED: (
-        "APPROVED. Requests were issued, not granted. Nothing has been executed."
+    SignOffStatus.REFUSED_NOT_ELIGIBLE: (
+        "REFUSED: this is not a package the system offered for sign-off."
     ),
     SignOffStatus.REFUSED_STATE_CHANGED: "REFUSED: the state changed after you looked.",
     SignOffStatus.REFUSED_PACKAGE_CHANGED: "REFUSED: the package is not the one shown.",
@@ -250,13 +305,26 @@ def _terms(terms: tuple[PackageTerm, ...]) -> str:
     return "; ".join(f"{t.label}: {t.value}" for t in terms) or "none"
 
 
+def _outcome_line(outcome: SignOffOutcome) -> str:
+    """The outcome in words, saying only what was really approved or sent."""
+    if outcome.status is not SignOffStatus.APPROVED:
+        return _STATUS_LINES[outcome.status]
+    if outcome.requests:
+        line = "APPROVED. Requests were issued, not granted. Nothing has been executed."
+    else:
+        line = "APPROVED. No requests were issued. Nothing has been executed."
+    if not outcome.airline_decisions:
+        line = line.replace("APPROVED.", "APPROVED (no airline decision).", 1)
+    return line
+
+
 def render_record(outcome: SignOffOutcome) -> str:
     """The printable sign-off record. Fixed text and hashes only."""
     return "\n".join(
         [
             "SIGN-OFF RECORD",
             f"Package: {outcome.package_name}",
-            f"Outcome: {_STATUS_LINES[outcome.status]}",
+            f"Outcome: {_outcome_line(outcome)}",
             f"Airline decisions: {_terms(outcome.airline_decisions)}",
             f"Requests to send: {_terms(outcome.requests)}",
             f"Rules failing: {len(outcome.violations)}",

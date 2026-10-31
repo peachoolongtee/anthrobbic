@@ -578,3 +578,9 @@ def test_the_worst_case_scenario_stays_inside_the_package_bound() -> None:
     assert (
         per_cell * p.max_runways * p.max_gates <= rv.rule_value(rv.MAX_PACKAGES).value
     )
+
+
+def test_the_hard_turnaround_note_states_both_provenances_the_field_gets() -> None:
+    note = FIELD_NOTES["next_leg_turnaround_hard"]
+    assert "synthetic" in note and "derived" in note
+    assert "when a next leg exists" in note and "none does" in note

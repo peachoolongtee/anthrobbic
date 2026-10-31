@@ -1,11 +1,13 @@
 """Sign-off: approves only the exact package, state and card the manager saw."""
 
+from pathlib import Path
 from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
 from app.negotiation.card import (
+    Reached,
     decision_card,
     model_note,
     package_name,
@@ -26,6 +28,7 @@ from app.negotiation.contracts import (
     Sourced,
 )
 from app.negotiation.log import EvidenceLog, verify_entries
+from app.negotiation.options import PackageBoundError, enumerate_packages
 from app.negotiation.rules import check_package
 from app.negotiation.signoff import (
     UNATTRIBUTED,
@@ -50,6 +53,7 @@ def view(
     *,
     weights: CostWeights = DEFAULT_WEIGHTS,
     detail: bool = True,
+    reached: Reached = Reached.CONSENSUS,
     **overrides: Any,
 ) -> SignOffRequest:
     """The request a manager would send after looking at this scenario."""
@@ -58,6 +62,7 @@ def view(
         package,
         compute_cost(scenario, package, weights),
         check_package(scenario, package),
+        how_reached=reached,
     )
     fields: dict[str, Any] = {
         "terms_hash": package.terms_hash,
@@ -79,11 +84,13 @@ def run(
     package: Package = PACKAGE,
     log: EvidenceLog | None = None,
     used: set[str] | None = None,
+    reached: Reached = Reached.CONSENSUS,
     **kwargs: Any,
 ) -> tuple[SignOffOutcome, EvidenceLog, set[str]]:
     log = log if log is not None else EvidenceLog()
     used = used if used is not None else set()
-    return sign_off(request, package, scenario, log, used, **kwargs), log, used
+    outcome = sign_off(request, package, scenario, log, used, reached=reached, **kwargs)
+    return outcome, log, used
 
 
 # ------------------------------------------------------------- approval
@@ -447,6 +454,7 @@ def test_a_changed_explanation_changes_neither_terms_hash_nor_sign_off() -> None
         PACKAGE,
         compute_cost(scenario, PACKAGE),
         check_package(scenario, PACKAGE),
+        how_reached=Reached.CONSENSUS,
         reason_codes=["PREFER_PLANNED_GATE", "PREFER_LOW_FUEL_BURN"],
         state_version=state_version(scenario),
     )
@@ -463,6 +471,7 @@ def test_a_changed_model_note_does_not_touch_the_card_hash_or_block_sign_off() -
         PACKAGE,
         compute_cost(scenario, PACKAGE),
         check_package(scenario, PACKAGE),
+        how_reached=Reached.CONSENSUS,
     )
     before = card.card_hash
     shown_a = render(card, model_note("Looks fine to me."))
@@ -498,7 +507,9 @@ def test_if_the_log_cannot_record_there_is_no_approval(
 
     monkeypatch.setattr(log, "append", boom)
     with pytest.raises(OSError):
-        sign_off(view(scenario), PACKAGE, scenario, log, used)
+        sign_off(
+            view(scenario), PACKAGE, scenario, log, used, reached=Reached.CONSENSUS
+        )
     assert used == set()
 
 
@@ -515,3 +526,186 @@ def test_sourced_scenarios_with_unknown_fields_still_have_a_version() -> None:
         update={"planned_gate": Sourced(value=None, provenance=Provenance.SYNTHETIC)}
     )
     assert state_version(unknown) != state_version(scenario)
+
+
+# ------------------------------------------------ D1: the record's wording
+
+
+@pytest.mark.parametrize(
+    ("airline", "requests"), [(True, True), (True, False), (False, True)]
+)
+def test_the_record_says_only_what_was_really_approved_or_sent(
+    airline: bool, requests: bool
+) -> None:
+    scenario = make_scenario()
+    request = view(
+        scenario, airline_decisions_approved=airline, requests_to_send=requests
+    )
+    outcome, log, _ = run(request, scenario)
+    record = render_record(outcome)
+    assert outcome.status is SignOffStatus.APPROVED
+    claims_requests = "Requests were issued, not granted" in record
+    assert claims_requests is requests
+    assert ("No requests were issued" in record) is (not requests)
+    assert ("no airline decision" in record) is (not airline)
+    assert ("Requests to send: none" in record) is (not requests)
+    assert ("Airline decisions: none" in record) is (not airline)
+    assert log.entries[0].payload["requests_issued_not_granted"] is requests
+    assert "Nothing has been executed" in record
+
+
+def test_a_refusal_record_claims_no_requests() -> None:
+    outcome, _, _ = run(view(make_scenario()), make_scenario(planned_gate="A2"))
+    record = render_record(outcome)
+    assert "Requests were issued" not in record and "REFUSED" in record
+
+
+# ----------------------------------------- D4: the log remembers approvals
+
+
+def test_a_restart_with_empty_tokens_cannot_approve_twice(tmp_path: Path) -> None:
+    path = tmp_path / "evidence.jsonl"
+    scenario = make_scenario()
+    request = view(scenario)
+    first, _, _ = run(request, scenario, log=EvidenceLog(path))
+    assert first.status is SignOffStatus.APPROVED
+    # A restart: the log is reopened and the in-memory token set is gone.
+    second, log, used = run(request, scenario, log=EvidenceLog(path))
+    assert second.status is SignOffStatus.REFUSED_ALREADY_USED
+    assert used == set()
+    assert [e.payload["status"] for e in log.entries] == [
+        "APPROVED",
+        "REFUSED_ALREADY_USED",
+    ]
+
+
+def test_only_an_approval_in_the_log_blocks_a_retry() -> None:
+    scenario = make_scenario()
+    log = EvidenceLog()
+    request = view(scenario)
+    refused, _, _ = run(request, make_scenario(planned_gate="A2"), log=log)
+    assert refused.status is SignOffStatus.REFUSED_STATE_CHANGED
+    approved, _, _ = run(request, scenario, log=log, used=set())
+    assert approved.status is SignOffStatus.APPROVED
+
+
+# ------------------------------------------------- D5: eligible packages
+
+
+class FakePick:
+    """What `run_unguarded` hands back: a package that may never be signed off."""
+
+    def __init__(self, package: Package | None, eligible: bool) -> None:
+        self.package = package
+        self.eligible_for_signoff = eligible
+
+
+def test_a_comparison_arm_pick_is_refused_even_when_legal_and_enumerated() -> None:
+    scenario = make_scenario()
+    assert check_package(scenario, PACKAGE) == ()
+    pick: Any = FakePick(PACKAGE, False)
+    outcome, log, used = run(view(scenario), scenario, package=pick)
+    assert outcome.status is SignOffStatus.REFUSED_NOT_ELIGIBLE
+    assert used == set() and outcome.requests == ()
+    assert log.entries[0].payload["status"] == "REFUSED_NOT_ELIGIBLE"
+
+
+def test_an_eligible_pick_object_is_approved() -> None:
+    scenario = make_scenario()
+    pick: Any = FakePick(PACKAGE, True)
+    outcome, _, _ = run(view(scenario), scenario, package=pick)
+    assert outcome.status is SignOffStatus.APPROVED
+
+
+def test_a_rule_legal_package_the_scenario_never_offered_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scenario = make_scenario()
+    other = make_package(time_min=105)
+    monkeypatch.setattr(
+        "app.negotiation.signoff.enumerate_packages", lambda _: (other,)
+    )
+    assert check_package(scenario, PACKAGE) == ()
+    outcome, _, used = run(view(scenario), scenario)
+    assert outcome.status is SignOffStatus.REFUSED_NOT_ELIGIBLE
+    assert used == set()
+
+
+def test_a_scenario_too_big_to_enumerate_cannot_show_eligibility(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def too_many(_: Scenario) -> tuple[Package, ...]:
+        raise PackageBoundError("over bound")
+
+    monkeypatch.setattr("app.negotiation.signoff.enumerate_packages", too_many)
+    scenario = make_scenario()
+    outcome, _, _ = run(view(scenario), scenario)
+    assert outcome.status is SignOffStatus.REFUSED_NOT_ELIGIBLE
+
+
+def test_the_real_enumeration_offers_the_baseline_package() -> None:
+    assert PACKAGE.terms_hash in {
+        p.terms_hash for p in enumerate_packages(make_scenario())
+    }
+
+
+def test_a_pick_with_no_package_is_an_error() -> None:
+    pick: Any = FakePick(None, True)
+    with pytest.raises(TypeError):
+        run(view(make_scenario()), make_scenario(), package=pick)
+
+
+# --------------------------------------------- D5: how it was reached
+
+
+@pytest.mark.parametrize("reached", list(Reached))
+def test_how_reached_is_part_of_the_card_the_manager_signs(reached: Reached) -> None:
+    scenario = make_scenario()
+    request = view(scenario, reached=reached)
+    ok, _, _ = run(request, scenario, reached=reached)
+    assert ok.status is SignOffStatus.APPROVED
+    for other in Reached:
+        if other is not reached:
+            outcome, _, _ = run(request, scenario, reached=other)
+            assert outcome.status is SignOffStatus.REFUSED_CARD_CHANGED
+            assert outcome.changed_card_fields == ("how_reached", "why")
+
+
+def test_how_reached_is_recorded_in_the_log() -> None:
+    scenario = make_scenario()
+    reached = Reached.FALLBACK_AFTER_FAULT
+    _, log, _ = run(view(scenario, reached=reached), scenario, reached=reached)
+    assert log.entries[0].payload["how_reached"] == "fallback_after_fault"
+
+
+def test_sign_off_requires_how_reached() -> None:
+    scenario = make_scenario()
+    with pytest.raises(TypeError):
+        sign_off(view(scenario), PACKAGE, scenario, EvidenceLog(), set())  # type: ignore[call-arg]
+
+
+def test_a_failed_log_write_leaves_no_approval_and_a_retry_approves_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "evidence.jsonl"
+    scenario = make_scenario()
+    request = view(scenario)
+    log, used = EvidenceLog(path), set[str]()
+
+    def boom(_: int) -> None:
+        raise OSError("fsync failed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr("app.negotiation.log.os.fsync", boom)
+        with pytest.raises(OSError):
+            sign_off(request, PACKAGE, scenario, log, used, reached=Reached.CONSENSUS)
+    assert used == set() and path.read_text() == ""
+
+    retry = sign_off(request, PACKAGE, scenario, log, used, reached=Reached.CONSENSUS)
+    assert retry.status is SignOffStatus.APPROVED
+    again = sign_off(
+        request, PACKAGE, scenario, EvidenceLog(path), set(), reached=Reached.CONSENSUS
+    )
+    assert again.status is SignOffStatus.REFUSED_ALREADY_USED
+    statuses = [e.payload["status"] for e in EvidenceLog(path).entries]
+    assert statuses == ["APPROVED", "REFUSED_ALREADY_USED"]
