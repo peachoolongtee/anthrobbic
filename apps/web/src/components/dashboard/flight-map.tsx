@@ -205,10 +205,10 @@ function MapNotice({ className }: { className?: string }) {
       />
       <p
         role="status"
-        className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-md border border-border bg-card/80 px-2 py-1 text-xs text-muted-foreground backdrop-blur"
+        className="absolute top-1/2 left-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-md border border-border bg-card/80 px-2.5 py-1.5 text-xs whitespace-nowrap text-muted-foreground backdrop-blur"
       >
         <ImageOff aria-hidden className="size-3.5" />
-        Map unavailable here. Routes are listed with each flight.
+        Map unavailable here. Each flight still shows its route.
       </p>
     </div>
   );
@@ -370,14 +370,19 @@ function FlightMapView({ flights, selected, planAction, frame: frameRef, classNa
       // The delayed aircraft, with a tag that says its position is a sketch.
       const plane = document.createElement("div");
       plane.style.color = BEACON;
-      plane.className = "flex flex-col items-center";
-      plane.innerHTML =
-        PLANE_SVG +
-        `<span class="pointer-events-none mt-0.5 rounded bg-card/80 px-1 text-[10px] leading-4 whitespace-nowrap text-muted-foreground">${
-          holding ? "illustrative hold" : "illustrative position"
-        }</span>`;
-      const marker = new Marker({ element: plane, rotationAlignment: "map", anchor: "top" }).addTo(map);
+      plane.className = "relative size-[26px]";
+      // The icon turns with the aircraft; the tag stays upright beneath it.
+      plane.innerHTML = `<div data-icon>${PLANE_SVG}</div><span class="pointer-events-none absolute top-full left-1/2 mt-0.5 -translate-x-1/2 rounded bg-card/80 px-1 text-[10px] leading-4 whitespace-nowrap text-muted-foreground">${
+        holding ? "illustrative hold" : "illustrative position"
+      }</span>`;
+      const icon = plane.firstElementChild as HTMLElement;
+      const marker = new Marker({ element: plane })
+        .setLngLat(holding ? ring[0] : full[planAction === "ground_delay" ? 0 : fixAt])
+        .addTo(map);
       markers.current.push(marker);
+      const turn = (deg: number) => {
+        icon.style.transform = `rotate(${deg}deg)`;
+      };
       if (holding) {
         const n = ring.length;
         marker.setLngLat(ring[0]);
@@ -385,7 +390,8 @@ function FlightMapView({ flights, selected, planAction, frame: frameRef, classNa
           // The first frame's timestamp can precede t0, so wrap negatives too.
           const a = ring[((i % n) + n) % n];
           const b = ring[(((i + 1) % n) + n) % n];
-          marker.setLngLat(a).setRotation(bearing(a, b) - 90);
+          marker.setLngLat(a);
+          turn(bearing(a, b) - 90);
         };
         if (reduced) {
           place(Math.floor(ring.length / 2));
@@ -401,7 +407,8 @@ function FlightMapView({ flights, selected, planAction, frame: frameRef, classNa
         // A ground delay has not left the gate; any other plan is en route.
         const at = planAction === "ground_delay" ? 0 : fixAt;
         const next = full[Math.min(at + 1, full.length - 1)];
-        marker.setLngLat(full[at]).setRotation(bearing(full[at], next) - 90);
+        marker.setLngLat(full[at]);
+        turn(bearing(full[at], next) - 90);
       }
 
       const bounds = new LngLatBounds(from, from);

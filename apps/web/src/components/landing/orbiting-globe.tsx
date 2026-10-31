@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef } from "react"
 import { Globe } from "@/components/ui/cobe-globe"
 import { Airliner } from "@/components/landing/airliner"
-import { VisualBoundary } from "@/components/dashboard/visual-boundary"
+import { VisualBoundary, VisualFallback } from "@/components/dashboard/visual-boundary"
+import { useWebGL } from "@/hooks/use-webgl"
 
 export interface GlobeRoute {
   id: string
@@ -94,6 +95,7 @@ export function OrbitingGlobe({
   framed?: boolean
   className?: string
 }) {
+  const webgl = useWebGL()
   const orbits = wide ? WIDE_ORBITS : SQUARE_ORBITS
   const planes = useMemo(() => planesOf(orbits), [orbits])
   const active = routes.find((r) => r.id === activeId)
@@ -181,6 +183,9 @@ export function OrbitingGlobe({
         className="absolute top-1/2 left-1/2 z-[1] aspect-square -translate-x-1/2 -translate-y-1/2"
         style={{ height: wide ? "84%" : "72%" }}
       >
+        {!webgl ? (
+          <VisualFallback label="Globe" className="rounded-full" />
+        ) : (
         <VisualBoundary label="Globe" className="rounded-full">
         <Globe
           markers={markers}
@@ -207,6 +212,7 @@ export function OrbitingGlobe({
           speed={0.0025}
         />
         </VisualBoundary>
+        )}
       </div>
       {planes.map((p, i) => (
         <div
