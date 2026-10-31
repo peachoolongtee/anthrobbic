@@ -1455,7 +1455,10 @@ def input_sensitivity(
             PairResult("unrelated_far_gate_use", PairStatus.NOT_REACHED, reason)
         )
     else:
-        far = latest + UNRELATED_OFFSET_MIN
+        # The gate is held until any known next departure, so "far" starts after it.
+        # A flight during that stay is a real conflict, not an unrelated one.
+        far = max(latest, scenario.next_departure_min.value or latest)
+        far += UNRELATED_OFFSET_MIN
         extra = OtherArrival(
             flight_id="UNRELATED",
             wake_category=WakeCategory.SUPER,

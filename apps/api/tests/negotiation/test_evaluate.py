@@ -425,6 +425,21 @@ def test_sensitivity_with_no_deal_is_not_reached() -> None:
     assert {p.status for p in pairs} == {ev.PairStatus.NOT_REACHED}
 
 
+def test_unrelated_gate_use_lies_past_a_late_next_departure() -> None:
+    """Found on real rows: the aircraft holds the gate until a departure 650 minutes
+    past the window, so a use at 600 was a real conflict and not unrelated."""
+    late = ev.control_scenario(next_departure_min=120 + 650)
+    pairs = {p.pair: p for p in ev.input_sensitivity(late)}
+    assert pairs["unrelated_far_gate_use"].status is (
+        ev.PairStatus.UNAFFECTED_WITH_REASON
+    )
+    # The rule was right to object to a use inside that stay.
+    inside = ev.GateOccupancy(gate_id="A1", flight_id="X", start_min=720, end_min=750)
+    held = ev.control_scenario(next_departure_min=770, gate_occupancies=(inside,))
+    rule_ids = {v.rule_id for v in check_package(held, ev._pkg())}
+    assert "GND-GATE-OVERLAP" in rule_ids
+
+
 def test_sensitivity_with_one_runway_cannot_close_another() -> None:
     open_one = (Runway(runway_id="28L", closed=False, parallel_group=None),)
     pairs = {
