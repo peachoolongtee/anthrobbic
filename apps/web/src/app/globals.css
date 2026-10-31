@@ -39,6 +39,13 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-destructive-soft: var(--destructive-soft);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -60,11 +67,18 @@
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  --muted-foreground: oklch(0.44 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
+  --destructive: oklch(0.5 0.2 27);
+  --destructive-soft: oklch(0.96 0.03 27);
+  --success: oklch(0.42 0.11 150);
+  --success-soft: oklch(0.95 0.05 150);
+  --warning: oklch(0.45 0.1 70);
+  --warning-soft: oklch(0.96 0.06 85);
+  --info: oklch(0.42 0.13 255);
+  --info-soft: oklch(0.95 0.03 255);
+  --border: oklch(0.88 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
   --chart-1: oklch(0.87 0 0);
@@ -99,6 +113,13 @@
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
+  --destructive-soft: oklch(0.3 0.08 27);
+  --success: oklch(0.8 0.15 150);
+  --success-soft: oklch(0.3 0.06 150);
+  --warning: oklch(0.85 0.13 85);
+  --warning-soft: oklch(0.32 0.06 80);
+  --info: oklch(0.8 0.1 255);
+  --info-soft: oklch(0.3 0.06 255);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
@@ -126,5 +147,15 @@
   }
   html {
     @apply font-sans;
+  }
+  /* Larger type on laptop screens and above, for a projector. */
+  @media (min-width: 64rem) {
+    html {
+      font-size: 112.5%;
+    }
+  }
+  /* Tabular numerals everywhere: times and figures line up in columns. */
+  body {
+    font-variant-numeric: tabular-nums;
   }
 }

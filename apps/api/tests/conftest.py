@@ -6,7 +6,7 @@ import pytest
 from app.config import get_settings
 from app.supabase import get_supabase
 
-CONFIG_VARIABLES = ("SUPABASE_URL", "SUPABASE_SECRET_KEY", "CORS_ORIGINS")
+CONFIG_VARIABLES = ("SUPABASE_URL", "SUPABASE_SECRET_KEY", "CORS_ORIGINS", "ALLOW_LIVE")
 
 
 @pytest.fixture(autouse=True)
