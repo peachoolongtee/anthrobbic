@@ -12,10 +12,10 @@ export interface GlobeRoute {
   to: [number, number]
 }
 
-const NIGHT_BASE: [number, number, number] = [0.26, 0.26, 0.3]
-const ROUTE: [number, number, number] = [0.62, 0.58, 0.78]
-const BEACON: [number, number, number] = [0.72, 0.6, 1]
-const HALO: [number, number, number] = [0.2, 0.19, 0.27]
+const NIGHT_BASE: [number, number, number] = [0.24, 0.24, 0.24]
+const ROUTE: [number, number, number] = [0.85, 0.55, 0.7]
+const BEACON: [number, number, number] = [1, 0.24, 0.62]
+const HALO: [number, number, number] = [0.22, 0.08, 0.15]
 // Starts with North America facing the viewer.
 const START_PHI = Math.PI - ((-95 * Math.PI) / 180 - Math.PI / 2)
 
