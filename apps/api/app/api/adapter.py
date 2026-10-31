@@ -10,10 +10,16 @@ from typing import Literal
 
 from app.api.wire import (
     ALREADY_DECIDED,
+    AgentMessage,
     AirportState,
     CardView,
+    ConsensusTurn,
     DealPackage,
     DealView,
+    DeclinedReason,
+    Evaluation,
+    EvaluationReference,
+    ExportedEntry,
     Fact,
     FaultView,
     FinalDecision,
@@ -407,6 +413,52 @@ def log_entry_view(entry: ChainEntry) -> LogEntryView:
         kind=entry.kind,
         summary=_summary(entry),
         hash=entry.entry_hash,
+    )
+
+
+def exported_entry(entry: ChainEntry) -> ExportedEntry:
+    """The entry whole, hashes and payload included, so it can be re-verified."""
+    return ExportedEntry(
+        seq=entry.seq,
+        kind=entry.kind,
+        payload=dict(entry.payload),
+        prev_hash=entry.prev_hash,
+        entry_hash=entry.entry_hash,
+        ts=entry.ts,
+    )
+
+
+def consensus_turn(record: TurnRecord) -> ConsensusTurn:
+    """Each agent's structured reply. Model prose and note readings are left out."""
+    return ConsensusTurn(
+        turn=record.turn,
+        agents=tuple(
+            AgentMessage(
+                domain=agent.domain,
+                acceptable_package_ids=agent.acceptable_package_ids,
+                ranking=agent.ranking,
+                reason_codes=agent.reason_codes,
+                declined=tuple(
+                    DeclinedReason(
+                        package_id=d.package_id, public_reason=d.public_reason.value
+                    )
+                    for d in agent.public_reason_classes
+                ),
+                prompt_hash=agent.prompt_hash,
+                served_by=agent.served_by,
+            )
+            for agent in record.agents
+        ),
+        intersection=record.intersection,
+    )
+
+
+def evaluation_reference(evaluation: Evaluation) -> EvaluationReference | None:
+    if evaluation.status != "ok":
+        return None
+    return EvaluationReference(
+        commits=tuple(sorted({row.commit for row in evaluation.rows})),
+        modes=tuple(sorted({row.mode for row in evaluation.rows})),
     )
 
 
