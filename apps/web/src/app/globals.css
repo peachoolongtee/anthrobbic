@@ -148,6 +148,12 @@
   html {
     @apply font-sans;
   }
+  /* Larger type on laptop screens and above, for a projector. */
+  @media (min-width: 64rem) {
+    html {
+      font-size: 112.5%;
+    }
+  }
   /* Tabular numerals everywhere: times and figures line up in columns. */
   body {
     font-variant-numeric: tabular-nums;

@@ -76,10 +76,10 @@ export function LogView({
           <p
             className={cn(
               "flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5",
-              tamper.valid ? "border-destructive/40 bg-destructive-soft" : "border-warning/50 bg-warning-soft",
+              tamper.valid ? "border-destructive/40 bg-destructive-soft" : "border-success/40 bg-success-soft",
             )}
           >
-            <CircleAlert aria-hidden className="size-4" />
+            {tamper.valid ? <CircleAlert aria-hidden className="size-4 text-destructive" /> : <CircleCheck aria-hidden className="size-4 text-success" />}
             <span>
               <strong>Tampered copy: {tamper.valid ? "not detected." : "detected."}</strong>{" "}
               {tamper.reason ?? ""}

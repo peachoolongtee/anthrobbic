@@ -16,60 +16,68 @@ export function PlanCard({
   modelNotes: ModelNote[];
 }) {
   return (
-    <div className="space-y-4">
-      <Card>
+    <div className="space-y-3">
+      <Card size="sm">
         <CardHeader>
-          <CardDescription>Recovery plan</CardDescription>
-          <CardTitle className="text-lg leading-snug">{card.action}</CardTitle>
+          <CardTitle className="text-base leading-snug">{card.action}</CardTitle>
           <CardDescription>
             Chosen from {deal.packages_legal} legal plans out of {deal.packages_considered} considered.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-5">
-          <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
+        <CardContent className="space-y-3">
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3">
             {card.action_facts.map((f) => (
-              <div key={f.key} className="flex items-center justify-between gap-2 border-b py-1 text-sm">
-                <dt className="text-muted-foreground">{f.label}</dt>
-                <dd className="flex items-center gap-1.5 font-medium">
+              <div key={f.key} className="text-sm">
+                <dt className="text-xs text-muted-foreground">{f.label}</dt>
+                <dd className="flex flex-wrap items-center gap-1 font-medium">
                   {f.value}
                   <ProvenanceBadge provenance={f.provenance} />
                 </dd>
               </div>
             ))}
           </dl>
+          <p className="text-xs text-muted-foreground">
+            <strong className="font-semibold text-foreground">Real</strong> = US DOT record
+            {" · "}
+            <strong className="font-semibold text-foreground">Derived</strong> = computed from it
+            {" · "}
+            <strong className="font-semibold text-foreground">Synthetic</strong> = invented for this demo
+          </p>
 
-          <section aria-labelledby="why-heading">
-            <h3 id="why-heading" className="text-sm font-semibold">
-              Why this plan
-            </h3>
-            <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm">
-              {card.why.map((w, i) => (
-                <li key={i}>{w}</li>
-              ))}
-            </ul>
-          </section>
+          <div className="grid gap-x-6 gap-y-3 md:grid-cols-2">
+            <section aria-labelledby="why-heading">
+              <h3 id="why-heading" className="text-sm font-semibold">
+                Why this plan
+              </h3>
+              <ul className="mt-0.5 list-disc space-y-0.5 pl-5 text-sm">
+                {card.why.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+            </section>
 
-          <section aria-labelledby="risks-heading">
-            <h3 id="risks-heading" className="flex items-center gap-1.5 text-sm font-semibold">
-              <TriangleAlert aria-hidden className="size-4 text-warning" />
-              What could go wrong
-            </h3>
-            <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm">
-              {card.risks.map((r, i) => (
-                <li key={i}>
-                  {r.text}
-                  {r.rule_id && (
-                    <>
-                      {" "}
-                      <span className="font-mono text-xs text-muted-foreground">({r.rule_id})</span>
-                    </>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </section>
+            <section aria-labelledby="risks-heading">
+              <h3 id="risks-heading" className="flex items-center gap-1.5 text-sm font-semibold">
+                <TriangleAlert aria-hidden className="size-4 text-warning" />
+                What could go wrong
+              </h3>
+              <ul className="mt-0.5 list-disc space-y-0.5 pl-5 text-sm">
+                {card.risks.map((r, i) => (
+                  <li key={i}>
+                    {r.text}
+                    {r.rule_id && (
+                      <>
+                        {" "}
+                        <span className="font-mono text-xs text-muted-foreground">({r.rule_id})</span>
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </div>
 
-          <section aria-labelledby="rules-heading">
+          <section aria-labelledby="rules-heading" className="border-t pt-2">
             <h3 id="rules-heading" className="text-sm font-semibold">
               Limits this plan was checked against
             </h3>

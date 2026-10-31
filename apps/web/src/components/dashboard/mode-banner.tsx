@@ -45,11 +45,6 @@ export function ModeBanner({
             ? "No backend and no model. Every figure is invented."
             : meta.detail}
         </span>
-        {IS_MOCK && (
-          <span className="text-muted-foreground">
-            Run mode: <strong className="text-foreground">{meta.name}</strong>
-          </span>
-        )}
       </div>
       <div className="flex items-center gap-2">
         <span id="run-mode-label" className="text-xs font-medium text-muted-foreground">

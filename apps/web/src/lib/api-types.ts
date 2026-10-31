@@ -19,6 +19,8 @@ export interface NextLeg {
   scheduled_departure: string;
   /** Minutes of delay that reach this flight if nothing is done. */
   delay_minutes: number;
+  /** (addition) Provenance of the next-leg figures. */
+  provenance?: Provenance;
 }
 
 export interface ScenarioSummary {
@@ -29,6 +31,8 @@ export interface ScenarioSummary {
   scheduled_arrival: string;
   cause: Cause;
   delay_minutes: number;
+  /** (addition) Provenance of `delay_minutes`. The badge is shown only when this is given. */
+  delay_provenance?: Provenance;
   /** (addition) The same aircraft's next flight, derived from the same file. */
   next_leg?: NextLeg | null;
 }
@@ -63,8 +67,8 @@ export interface Turn {
 export interface RuleResult {
   rule_id: string;
   domain: Domain;
-  /** Plain-language rule name. */
-  label: string;
+  /** Plain-language rule name. Sign-off violations carry only `message`. */
+  label?: string;
   message: string;
   source: string;
   observed: number | null;
@@ -72,7 +76,8 @@ export interface RuleResult {
   unit: string;
   /** (addition) Whether the observed value must be at least or at most the limit. */
   direction?: "at_least" | "at_most";
-  status: RuleStatus;
+  /** Absent on sign-off violations. */
+  status?: RuleStatus;
   /** "constraint" for a real limit, "missing_data" when an input was unknown. */
   cause?: "constraint" | "missing_data";
 }
@@ -130,6 +135,8 @@ export interface Risk {
 export interface Card {
   /** Hash of the exact card shown. Sent back at sign-off as `card_hash_seen`. */
   card_hash: string;
+  /** (addition) Hash per hashed card fact, sent back as `card_field_hashes_seen`. */
+  field_hashes?: Record<string, string>;
   /** The action as one sentence, written from a template. */
   action: string;
   action_facts: Fact[];
@@ -170,7 +177,10 @@ export interface AirportState {
 export interface Run {
   run_id: string;
   scenario_id: string;
-  state_version: number;
+  /** Hash string. Sent back as `state_version_seen`. */
+  state_version: string;
+  /** (addition) Hash per scenario field, so a refusal can name what changed. */
+  field_versions?: Record<string, string>;
   path: RunPath;
   turns: Turn[];
   removed_packages: RemovedPackage[];
@@ -184,30 +194,44 @@ export interface Run {
   airport?: AirportState;
 }
 
+/** Mirrors SignOffRequest in apps/api/app/negotiation/signoff.py. */
 export interface SignoffRequest {
   terms_hash: string;
-  state_version_seen: number;
-  /** `card.card_hash` of the card on screen when the manager decided. */
+  state_version_seen: string;
   card_hash_seen: string;
   decided_by: string;
-  airline_decisions_approved: string[];
-  requests_to_send: string[];
+  /** True when the manager approved the "you decide" section. */
+  airline_decisions_approved: boolean;
+  /** True when the manager chose to send the "you request" section. */
+  requests_to_send: boolean;
+  field_versions_seen?: Record<string, string>;
+  card_field_hashes_seen?: Record<string, string>;
 }
 
-/**
- * "APPROVED", or a status starting with "REFUSED", e.g. REFUSED_CARD_CHANGED
- * when the card on screen differs from the card now held by the server. The UI
- * treats any other value as a refusal it cannot name and shows it as received.
- */
-export type SignoffStatus = string;
+export type SignoffStatus =
+  | "APPROVED"
+  | "REFUSED_STATE_CHANGED"
+  | "REFUSED_PACKAGE_CHANGED"
+  | "REFUSED_CARD_CHANGED"
+  | "REFUSED_RULES_FAILED"
+  | "REFUSED_ALREADY_USED";
 
+/** A term of the plan as sign-off returns it, e.g. {name: "gate_id", value: "gate B12"}. */
+export interface PackageTerm {
+  name: string;
+  value: string;
+}
+
+/** Mirrors SignOffOutcome. A changed field may be "unattributed". */
 export interface SignoffResult {
   status: SignoffStatus;
-  /** Human-readable names of what changed since the plan was shown. */
-  changed_fields: string[];
+  package_name?: string;
   violations: RuleResult[];
-  requests: Request[];
-  airline_decisions: Fact[];
+  changed_fields: string[];
+  changed_card_fields: string[];
+  airline_decisions: PackageTerm[];
+  requests: PackageTerm[];
+  card_hash?: string;
   log_head: string;
 }
 

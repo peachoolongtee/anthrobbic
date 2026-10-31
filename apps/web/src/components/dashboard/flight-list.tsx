@@ -79,8 +79,8 @@ export function FlightList({
           <ToggleGroupItem value="weather" className="flex-1">
             Weather
           </ToggleGroupItem>
-          <ToggleGroupItem value="late_aircraft" className="flex-1">
-            Late aircraft
+          <ToggleGroupItem value="late_aircraft" className="flex-1" aria-label="Late aircraft">
+            Late
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
@@ -92,6 +92,7 @@ export function FlightList({
             title="Could not load flights"
             message={scenarios.message}
             unreachable={scenarios.unreachable}
+            compact
             onRetry={onRetry}
           />
         )}
@@ -130,7 +131,7 @@ export function FlightList({
                     </div>
                     <div className="mt-1 flex items-center gap-1.5">
                       <span className="font-medium">{s.delay_minutes} min late</span>
-                      <ProvenanceBadge provenance="real" />
+                      {s.delay_provenance && <ProvenanceBadge provenance={s.delay_provenance} />}
                     </div>
                     {s.next_leg ? (
                       <div className="mt-1.5 flex items-start gap-1.5 border-t pt-1.5 text-xs text-muted-foreground">
@@ -139,7 +140,8 @@ export function FlightList({
                           Same aircraft next: <span className="font-medium text-foreground">{s.next_leg.flight_id}</span>{" "}
                           <ArrowRight aria-hidden className="inline size-3" /> departs {s.next_leg.scheduled_departure},{" "}
                           <span className="font-medium text-foreground">{s.next_leg.delay_minutes} min</span> of delay
-                          reaches it <ProvenanceBadge provenance="derived" className="ml-0.5 align-middle" />
+                          reaches it{" "}
+                          {s.next_leg.provenance && <ProvenanceBadge provenance={s.next_leg.provenance} className="ml-0.5 align-middle" />}
                         </span>
                       </div>
                     ) : (

@@ -38,7 +38,7 @@ export interface BreakOutcome {
   detail?: string;
 }
 
-export const DECIDED_BY = "Duty manager";
+export const DECIDED_BY = "Duty manager (demo, not authenticated)";
 
 export function useDashboard() {
   const [cause, setCause] = useState<Cause | "all">("all");
@@ -274,7 +274,7 @@ export function useDashboard() {
   }, [runState]);
 
   const approve = useCallback(
-    async (decisions: string[], requests: string[]) => {
+    async (decisions: boolean, requests: boolean) => {
       if (runState.status !== "ready") return;
       const { run } = runState;
       if (run.decision.kind !== "DEAL" || !run.card) return;
@@ -287,6 +287,8 @@ export function useDashboard() {
           decided_by: DECIDED_BY,
           airline_decisions_approved: decisions,
           requests_to_send: requests,
+          field_versions_seen: run.field_versions,
+          card_field_hashes_seen: run.card.field_hashes,
         });
         setSignoff({ status: "done", result });
       } catch (err) {

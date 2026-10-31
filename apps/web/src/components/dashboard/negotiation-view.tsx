@@ -80,6 +80,21 @@ function TurnColumns({ turn, run }: { turn: Turn; run: Run }) {
 export function NegotiationView({ run }: { run: Run }) {
   return (
     <div className="space-y-5">
+      <p className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/40 bg-warning-soft px-2.5 py-1.5 text-sm">
+        <Badge variant="outline" className="border-warning/50 bg-background text-warning">
+          Unverified
+        </Badge>
+        <span>
+          Agent answers below are model output and are not verified. Only rule results are checked.
+        </span>
+      </p>
+      <p className="text-sm text-muted-foreground">
+        {run.path === "consensus"
+          ? "The agents agreed and the rules passed it. Agreement alone proves nothing: the rules decide what is allowed."
+          : run.path === "fallback"
+            ? "The agents did not reach a plan, so code chose one. A fallback is never shown as a clean result."
+            : "No plan passed the rules, so the system stopped instead of guessing."}
+      </p>
       <RemovedPlans removed={run.removed_packages} />
       {run.turns.length === 0 ? (
         <EmptyPanel title="The agents did not negotiate">

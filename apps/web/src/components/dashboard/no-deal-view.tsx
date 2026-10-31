@@ -28,13 +28,13 @@ export function NoDealView({ decision }: { decision: NoDeal }) {
   const c = COPY[decision.reason_type];
   const Icon = c.icon;
   return (
-    <div className="space-y-4">
-      <section className={cn("rounded-lg border p-4", c.tone)} aria-labelledby="nodeal-heading">
+    <div className="space-y-3">
+      <section className={cn("rounded-lg border p-3", c.tone)} aria-labelledby="nodeal-heading">
         <div className="flex items-start gap-3">
           <Icon aria-hidden className={cn("mt-0.5 size-6 shrink-0", c.iconTone)} />
           <div className="space-y-1">
             <p className="text-xs font-semibold tracking-wide uppercase">{c.kind}</p>
-            <h2 id="nodeal-heading" className="text-lg font-semibold">
+            <h2 id="nodeal-heading" className="text-base font-semibold">
               {c.title}
             </h2>
             <p className="text-sm">{c.lead}</p>

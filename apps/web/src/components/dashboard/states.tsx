@@ -11,11 +11,14 @@ export function ErrorPanel({
   message,
   onRetry,
   unreachable,
+  compact,
 }: {
   title: string;
   message: string;
   onRetry?: () => void;
   unreachable?: boolean;
+  /** Short form for a narrow column. The full explanation is shown elsewhere. */
+  compact?: boolean;
 }) {
   const Icon = unreachable ? WifiOff : CircleAlert;
   return (
@@ -24,12 +27,22 @@ export function ErrorPanel({
       <AlertTitle>{title}</AlertTitle>
       <AlertDescription>
         <p>{message}</p>
-        {unreachable && !IS_MOCK && (
-          <p className="mt-1">
-            The dashboard looks for the API at <span className="font-mono">{API_URL}</span>. Start it with{" "}
-            <span className="font-mono">pnpm dev:api</span>, or build with{" "}
-            <span className="font-mono">NEXT_PUBLIC_API_MODE=mock</span> to use sample data.
-          </p>
+        {unreachable && !IS_MOCK && !compact && (
+          <>
+            <p className="mt-1">
+              The planning service is not answering, so no recovery plan can be made or signed off until it is back.
+              Your flight data has not been touched. Ask whoever runs this screen to start the service, then try
+              again.
+            </p>
+            <details className="mt-1">
+              <summary className="cursor-pointer font-medium">For the person running it</summary>
+              <p className="mt-1">
+                The dashboard looks for the service at <span className="font-mono">{API_URL}</span>. Start it with{" "}
+                <span className="font-mono">pnpm dev:api</span>, or build the dashboard with{" "}
+                <span className="font-mono">NEXT_PUBLIC_API_MODE=mock</span> to use sample data.
+              </p>
+            </details>
+          </>
         )}
         {onRetry && (
           <Button variant="outline" size="sm" className="mt-2" onClick={onRetry}>

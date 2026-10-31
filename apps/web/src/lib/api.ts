@@ -41,7 +41,7 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
       headers: { "content-type": "application/json", ...init?.headers },
     });
   } catch {
-    throw new ApiError("unreachable", `No response from ${API_URL}`, null);
+    throw new ApiError("unreachable", "No response from the planning service.", null);
   }
   if (!res.ok) {
     let detail = res.statusText;
@@ -80,7 +80,7 @@ export const api = {
   },
 
   /** (addition) Change the airport state of an existing run, after it was shown. */
-  changeState(runId: string, change: StateChange): Promise<{ state_version: number }> {
+  changeState(runId: string, change: StateChange): Promise<{ state_version: string }> {
     if (IS_MOCK) return mockBackend.changeState(runId, change);
     return post(`/runs/${encodeURIComponent(runId)}/state`, change);
   },

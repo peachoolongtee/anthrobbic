@@ -7,6 +7,7 @@ import type {
   RuleStatus,
   RunMode,
   RunPath,
+  SignoffStatus,
 } from "@/lib/api-types";
 
 /** Words only. No figures are computed here. */
@@ -73,28 +74,94 @@ export const EVIDENCE_LABEL: Record<EvidenceClass, { name: string; detail: strin
 };
 
 export const UNSAFE_OPTIONS: { value: string; label: string }[] = [
-  { value: "PLT-FUEL-POLICY", label: "Landing with too little fuel" },
-  { value: "ATC-RWY-CLOSED", label: "Using a closed runway" },
-  { value: "ATC-WAKE-SEP", label: "Landing too close behind a heavy aircraft" },
-  { value: "GND-GATE-OVERLAP", label: "Parking at an occupied gate" },
+  { value: "PLT-FUEL-POLICY", label: "Too little fuel" },
+  { value: "ATC-RWY-CLOSED", label: "Closed runway" },
+  { value: "ATC-WAKE-SEP", label: "Too close behind" },
+  { value: "GND-GATE-OVERLAP", label: "Occupied gate" },
 ];
 
-/** Refusal statuses are shown as received, with plain names for the known ones. */
-export function signoffStatusLabel(status: string): string {
-  switch (status) {
-    case "APPROVED":
-      return "Approved";
-    case "REFUSED_STATE_CHANGED":
-      return "Refused: the airport changed";
-    case "REFUSED_CARD_CHANGED":
-      return "Refused: the card changed";
-    case "REFUSED_TERMS_CHANGED":
-      return "Refused: the plan changed";
-    case "REFUSED_RULES":
-      return "Refused: a rule now fails";
-    default:
-      return status.startsWith("REFUSED") ? `Refused (${status})` : status;
-  }
+export const SIGNOFF_STATUS: Record<SignoffStatus, { title: string; detail: string }> = {
+  APPROVED: {
+    title: "Approved",
+    detail: "Requests were issued, not granted. Nothing has been executed.",
+  },
+  REFUSED_STATE_CHANGED: {
+    title: "Refused: the airport changed after you looked",
+    detail: "The plan you saw was made for an earlier state. Make a new recovery plan.",
+  },
+  REFUSED_PACKAGE_CHANGED: {
+    title: "Refused: this is not the recovery plan you were shown",
+    detail: "The plan being signed differs from the one on screen.",
+  },
+  REFUSED_CARD_CHANGED: {
+    title: "Refused: the plan summary is not the one you saw",
+    detail: "What the plan summary says now differs from what was on screen when you decided.",
+  },
+  REFUSED_RULES_FAILED: {
+    title: "Refused: a rule fails now",
+    detail: "The plan broke a hard rule when checked again against the current state.",
+  },
+  REFUSED_ALREADY_USED: {
+    title: "Refused: this approval was already used",
+    detail: "Each approval can be used once. Make a new recovery plan to approve again.",
+  },
+};
+
+export function signoffStatusLabel(status: string): { title: string; detail: string } {
+  return (
+    (SIGNOFF_STATUS as Record<string, { title: string; detail: string }>)[status] ?? {
+      title: status.startsWith("REFUSED") ? `Refused (${status})` : status,
+      detail: "",
+    }
+  );
 }
 
-export const isApproved = (status: string) => status.toUpperCase() === "APPROVED";
+export const isApproved = (status: string) => status === "APPROVED";
+
+export const UNATTRIBUTED = "unattributed";
+
+/** Scenario fields, in plain words. Unknown names are shown as received. */
+const STATE_FIELD_LABEL: Record<string, string> = {
+  runways: "Runways",
+  taxiways: "Taxiways",
+  gates: "Gates",
+  gate_occupancies: "Gate occupancy",
+  other_arrivals: "Other arrivals",
+  destination_forecast: "Destination weather forecast",
+  fuel_on_board_kg: "Fuel on board",
+  trip_fuel_kg: "Trip fuel",
+  planned_gate: "Planned gate",
+  next_departure_min: "Next flight departure",
+  ground_shift_end_min: "Ground shift end",
+  connections: "Passenger connections",
+  earliest_arrival_min: "Earliest arrival",
+  latest_arrival_min: "Latest arrival",
+};
+
+/** Card facts, in plain words. */
+const CARD_FIELD_LABEL: Record<string, string> = {
+  kind: "Summary type",
+  package_name: "Plan name",
+  terms_hash: "Plan terms",
+  headline: "Headline",
+  authority: "Who decides what",
+  what_to_do: "What to do",
+  why: "Why",
+  what_could_go_wrong: "What could go wrong",
+  rules: "Rule results",
+  costs: "Costs",
+  provenance: "Where values came from",
+  all_rules_passed: "Whether every rule passed",
+};
+
+export function changedFieldLabel(name: string, kind: "state" | "summary"): string {
+  if (name === UNATTRIBUTED) return "The system cannot say which field changed";
+  const map = kind === "state" ? STATE_FIELD_LABEL : CARD_FIELD_LABEL;
+  return map[name] ?? name;
+}
+
+export const TERM_LABEL: Record<string, string> = {
+  gate_id: "Gate",
+  slot: "Arrival slot",
+  action: "Delay handling",
+};

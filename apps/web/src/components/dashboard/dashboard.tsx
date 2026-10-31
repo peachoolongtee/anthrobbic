@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CAUSE_LABEL } from "@/lib/labels";
+import { CircleAlert } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { CAUSE_LABEL, isApproved, signoffStatusLabel } from "@/lib/labels";
 import { BreakItDock } from "@/components/dashboard/break-it-dock";
 import { EvidenceView } from "@/components/dashboard/evidence-view";
 import { FlightList } from "@/components/dashboard/flight-list";
@@ -27,6 +29,9 @@ export function Dashboard() {
   const selected =
     d.scenarios.status === "ready" ? d.scenarios.data.find((s) => s.scenario_id === d.selectedId) : undefined;
 
+  // A refused sign-off leaves the plan on screen out of date until a new one is made.
+  const refused = d.signoff.status === "done" && !isApproved(d.signoff.result.status) ? d.signoff.result : null;
+
   const pickFlight = (id: string) => {
     setTab("plan");
     d.select(id);
@@ -36,7 +41,7 @@ export function Dashboard() {
     <div className="flex min-h-screen flex-col lg:h-screen">
       <ModeBanner mode={d.mode} onModeChange={d.setMode} disabled={running || d.selectedId === null} />
 
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[17.5rem_minmax(0,1fr)_21rem]">
+      <div className="grid min-h-0 flex-1 lg:grid-cols-[14rem_minmax(0,1fr)_18rem]">
         <aside className="flex min-h-0 flex-col border-b p-3 max-lg:max-h-[28rem] lg:border-r lg:border-b-0">
           <FlightList
             scenarios={d.scenarios}
@@ -50,19 +55,30 @@ export function Dashboard() {
           />
         </aside>
 
-        <main className="min-w-0 space-y-4 p-4 lg:overflow-y-auto" aria-busy={running}>
-          <div>
-            <h1 className="text-lg font-semibold">
-              {selected ? `${selected.flight_id}, ${selected.route}` : "Arrival recovery"}
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {selected
-                ? `${CAUSE_LABEL[selected.cause]} delay. What to do, why, and what could go wrong.`
-                : "What to do, why, and what could go wrong."}
-            </p>
-          </div>
+        <main className="min-w-0 space-y-2 p-3 lg:overflow-y-auto" aria-busy={running}>
+          <h1 className="flex flex-wrap items-baseline gap-x-2 text-base font-semibold">
+            {selected ? `${selected.flight_id}, ${selected.route}` : "Arrival recovery"}
+            <span className="text-sm font-normal text-muted-foreground">
+              {selected ? `${CAUSE_LABEL[selected.cause]} delay` : "What to do, why, and what could go wrong"}
+            </span>
+          </h1>
 
-          {run && !running && <OutcomeStrip run={run} />}
+          {refused && (
+            <div
+              role="alert"
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-destructive bg-destructive px-3 py-2 text-sm text-background"
+            >
+              <CircleAlert aria-hidden className="size-4 shrink-0" />
+              <span className="flex-1">
+                <strong>This plan is out of date.</strong> Sign-off refused: {signoffStatusLabel(refused.status).title.replace(/^Refused: /, "")}
+              </span>
+              <Button size="sm" variant="secondary" onClick={d.rerun}>
+                Make a new recovery plan
+              </Button>
+            </div>
+          )}
+
+          <div className={refused ? "opacity-50" : undefined}>{run && !running && <OutcomeStrip run={run} />}</div>
 
           <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
             <TabsList variant="line" aria-label="Views" className="w-full justify-start border-b">
@@ -80,7 +96,7 @@ export function Dashboard() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="plan" className="pt-3">
+            <TabsContent value="plan" className={refused ? "pt-2 opacity-50" : "pt-2"}>
               <RunGate d={d} running={running} run={run} empty="Pick a delayed flight">
                 {run && run.decision.kind === "DEAL" && run.card && (
                   <PlanCard card={run.card} deal={run.decision} modelNotes={run.model_notes} />
@@ -168,7 +184,7 @@ function RunGate({
   if (d.runState.status === "idle" && d.scenarios.status === "error")
     return (
       <ErrorPanel
-        title="Cannot reach the API"
+        title="Cannot reach the planning service"
         message={d.scenarios.message}
         unreachable={d.scenarios.unreachable}
         onRetry={d.retryScenarios}

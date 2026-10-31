@@ -39,11 +39,32 @@ interface StoredRun {
   closedRunways: string[];
   closedGates: string[];
   run: Run;
-  version: number;
   extraLog: LogEntry[];
 }
 
 const store = new Map<string, StoredRun>();
+/** Single-use approvals, like the real sign-off: terms, state and card as seen. */
+const usedTokens = new Set<string>();
+
+function fieldVersions(closedRunways: string[], closedGates: string[]): Record<string, string> {
+  return {
+    runways: hash(`runways:${[...closedRunways].sort().join()}`),
+    gates: hash(`gates:${[...closedGates].sort().join()}`),
+    planned_gate: hash("planned_gate"),
+    fuel_on_board_kg: hash("fuel"),
+  };
+}
+
+const versionRoot = (fv: Record<string, string>) => hash(JSON.stringify(fv));
+
+function changedNames(seen: Record<string, string> | undefined, seenRoot: string, current: Record<string, string>): string[] {
+  if (!seen || versionRoot(seen) !== seenRoot) return ["unattributed"];
+  const names = [...Object.keys(current), ...Object.keys(seen)].filter((n) => seen[n] !== current[n]);
+  return Array.from(new Set(names));
+}
+
+/** Sign-off violations carry no label or status, as in the real API. */
+const bare = (r: RuleResult): RuleResult => ({ ...r, label: undefined, status: undefined });
 let counter = 0;
 
 const wait = (ms = 250) => new Promise((r) => setTimeout(r, ms));
@@ -89,11 +110,11 @@ const SRC_ASSUMED = "Assumption: demo default, not from a regulation";
 
 function passingRules(offset: number): RuleResult[] {
   return [
-    rule("ATC-WAKE-SEP", "atc", "Spacing behind the aircraft ahead", "confirmed", 6, 5, "NM", "at_least", SRC_WAKE, "Spacing is enough."),
-    rule("ATC-RWY-THROUGHPUT", "atc", "Arrivals per hour on the runway", "assumption", 26 + offset, 30, "arrivals/h", "at_most", SRC_ASSUMED, "Runway is not over its rate."),
-    rule("PLT-FUEL-POLICY", "pilot", "Fuel left at landing", "policy", 57 - offset * 3, 45, "min", "at_least", SRC_FUEL, "Reserve is kept."),
-    rule("GND-GATE-OVERLAP", "ground", "Gap before the next aircraft at the gate", "assumption", 25, 20, "min", "at_least", SRC_ASSUMED, "Gate is free."),
-    rule("GND-TURNAROUND", "ground", "Time to turn the aircraft round", "assumption", 48, 45, "min", "at_least", SRC_ASSUMED, "Turnaround fits."),
+    rule("ATC-WAKE-SEP", "atc", "Spacing behind the aircraft ahead", "confirmed", 6, 5, "NM", "at_least", SRC_WAKE, "Lands too close behind the aircraft ahead"),
+    rule("ATC-RWY-THROUGHPUT", "atc", "Arrivals per hour on the runway", "assumption", 26 + offset, 30, "arrivals/h", "at_most", SRC_ASSUMED, "Puts too many arrivals on the runway in an hour"),
+    rule("PLT-FUEL-POLICY", "pilot", "Fuel left at landing", "policy", 57 - offset * 3, 45, "min", "at_least", SRC_FUEL, "Lands with less fuel than the reserve policy allows"),
+    rule("GND-GATE-OVERLAP", "ground", "Gap before the next aircraft at the gate", "assumption", 25, 20, "min", "at_least", SRC_ASSUMED, "Uses a gate that is occupied or blocked"),
+    rule("GND-TURNAROUND", "ground", "Time to turn the aircraft round", "assumption", 48, 45, "min", "at_least", SRC_ASSUMED, "Leaves too little time to turn the aircraft round"),
   ];
 }
 
@@ -107,19 +128,19 @@ function airport(closedRunways: string[], closedGates: string[]): AirportState {
 const UNSAFE: Record<string, { label: string; rule: RuleResult }> = {
   "PLT-FUEL-POLICY": {
     label: "Land at the earliest slot with no hold, 31 min of fuel left",
-    rule: rule("PLT-FUEL-POLICY", "pilot", "Fuel left at landing", "policy", 31, 45, "min", "at_least", SRC_FUEL, "Lands with less fuel than the policy keeps in reserve."),
+    rule: rule("PLT-FUEL-POLICY", "pilot", "Fuel left at landing", "policy", 31, 45, "min", "at_least", SRC_FUEL, "Lands with less fuel than the reserve policy allows"),
   },
   "ATC-RWY-CLOSED": {
     label: "Use a closed runway",
-    rule: rule("ATC-RWY-CLOSED", "atc", "Runway is open", "assumption", 1, 0, "closed runways used", "at_most", "Scenario state", "The plan uses a runway that is closed."),
+    rule: rule("ATC-RWY-CLOSED", "atc", "Runway is open", "assumption", 1, 0, "closed runways", "at_most", "Scenario state", "Uses a closed runway"),
   },
   "ATC-WAKE-SEP": {
     label: "Land 3 NM behind a heavy aircraft",
-    rule: rule("ATC-WAKE-SEP", "atc", "Spacing behind the aircraft ahead", "confirmed", 3, 5, "NM", "at_least", SRC_WAKE, "Spacing is less than the minimum."),
+    rule: rule("ATC-WAKE-SEP", "atc", "Spacing behind the aircraft ahead", "confirmed", 3, 5, "NM", "at_least", SRC_WAKE, "Lands too close behind the aircraft ahead"),
   },
   "GND-GATE-OVERLAP": {
     label: "Park at an occupied gate",
-    rule: rule("GND-GATE-OVERLAP", "ground", "Gap before the next aircraft at the gate", "assumption", -10, 20, "min", "at_least", SRC_ASSUMED, "Another aircraft is still at the gate."),
+    rule: rule("GND-GATE-OVERLAP", "ground", "Gap before the next aircraft at the gate", "assumption", 0, 20, "min", "at_least", SRC_ASSUMED, "Uses a gate that is occupied or blocked"),
   },
 };
 
@@ -130,7 +151,6 @@ function build(
   closedRunways: string[],
   closedGates: string[],
   inject: string | undefined,
-  version: number,
 ): Run {
   const openRunways = RUNWAYS.filter((r) => !closedRunways.includes(r));
   const openGates = GATES.filter((g) => !closedGates.includes(g));
@@ -145,7 +165,7 @@ function build(
       label: `Runway 27L, ${clock(base - 12)}, gate B12, no hold`,
       removed_in_turn: 1,
       violations: [
-        rule("PLT-FUEL-POLICY", "pilot", "Fuel left at landing", "policy", 41, 45, "min", "at_least", SRC_FUEL, "Lands with less fuel than the policy keeps in reserve."),
+        rule("PLT-FUEL-POLICY", "pilot", "Fuel left at landing", "policy", 41, 45, "min", "at_least", SRC_FUEL, "Lands with less fuel than the reserve policy allows"),
       ],
     });
     removed.push({
@@ -153,7 +173,7 @@ function build(
       label: `Runway 27R, ${clock(base + 2)}, gate B14, vector`,
       removed_in_turn: 1,
       violations: [
-        rule("ATC-WAKE-SEP", "atc", "Spacing behind the aircraft ahead", "confirmed", 4, 5, "NM", "at_least", SRC_WAKE, "Spacing is less than the minimum."),
+        rule("ATC-WAKE-SEP", "atc", "Spacing behind the aircraft ahead", "confirmed", 4, 5, "NM", "at_least", SRC_WAKE, "Lands too close behind the aircraft ahead"),
       ],
     });
   }
@@ -195,7 +215,7 @@ function build(
       kind: "NO_DEAL",
       reason_type: "SYSTEM_FAULT",
       binding_rules: [
-        rule("PLT-FUEL-POLICY", "pilot", "Fuel left at landing", "policy", null, 45, "min", "at_least", SRC_FUEL, "Fuel on board is unknown, so the rule fails closed.", "missing_data"),
+        rule("PLT-FUEL-POLICY", "pilot", "Fuel left at landing", "policy", null, 45, "min", "at_least", SRC_FUEL, "Cannot check fuel left at landing: fuel on board is unknown", "missing_data"),
       ],
       packages_considered: 24,
       nearest_package: null,
@@ -303,13 +323,20 @@ function build(
     const next = sc.summary.next_leg;
     const facts: Fact[] = [
       { key: "arrival", label: "Arrival time", value: clock(arrive), provenance: "derived" },
-      { key: "scheduled", label: "Scheduled arrival", value: sc.summary.scheduled_arrival, provenance: "real" },
+      { key: "scheduled", label: "Scheduled arrival", value: sc.summary.scheduled_arrival, provenance: "synthetic" },
       { key: "runway", label: "Runway", value: rwy, provenance: "synthetic" },
       { key: "gate", label: "Gate", value: gate, provenance: "synthetic" },
       { key: "handling", label: "Delay handling", value: "Hold at a fix", provenance: "derived" },
     ];
+    const fieldHashes = {
+      headline: hash(`headline:${label}`),
+      authority: hash(`authority:${gate}:${rwy}:${arrive}`),
+      rules: hash(`rules:${rwy}`),
+      what_could_go_wrong: hash(`risks:${next ? next.flight_id : "none"}`),
+    };
     card = {
-      card_hash: hash(`card:${label}:${closedRunways.join()}:${closedGates.join()}:${version}:${mode}`),
+      card_hash: hash(JSON.stringify(fieldHashes)),
+      field_hashes: fieldHashes,
       action: `Land ${sc.summary.flight_id} at ${clock(arrive)} on runway ${rwy}, park at gate ${gate}, and absorb the delay in a hold.`,
       action_facts: facts,
       why: [
@@ -342,11 +369,12 @@ function build(
     };
   }
 
-  const head = hash(`${runId}:${version}:${path}`);
+  const head = hash(`${runId}:${path}`);
   return {
     run_id: runId,
     scenario_id: sc.summary.scenario_id,
-    state_version: version,
+    state_version: versionRoot(fieldVersions(closedRunways, closedGates)),
+    field_versions: fieldVersions(closedRunways, closedGates),
     path,
     turns,
     removed_packages: removed,
@@ -410,76 +438,79 @@ export const mockBackend = {
     const closedRunways = body.overrides?.closed_runways ?? [];
     const closedGates = body.overrides?.closed_gates ?? [];
     const runId = `mock-run-${++counter}`;
-    const run = build(runId, sc, body.mode, closedRunways, closedGates, body.overrides?.inject_unsafe, 1);
-    store.set(runId, { scenario: sc, mode: body.mode, closedRunways, closedGates, run, version: 1, extraLog: [] });
+    const run = build(runId, sc, body.mode, closedRunways, closedGates, body.overrides?.inject_unsafe);
+    store.set(runId, { scenario: sc, mode: body.mode, closedRunways, closedGates, run, extraLog: [] });
     return run;
   },
 
-  async changeState(runId: string, change: StateChange): Promise<{ state_version: number }> {
+  async changeState(runId: string, change: StateChange): Promise<{ state_version: string }> {
     await wait(200);
     const s = need(runId);
     s.closedRunways = Array.from(new Set([...s.closedRunways, ...(change.closed_runways ?? [])]));
     s.closedGates = Array.from(new Set([...s.closedGates, ...(change.closed_gates ?? [])]));
-    s.version += 1;
-    return { state_version: s.version };
+    return { state_version: versionRoot(fieldVersions(s.closedRunways, s.closedGates)) };
   },
 
   async signoff(runId: string, body: SignoffRequest): Promise<SignoffResult> {
     await wait(350);
     const s = need(runId);
     const deal = s.run.decision;
-    if (deal.kind !== "DEAL") throw new Error("There is no plan to sign off");
-    const changed: string[] = [];
+    const card = s.run.card;
+    if (deal.kind !== "DEAL" || !card) throw new Error("There is no plan to sign off");
+    const current = fieldVersions(s.closedRunways, s.closedGates);
+    const currentRoot = versionRoot(current);
     const violations: RuleResult[] = [];
-    if (body.state_version_seen !== s.version) {
-      for (const g of s.closedGates) {
-        if (deal.package.gate_id === g) {
-          changed.push(`Gate ${g} is now blocked`);
-          violations.push(UNSAFE["GND-GATE-OVERLAP"].rule);
-        }
-      }
-      for (const r of s.closedRunways) {
-        if (deal.package.runway_id === r) {
-          changed.push(`Runway ${r} is now closed`);
-          violations.push(UNSAFE["ATC-RWY-CLOSED"].rule);
-        }
-      }
-      if (changed.length === 0) changed.push("Airport state changed after the plan was shown");
-      return {
-        status: "REFUSED_STATE_CHANGED",
-        changed_fields: changed,
-        violations,
-        requests: [],
-        airline_decisions: [],
-        log_head: s.run.log_head,
-      };
+    if (deal.package.gate_id && s.closedGates.includes(deal.package.gate_id)) violations.push(bare(UNSAFE["GND-GATE-OVERLAP"].rule));
+    if (s.closedRunways.includes(deal.package.runway_id)) violations.push(bare(UNSAFE["ATC-RWY-CLOSED"].rule));
+
+    const token = hash([body.terms_hash, body.state_version_seen, body.card_hash_seen].join("|"));
+    let status: SignoffResult["status"];
+    let changedFields: string[] = [];
+    let changedCard: string[] = [];
+    if (usedTokens.has(token)) status = "REFUSED_ALREADY_USED";
+    else if (body.terms_hash !== deal.terms_hash) status = "REFUSED_PACKAGE_CHANGED";
+    else if (body.state_version_seen !== currentRoot) {
+      status = "REFUSED_STATE_CHANGED";
+      changedFields = changedNames(body.field_versions_seen, body.state_version_seen, current);
+    } else if (violations.length > 0) status = "REFUSED_RULES_FAILED";
+    else if (body.card_hash_seen !== card.card_hash) {
+      status = "REFUSED_CARD_CHANGED";
+      const seen = body.card_field_hashes_seen;
+      const now = card.field_hashes ?? {};
+      changedCard =
+        seen && hash(JSON.stringify(seen)) === body.card_hash_seen
+          ? Object.keys(now).filter((n) => seen[n] !== now[n])
+          : ["unattributed"];
+      if (changedCard.length === 0) changedCard = ["unattributed"];
+    } else status = "APPROVED";
+
+    const approved = status === "APPROVED";
+    if (approved) {
+      usedTokens.add(token);
+      s.extraLog.push({
+        seq: 0,
+        kind: "signoff",
+        summary: `Approved by ${body.decided_by}. Requests issued, nothing executed.`,
+        hash: hash(`${runId}:signoff:${body.decided_by}`),
+      });
+      s.run = { ...s.run, log_head: hash(`${runId}:head:signed`) };
     }
-    if (s.run.card && body.card_hash_seen !== s.run.card.card_hash) {
-      return {
-        status: "REFUSED_CARD_CHANGED",
-        changed_fields: ["The card on screen is not the card the server holds"],
-        violations: [],
-        requests: [],
-        airline_decisions: [],
-        log_head: s.run.log_head,
-      };
-    }
-    const card = s.run.card!;
-    s.extraLog.push({
-      seq: 0,
-      kind: "signoff",
-      summary: `Approved by ${body.decided_by}. Requests issued, nothing executed.`,
-      hash: hash(`${runId}:signoff:${body.decided_by}`),
-    });
-    const head = hash(`${runId}:head:signed`);
-    s.run = { ...s.run, log_head: head };
     return {
-      status: "APPROVED",
-      changed_fields: [],
-      violations: [],
-      requests: card.requests.filter((r) => body.requests_to_send.includes(r.key)),
-      airline_decisions: card.airline_decisions.filter((d) => body.airline_decisions_approved.includes(d.key)),
-      log_head: head,
+      status,
+      violations,
+      changed_fields: changedFields,
+      changed_card_fields: changedCard,
+      airline_decisions:
+        approved && body.airline_decisions_approved ? [{ name: "gate_id", value: `gate ${deal.package.gate_id}` }] : [],
+      requests:
+        approved && body.requests_to_send
+          ? [
+              { name: "slot", value: `runway ${deal.package.runway_id} at ${card.action_facts.find((f) => f.key === "arrival")?.value ?? ""}` },
+              { name: "action", value: "hold" },
+            ]
+          : [],
+      card_hash: card.card_hash,
+      log_head: s.run.log_head,
     };
   },
 
