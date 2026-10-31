@@ -162,7 +162,6 @@ export function NegotiationView({ run }: { run: Run }) {
               : "The agents did not reach a plan, so code chose one. A fallback is never shown as a clean result."
             : "No plan passed the rules, so the system stopped instead of guessing."}
       </p>
-      <PlansConsidered run={run} />
       {injected && removed}
       {run.turns.length === 0 ? (
         <EmptyPanel title="The agents did not run.">
@@ -171,6 +170,7 @@ export function NegotiationView({ run }: { run: Run }) {
       ) : (
         run.turns.map((t, i) => <TurnColumns key={t.turn} turn={t} run={run} previous={run.turns[i - 1]} />)
       )}
+      <PlansConsidered run={run} />
       {!injected && removed}
     </div>
   );
