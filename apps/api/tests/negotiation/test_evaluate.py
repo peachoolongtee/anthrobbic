@@ -72,6 +72,7 @@ class FakeParams:
     p_next_leg_hard: float = 0.35
     gate_util_base: float = 0.35
     surplus_pre_departure_min: tuple[int, int] = (30, 90)
+    p_planned_gate_conflict: float = 0.5
 
 
 @dataclass(frozen=True)
@@ -1528,6 +1529,8 @@ def test_limits_are_stated_automatically(tmp_path: Path) -> None:
     assert "binding counts partly describe our generator" in text
     assert "shows no saving" in text
     assert "assumed approach speed" in text
+    assert "reassigned stay on the planned gate on 50% of flights" in text
+    assert "before any model output existed" in text
 
 
 def test_results_are_written_as_json_and_markdown(tmp_path: Path) -> None:
@@ -1601,7 +1604,48 @@ def test_the_command_prints_the_live_schedule_and_spends_nothing(
     assert "tune: 60" in out
     assert "second frozen: 120" in out
     assert "total: 326" in out
+    assert "TURN2-CONFLICT re-record is 6 calls outside the ledger" in out
     assert not fake.modes
+
+
+def test_comparison_reads_both_columns_from_the_run_files(tmp_path: Path) -> None:
+    before = ev.run_evaluation(
+        _request(tmp_path, sample=6, seed=1, synthetic_seeds=1), fake_backends()
+    )
+    after = ev.run_evaluation(
+        _request(tmp_path, sample=8, seed=2, synthetic_seeds=1), fake_backends()
+    )
+    text = ev.render_comparison(
+        before.model_dump(mode="json"), after.model_dump(mode="json"), "Heading"
+    )
+    assert "sample size 6" in text
+    assert "sample size 8" in text
+    assert "| Deal rate, all rows |" in text
+    old = _by_name(before, "Deal rate, all rows")[0]
+    new = _by_name(after, "Deal rate, all rows")[0]
+    assert f"| {old.display_value()}, {old.display_interval()} |" in text
+    assert f"| {new.display_value()}, {new.display_interval()} |" in text
+
+
+def test_comparison_says_when_a_run_did_not_measure_something(tmp_path: Path) -> None:
+    run = ev.run_evaluation(
+        _request(tmp_path, sample=4, synthetic_seeds=1), fake_backends()
+    ).model_dump(mode="json")
+    older = json.loads(json.dumps(run))
+    for panel in older["panels"]:
+        panel["measures"] = [
+            m for m in panel["measures"] if not m["name"].startswith("Pick is no worse")
+        ]
+    text = ev.render_comparison(older, run, "Heading")
+    assert "not measured in this run" in text
+
+
+def test_every_comparison_measure_exists_in_a_real_table(tmp_path: Path) -> None:
+    report = ev.run_evaluation(
+        _request(tmp_path, sample=30, synthetic_seeds=2), fake_backends()
+    )
+    names = {m.name for p in report.panels for m in p.measures}
+    assert not set(ev.COMPARISON_MEASURES) - names
 
 
 def test_the_command_exit_codes(

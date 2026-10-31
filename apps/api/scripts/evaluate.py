@@ -8,6 +8,7 @@ has not landed).
 """
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -49,6 +50,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="print every planned live call and exit; spends nothing",
     )
     parser.add_argument(
+        "--compare",
+        nargs=3,
+        type=Path,
+        metavar=("BEFORE_JSON", "AFTER_JSON", "OUTPUT_MD"),
+        help="write two stored runs side by side and exit; runs nothing",
+    )
+    parser.add_argument(
         "--regenerate-split",
         action="store_true",
         help="choose the split again; refused once a live run has used it",
@@ -78,6 +86,18 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.print_live_plan:
         print(ev.describe_live_schedule())
+        return EXIT_OK
+
+    if args.compare:
+        before, after, output = args.compare
+        output.write_text(
+            ev.render_comparison(
+                json.loads(before.read_text()),
+                json.loads(after.read_text()),
+                "Before and after seeded planned-gate conflicts",
+            )
+        )
+        print(output.read_text())
         return EXIT_OK
 
     if args.sample < 0 or args.synthetic_seeds < 1 or args.workers < 1:

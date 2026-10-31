@@ -133,6 +133,8 @@ GENERATOR_VARIANTS: tuple[tuple[str, Any], ...] = (
     ("gate_util_base", 0.55),
     ("surplus_pre_departure_min", (0, 10)),
     ("surplus_pre_departure_min", (-10, 5)),
+    # Reports the original generator on the same rows. Not a candidate setting.
+    ("p_planned_gate_conflict", 0.0),
 )
 GENERATOR_DEFAULT_LABEL = "default parameters"
 
@@ -748,6 +750,10 @@ def describe_live_schedule() -> str:
     schedule = live_call_schedule()
     lines = [f"{name}: {calls}" for name, calls in schedule]
     lines.append(f"total: {sum(calls for _, calls in schedule)}")
+    lines.append(
+        f"The TURN2-CONFLICT re-record is {RERECORD_TURN2_CONFLICT_CALLS} calls "
+        "outside the ledger, so count them by hand."
+    )
     return "\n".join(lines)
 
 
@@ -3223,7 +3229,9 @@ def frozen_score_panel(
     return builder.build(sample_size=score["overall"]["n_planned"])
 
 
-def limits_text(sample_rows_run: int) -> tuple[str, ...]:
+def limits_text(
+    sample_rows_run: int, conflict_probability: float | None = None
+) -> tuple[str, ...]:
     """The plan's limits, stated with every result. Bounds are computed."""
     upper_30 = wilson_interval(0, 30)[1] * 100
     lines = [
@@ -3251,6 +3259,14 @@ def limits_text(sample_rows_run: int) -> tuple[str, ...]:
         "passes both.",
         "Numbers of different evidence classes are never comparable.",
     ]
+    if conflict_probability:
+        lines.append(
+            f"The scenario generator adds a synthetic reassigned stay on the planned "
+            f"gate on {conflict_probability:.0%} of flights. We added it after a "
+            "rules-only run showed no package ever traded one cost against another, "
+            "and before any model output existed. It creates the trade-offs measured "
+            "here, so they describe our generator, not observed operations."
+        )
     if sample_rows_run > 0:
         upper = wilson_interval(0, sample_rows_run)[1] * 100
         lines.append(
@@ -3338,6 +3354,85 @@ def render_markdown(report: Report) -> str:
         if report.failures
         else ["- None."]
     )
+    return "\n".join(lines) + "\n"
+
+
+# Reported side by side when the generator changes. Both columns come from run files.
+COMPARISON_MEASURES = (
+    "Deal rate, all rows",
+    "Deal rate, weather",
+    "Deal rate, late_aircraft",
+    "NO_DEAL NOTHING_LEGAL rate, all rows",
+    "NO_DEAL SYSTEM_FAULT rate, all rows",
+    "Pick is no worse than every legal package on every cost component",
+    "Chosen package changes under at least one alternate weight",
+    "Chosen package has zero soft cost",
+    "Fallback picks the same package as human_heuristic",
+    "Fallback picks the same package as first_come_first_served",
+    "Final packages breaking a rule",
+    "Final packages the independent harm check calls harmful",
+    "harm.py versus rules: harm_only",
+    "harm.py versus rules: rules_only",
+    "first_come_first_served: packages breaking a rule",
+    "Chosen package changes across synthetic seeds",
+    "Outcome flips between deal and NO_DEAL across synthetic seeds",
+    "Delay past the scenario's earliest arrival, fallback",
+    "Delay past the scenario's earliest arrival, fallback minus human_heuristic, "
+    "paired on the same window",
+    "Connection passengers at risk, fallback minus human_heuristic, "
+    "paired on the same window",
+    "Legal packages per deal row",
+)
+
+
+def _rule_measures(report: Mapping[str, Any]) -> dict[str, Measure]:
+    """One run's measures by name, from its rules-only and test panels."""
+    return {
+        m["name"]: Measure.model_validate(m)
+        for panel in report["panels"]
+        for m in panel["measures"]
+    }
+
+
+def render_comparison(
+    before: Mapping[str, Any], after: Mapping[str, Any], heading: str
+) -> str:
+    """Two stored runs side by side. Every value is read from the run files."""
+    old = _rule_measures(before)
+    new = _rule_measures(after)
+
+    def cell(measures: Mapping[str, Measure], name: str) -> str:
+        measure = measures.get(name)
+        if measure is None:
+            return "not measured in this run"
+        interval = measure.display_interval()
+        value = measure.display_value()
+        return f"{value}, {interval}" if interval else value
+
+    def run_line(label: str, report: Mapping[str, Any]) -> str:
+        meta = report["meta"]
+        failures = report["failures"]
+        return (
+            f"- {label}: commit `{meta['commit']}`, mode `{meta['mode']}`, seed "
+            f"{meta['seed']}, sample size {meta['sample_size']}, generated "
+            f"{meta['generated_at']}, control failures: {len(failures)}"
+        )
+
+    lines = [
+        f"# {heading}",
+        "",
+        run_line("Before", before),
+        run_line("After", after),
+        "",
+        "Both runs are class `rules_only`. No model ran in either.",
+        "",
+        "| Measure | Before | After |",
+        "|---|---|---|",
+    ]
+    lines += [
+        f"| {name} | {cell(old, name)} | {cell(new, name)} |"
+        for name in COMPARISON_MEASURES
+    ]
     return "\n".join(lines) + "\n"
 
 
@@ -3580,7 +3675,10 @@ def run_evaluation(request: RunRequest, backends: Backends | None = None) -> Rep
     report = Report(
         meta=meta,
         panels=tuple(panels),
-        limits=limits_text(len(rows)),
+        limits=limits_text(
+            len(rows),
+            getattr(resolved.generator_params, "p_planned_gate_conflict", None),
+        ),
         awaiting=resolved.missing,
         failures=tuple(failures),
         timing_seconds=elapsed,
