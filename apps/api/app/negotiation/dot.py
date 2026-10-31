@@ -156,6 +156,32 @@ def scheduled_arrival_rel(dep_hhmm: int, arr_hhmm: int, sched_time: int | None) 
     return arr + (MINUTES_PER_DAY if arr < dep else 0)
 
 
+def clock_offset_min(dep_hhmm: int, arr_hhmm: int, sched_time: int | None) -> int:
+    """Minutes the destination clock runs ahead of the origin clock.
+
+    Worked out from the row's own schedule in the same way, and with the same
+    limits, as `scheduled_arrival_rel`: arrival less departure less block time,
+    folded into plus or minus twelve hours. Zero when there is no block time or
+    the fold is out of range, which is where `scheduled_arrival_rel` also stops
+    using an offset.
+    """
+    if sched_time is None:
+        return 0
+    dep = hhmm_to_min(dep_hhmm)
+    arr = hhmm_to_min(arr_hhmm)
+    offset = (arr - dep - sched_time + 720) % MINUTES_PER_DAY - 720
+    return offset if abs(offset) <= MAX_CLOCK_OFFSET_MIN else 0
+
+
+def scheduled_departure_min(row: DotRow) -> int:
+    """The scheduled departure on the destination clock, which is the clock every
+    scenario time is on. `row.scheduled_departure` itself is on the origin clock."""
+    offset = clock_offset_min(
+        row.scheduled_departure, row.scheduled_arrival, row.scheduled_time
+    )
+    return hhmm_to_min(row.scheduled_departure) + offset
+
+
 def scheduled_arrival_min(row: DotRow) -> int:
     """`scheduled_arrival_rel` for a row. Schedule columns only."""
     return scheduled_arrival_rel(
@@ -531,6 +557,103 @@ def _select_by_ids(con: sqlite3.Connection, ids: list[int]) -> Iterator[DotRow]:
         yield from _select_rows(con, f"WHERE id IN ({marks})", tuple(chunk))
 
 
+# --- finding one flight ------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class FlightQuery:
+    """A flight as a person names it: date and number, optionally narrowed."""
+
+    date: date
+    flight_number: int
+    airline: str | None = None
+    origin: str | None = None
+    destination: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FlightOnFile:
+    """Why a flight on the schedule might not be eligible. It says only whether a
+    tail and an arrival delay are on file, never what the delay was."""
+
+    has_tail: bool
+    arrived: bool
+
+
+# Each destination once, by seeking through the index rather than reading it. The
+# taxi table will not do: an airport whose only flights were cancelled is not in it.
+_EVERY_DESTINATION: Final = """(
+    WITH RECURSIVE d(dest) AS (
+        SELECT MIN(dest) FROM flights
+        UNION ALL
+        SELECT (SELECT MIN(dest) FROM flights WHERE dest > d.dest)
+        FROM d WHERE d.dest IS NOT NULL
+    )
+    SELECT dest FROM d WHERE dest IS NOT NULL
+)"""
+
+
+def eligible_count(path: str | os.PathLike[str] | None = None) -> int:
+    result = ensure_cache(path).execute("SELECT COUNT(*) FROM eligible").fetchone()
+    return int(result[0])
+
+
+def find_eligible(
+    query: FlightQuery, path: str | os.PathLike[str] | None = None
+) -> list[DotRow]:
+    """Eligible rows matching a query, in file order. A scan of the eligible table,
+    which is quick enough that the cache needs no new index or version."""
+    day = query.date
+    where = "WHERE year = ? AND month = ? AND day = ? AND flight_number = ?"
+    params: list[object] = [day.year, day.month, day.day, query.flight_number]
+    for column, value in (
+        ("airline", query.airline),
+        ("origin_airport", query.origin),
+        ("destination_airport", query.destination),
+    ):
+        if value is not None:
+            where += f" AND {column} = ?"
+            params.append(value)
+    return list(_select_rows(ensure_cache(path), where, tuple(params)))
+
+
+def scheduled_flights(
+    query: FlightQuery, path: str | os.PathLike[str] | None = None
+) -> list[FlightOnFile]:
+    """Every flight on the schedule matching a query, eligible or not.
+
+    Goes through the destination and arrival index, one short range per airport,
+    because the schedule holds millions of rows. An arrival is within a day of its
+    departure date on any clock, so the range cannot miss one.
+    """
+    base = query.date.toordinal() * MINUTES_PER_DAY
+    number = str(query.flight_number)
+    sql = (
+        "SELECT tail, arr_delay FROM flights WHERE dest IN "
+        + ("(?)" if query.destination else _EVERY_DESTINATION)
+        + " AND arr_abs BETWEEN ? AND ? AND dep_abs >= ? AND dep_abs < ?"
+        + " AND substr(flight, 3) = ?"
+    )
+    params: list[object] = [query.destination] if query.destination else []
+    params += [
+        base - MINUTES_PER_DAY,
+        base + 2 * MINUTES_PER_DAY,
+        base,
+        base + MINUTES_PER_DAY,
+        number,
+    ]
+    if query.airline:
+        sql += " AND substr(flight, 1, 2) = ?"
+        params.append(query.airline)
+    if query.origin:
+        sql += " AND origin = ?"
+        params.append(query.origin)
+    return [
+        FlightOnFile(has_tail=bool(tail.strip()), arrived=arr_delay is not None)
+        for tail, arr_delay in ensure_cache(path).execute(sql, params)
+    ]
+
+
 # --- schedule queries --------------------------------------------------------
 
 
@@ -628,6 +751,48 @@ def next_leg(row: DotRow, path: str | os.PathLike[str] | None = None) -> NextLeg
         destination=destination,
         scheduled_departure_min=dep_abs - base,
         departure_delay_min=dep_delay,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class LaterLeg:
+    """One of the same tail's later flights that day. Schedule columns only."""
+
+    flight_id: str
+    origin: str
+    destination: str
+    scheduled_departure_min: int  # relative to the subject's departure-date midnight
+    scheduled_arrival_min: int  # same reference, on the destination's clock
+
+
+def later_legs(
+    row: DotRow, path: str | os.PathLike[str] | None = None
+) -> tuple[LaterLeg, ...]:
+    """The same tail's flights that depart later than this flight's scheduled
+    arrival and before the end of its departure date, in departure order.
+
+    Reads the schedule columns of the cache's `flights` table and nothing else:
+    the as-flown delay columns beside them are never selected. Uses the
+    `(tail, dep_abs)` index, so a call costs a handful of rows, not a scan.
+    """
+    if not row.tail_number:
+        return ()
+    con = ensure_cache(path)
+    base = row.day_start_abs
+    found = con.execute(
+        "SELECT flight, origin, dest, dep_abs, arr_abs FROM flights "
+        "WHERE tail = ? AND dep_abs > ? AND dep_abs < ? ORDER BY dep_abs, flight",
+        (row.tail_number, base + scheduled_arrival_min(row), base + MINUTES_PER_DAY),
+    )
+    return tuple(
+        LaterLeg(
+            flight_id=flight,
+            origin=origin,
+            destination=destination,
+            scheduled_departure_min=dep_abs - base,
+            scheduled_arrival_min=arr_abs - base,
+        )
+        for flight, origin, destination, dep_abs, arr_abs in found
     )
 
 

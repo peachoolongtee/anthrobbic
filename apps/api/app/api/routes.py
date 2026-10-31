@@ -1,10 +1,12 @@
 """Dashboard routes. Handlers stay thin; `RunService` does the work."""
 
+from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, Query, Request
+from fastapi import APIRouter, Body, Depends, Query, Request, Response
 
 from app.api.evaluation import read_evaluation
+from app.api.headline import Headline, read_headline
 from app.api.runs import (
     RejectRequest,
     RunRequest,
@@ -14,8 +16,12 @@ from app.api.runs import (
     VerifyRequest,
 )
 from app.api.wire import (
+    ConsensusLog,
     DecisionResult,
+    DelaySpread,
+    EligibleCount,
     Evaluation,
+    LookupResult,
     RunLog,
     RunView,
     ScenarioSummary,
@@ -23,7 +29,8 @@ from app.api.wire import (
     StateChanged,
     VerifyLogResult,
 )
-from app.negotiation.dot import Cause
+from app.api.workbook_limits import WorkbookLimits, read_limits
+from app.negotiation.dot import Cause, FlightQuery
 from app.negotiation.signoff import SignOffRequest
 
 router = APIRouter()
@@ -44,6 +51,31 @@ def list_scenarios(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[ScenarioSummary]:
     return service.catalogue.summaries(cause, limit)
+
+
+@router.get("/scenarios/count")
+def eligible_count(service: Service) -> EligibleCount:
+    return EligibleCount(eligible_total=service.catalogue.eligible_total())
+
+
+@router.get("/scenarios/lookup")
+def lookup_flight(
+    service: Service,
+    flight_date: Annotated[date, Query(alias="date")],
+    flight_number: Annotated[int, Query(ge=1, le=9999)],
+    airline: Annotated[str | None, Query(pattern=r"^[A-Za-z0-9]{2}$")] = None,
+    origin: Annotated[str | None, Query(pattern=r"^[A-Za-z]{3}$")] = None,
+    destination: Annotated[str | None, Query(pattern=r"^[A-Za-z]{3}$")] = None,
+) -> LookupResult:
+    return service.catalogue.lookup(
+        FlightQuery(
+            date=flight_date,
+            flight_number=flight_number,
+            airline=airline.upper() if airline else None,
+            origin=origin.upper() if origin else None,
+            destination=destination.upper() if destination else None,
+        )
+    )
 
 
 @router.post("/runs")
@@ -76,6 +108,23 @@ def get_log(service: Service, run_id: str) -> RunLog:
     return service.log(run_id)
 
 
+@router.get("/runs/{run_id}/consensus-log")
+def get_consensus_log(
+    service: Service, run_id: str, response: Response
+) -> ConsensusLog:
+    """Read-only, any run state. Sent as a file to save."""
+    document = service.consensus_log(run_id)
+    response.headers["Content-Disposition"] = (
+        f'attachment; filename="consensus-log-{document.run_id}.json"'
+    )
+    return document
+
+
+@router.get("/runs/{run_id}/spread")
+def get_spread(service: Service, run_id: str) -> DelaySpread:
+    return service.spread(run_id)
+
+
 @router.post("/runs/{run_id}/log/verify")
 def verify_log(
     service: Service,
@@ -88,3 +137,13 @@ def verify_log(
 @router.get("/evaluation")
 def get_evaluation(service: Service) -> Evaluation:
     return read_evaluation(service.results_dir)
+
+
+@router.get("/evaluation/limits")
+def get_evaluation_limits() -> WorkbookLimits:
+    return read_limits()
+
+
+@router.get("/evaluation/headline")
+def get_evaluation_headline(service: Service) -> Headline:
+    return read_headline(service.results_dir)
