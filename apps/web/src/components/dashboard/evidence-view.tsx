@@ -32,7 +32,7 @@ function EvidenceRow({ row }: { row: EvaluationRow }) {
       <TableCell className="font-semibold">
         {String(row.value)}
         {IS_MOCK && (
-          <Badge variant="outline" className="ml-2 border-warning/50 bg-warning-soft text-warning">
+          <Badge variant="outline" className="mt-1 flex border-warning/50 bg-warning-soft text-warning">
             Mock sample data
           </Badge>
         )}
@@ -45,7 +45,9 @@ function EvidenceRow({ row }: { row: EvaluationRow }) {
         </Badge>
       </TableCell>
       <TableCell className="font-mono text-xs whitespace-normal">
-        {row.commit} / {row.mode} / seed {row.seed}
+        {row.commit}
+        <br />
+        {row.mode}, seed {row.seed}
       </TableCell>
     </TableRow>
   );
@@ -109,7 +111,7 @@ export function EvidenceView() {
             <TableHead>Interval</TableHead>
             <TableHead>Cases</TableHead>
             <TableHead>Evidence</TableHead>
-            <TableHead>Commit / mode / seed</TableHead>
+            <TableHead>Run</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

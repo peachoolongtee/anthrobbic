@@ -164,7 +164,7 @@ export function useDashboard() {
                 kind,
                 tone: "ok",
                 title: "Caught before it could be chosen",
-                detail: `${first.violations.map((v) => v.rule_id).join(", ")} removed it. Open Negotiation to see why.`,
+                detail: `${first.violations.map((v) => v.rule_id).join(", ")} removed it. It is listed under Plans the rules removed.`,
               }
             : {
                 kind,

@@ -163,6 +163,17 @@ function RunGate({
   children: React.ReactNode;
 }) {
   if (running) return <LoadingBlock label="Running the negotiation" lines={6} />;
+  if (d.runState.status === "idle" && d.scenarios.status === "loading")
+    return <LoadingBlock label="Loading flights" lines={6} />;
+  if (d.runState.status === "idle" && d.scenarios.status === "error")
+    return (
+      <ErrorPanel
+        title="Cannot reach the API"
+        message={d.scenarios.message}
+        unreachable={d.scenarios.unreachable}
+        onRetry={d.retryScenarios}
+      />
+    );
   if (d.runState.status === "error")
     return (
       <ErrorPanel

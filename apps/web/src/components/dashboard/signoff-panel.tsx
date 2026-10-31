@@ -79,6 +79,62 @@ function SignoffForm({
         onApprove(decisions, requests);
       }}
     >
+      <div role="status" aria-live="polite">
+        {signoff.status === "error" && (
+          <p className="rounded-lg border border-destructive/40 bg-destructive-soft p-2 text-sm">
+            <strong>Sign-off failed.</strong> {signoff.message} Nothing was issued.
+          </p>
+        )}
+        {signoff.status === "done" && isApproved(signoff.result.status) && (
+          <div className="space-y-2 rounded-lg border border-success/40 bg-success-soft p-3 text-sm">
+            <p className="flex items-center gap-1.5 font-semibold text-success">
+              <CircleCheck aria-hidden className="size-4" />
+              Requests issued, nothing executed
+            </p>
+            <p className="text-xs">
+              {signoffStatusLabel(signoff.result.status)} by {DECIDED_BY}. The requests below are sent; ATC and the
+              pilot still have to act on them.
+            </p>
+            <ResultList title="Airline decisions approved" items={signoff.result.airline_decisions} />
+            <ResultList
+              title="Requests issued"
+              items={signoff.result.requests.map((r) => ({ ...r, value: `${r.value} (to ${r.to})` }))}
+            />
+            <p className="flex items-center gap-1 font-mono text-xs break-all">
+              <Hash aria-hidden className="size-3 shrink-0" />
+              Log head {signoff.result.log_head}
+            </p>
+          </div>
+        )}
+        {signoff.status === "done" && !isApproved(signoff.result.status) && (
+          <div className="space-y-2 rounded-lg border border-destructive/40 bg-destructive-soft p-3 text-sm">
+            <p className="flex items-center gap-1.5 font-semibold text-destructive">
+              <CircleX aria-hidden className="size-4" />
+              {signoffStatusLabel(signoff.result.status)}
+            </p>
+            <p className="text-xs">Nothing was issued.</p>
+            {signoff.result.changed_fields.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold">What changed since you looked</p>
+                <ul className="list-disc pl-5">
+                  {signoff.result.changed_fields.map((c, i) => (
+                    <li key={i}>{c}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {signoff.result.violations.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold">Rules now broken</p>
+                <RuleList rules={signoff.result.violations} result="broken" />
+              </div>
+            )}
+            <Button type="button" variant="outline" size="sm" onClick={onNewPlan}>
+              Make a new recovery plan
+            </Button>
+          </div>
+        )}
+      </div>
       <fieldset className="space-y-1.5" disabled={locked}>
         <legend className="text-sm font-semibold">You decide</legend>
         <p className="text-xs text-muted-foreground">The airline&rsquo;s own calls.</p>
@@ -144,62 +200,6 @@ function SignoffForm({
         Sign-off checks the plan, the airport and this card again before anything is issued.
       </p>
 
-      <div role="status" aria-live="polite">
-        {signoff.status === "error" && (
-          <p className="rounded-lg border border-destructive/40 bg-destructive-soft p-2 text-sm">
-            <strong>Sign-off failed.</strong> {signoff.message} Nothing was issued.
-          </p>
-        )}
-        {signoff.status === "done" && isApproved(signoff.result.status) && (
-          <div className="space-y-2 rounded-lg border border-success/40 bg-success-soft p-3 text-sm">
-            <p className="flex items-center gap-1.5 font-semibold text-success">
-              <CircleCheck aria-hidden className="size-4" />
-              Requests issued, nothing executed
-            </p>
-            <p className="text-xs">
-              {signoffStatusLabel(signoff.result.status)} by {DECIDED_BY}. The requests below are sent; ATC and the
-              pilot still have to act on them.
-            </p>
-            <ResultList title="Airline decisions approved" items={signoff.result.airline_decisions} />
-            <ResultList
-              title="Requests issued"
-              items={signoff.result.requests.map((r) => ({ ...r, value: `${r.value} (to ${r.to})` }))}
-            />
-            <p className="flex items-center gap-1 font-mono text-xs break-all">
-              <Hash aria-hidden className="size-3 shrink-0" />
-              Log head {signoff.result.log_head}
-            </p>
-          </div>
-        )}
-        {signoff.status === "done" && !isApproved(signoff.result.status) && (
-          <div className="space-y-2 rounded-lg border border-destructive/40 bg-destructive-soft p-3 text-sm">
-            <p className="flex items-center gap-1.5 font-semibold text-destructive">
-              <CircleX aria-hidden className="size-4" />
-              {signoffStatusLabel(signoff.result.status)}
-            </p>
-            <p className="text-xs">Nothing was issued.</p>
-            {signoff.result.changed_fields.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold">What changed since you looked</p>
-                <ul className="list-disc pl-5">
-                  {signoff.result.changed_fields.map((c, i) => (
-                    <li key={i}>{c}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {signoff.result.violations.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold">Rules now broken</p>
-                <RuleList rules={signoff.result.violations} result="broken" />
-              </div>
-            )}
-            <Button type="button" variant="outline" size="sm" onClick={onNewPlan}>
-              Make a new recovery plan
-            </Button>
-          </div>
-        )}
-      </div>
     </form>
   );
 }

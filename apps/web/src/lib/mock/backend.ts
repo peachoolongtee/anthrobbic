@@ -325,7 +325,7 @@ function build(
         { text: "Weather or traffic can change before the slot is confirmed. Sign-off checks the rules again." },
       ],
       airline_decisions: [
-        { key: "gate", label: "Assign gate", value: gate, provenance: "synthetic" },
+        { key: "gate", label: "Gate", value: gate, provenance: "synthetic" },
         {
           key: "next_leg",
           label: "Next flight",
@@ -334,8 +334,9 @@ function build(
         },
       ],
       requests: [
-        { key: "slot", label: "Arrival slot", value: `Runway ${rwy} at ${clock(arrive)}`, provenance: "derived", to: "Air traffic control" },
-        { key: "action", label: "Delay handling", value: "Hold at a fix until the slot", provenance: "derived", to: "Air traffic control and pilot in command" },
+        { key: "arrival", label: "Arrival time", value: clock(arrive), provenance: "derived", to: "Air traffic control" },
+        { key: "runway", label: "Runway", value: rwy, provenance: "synthetic", to: "Air traffic control" },
+        { key: "handling", label: "Delay handling", value: "Hold at a fix", provenance: "derived", to: "Air traffic control and pilot in command" },
       ],
       rules: passingRules(rwy === "27R" ? 1 : 0),
     };
