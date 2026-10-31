@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, Query, Request, Response
 
 from app.api.evaluation import read_evaluation
+from app.api.headline import Headline, read_headline
 from app.api.runs import (
     RejectRequest,
     RunRequest,
@@ -28,6 +29,7 @@ from app.api.wire import (
     StateChanged,
     VerifyLogResult,
 )
+from app.api.workbook_limits import WorkbookLimits, read_limits
 from app.negotiation.dot import Cause, FlightQuery
 from app.negotiation.signoff import SignOffRequest
 
@@ -135,3 +137,13 @@ def verify_log(
 @router.get("/evaluation")
 def get_evaluation(service: Service) -> Evaluation:
     return read_evaluation(service.results_dir)
+
+
+@router.get("/evaluation/limits")
+def get_evaluation_limits() -> WorkbookLimits:
+    return read_limits()
+
+
+@router.get("/evaluation/headline")
+def get_evaluation_headline(service: Service) -> Headline:
+    return read_headline(service.results_dir)

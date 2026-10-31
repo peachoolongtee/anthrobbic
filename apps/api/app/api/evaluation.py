@@ -40,10 +40,15 @@ def _row(raw: dict[str, Any], panel: str) -> EvaluationRow:
     )
 
 
-def read_evaluation(results_dir: Path = DEFAULT_RESULTS_DIR) -> Evaluation:
-    paths = sorted(results_dir.glob("latest_*.json")) or sorted(
+def result_paths(results_dir: Path) -> list[Path]:
+    """The result files to read: the latest of each run, else every dated one."""
+    return sorted(results_dir.glob("latest_*.json")) or sorted(
         results_dir.glob("eval_*.json")
     )
+
+
+def read_evaluation(results_dir: Path = DEFAULT_RESULTS_DIR) -> Evaluation:
+    paths = result_paths(results_dir)
     if not paths:
         return Evaluation(status="not_yet_run", rows=(), limits=())
     rows: list[EvaluationRow] = []
