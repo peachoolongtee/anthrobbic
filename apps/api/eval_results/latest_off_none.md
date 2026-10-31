@@ -1,106 +1,106 @@
 # Evaluation results
 
-- Commit: `666ce5e45dd8c37a6c681cff76e695bf7a1c3888`
+- Commit: `24697acf15e518d51a5e79be5aab47f6e4567f25`
 - Mode: `off`; split: `none`; seed: 0; sample size: 5000
-- Generated: 2026-10-31T04:09:22+00:00
-- Time: 386.9 s with 10 worker(s), 12.9 rows/s
+- Generated: 2026-10-31T04:21:02+00:00
+- Time: 373.0 s with 10 worker(s), 13.4 rows/s
 
 Panels hold one evidence class each. Do not compare across them.
 
 ## Deterministic core over the sample, mode off [class: rules_only]
 
-Commit `666ce5e45dd8`, mode `off`, seed 0, sample size 5000, 2026-10-31T04:09:22+00:00.
+Commit `24697acf15e5`, mode `off`, seed 0, sample size 5000, 2026-10-31T04:21:02+00:00.
 
 | Measure | Compared against | Class | Value | 95% Wilson | n | Note |
 |---|---|---|---|---|---|---|
 | Rows evaluated | reported as measured | rules_only | 5000 rows |  | 5000 | stratified 50/50 by cause |
 | Rows that errored | reported as measured | rules_only | 0/5000 (0.0%) | 0.0-0.1% | 5000 |  |
-| Deal rate, all rows | usefulness beside safety | rules_only | 4014/5000 (80.3%) | 79.2-81.4% | 5000 |  |
-| NO_DEAL NOTHING_LEGAL rate, all rows | usefulness beside safety | rules_only | 986/5000 (19.7%) | 18.6-20.8% | 5000 |  |
+| Deal rate, all rows | usefulness beside safety | rules_only | 3961/5000 (79.2%) | 78.1-80.3% | 5000 |  |
+| NO_DEAL NOTHING_LEGAL rate, all rows | usefulness beside safety | rules_only | 1039/5000 (20.8%) | 19.7-21.9% | 5000 |  |
 | NO_DEAL SYSTEM_FAULT rate, all rows | usefulness beside safety | rules_only | 0/5000 (0.0%) | 0.0-0.1% | 5000 |  |
-| Deal rate, weather | usefulness beside safety | rules_only | 1903/2500 (76.1%) | 74.4-77.8% | 2500 |  |
-| NO_DEAL NOTHING_LEGAL rate, weather | usefulness beside safety | rules_only | 597/2500 (23.9%) | 22.2-25.6% | 2500 |  |
+| Deal rate, weather | usefulness beside safety | rules_only | 1859/2500 (74.4%) | 72.6-76.0% | 2500 |  |
+| NO_DEAL NOTHING_LEGAL rate, weather | usefulness beside safety | rules_only | 641/2500 (25.6%) | 24.0-27.4% | 2500 |  |
 | NO_DEAL SYSTEM_FAULT rate, weather | usefulness beside safety | rules_only | 0/2500 (0.0%) | 0.0-0.2% | 2500 |  |
-| Deal rate, late_aircraft | usefulness beside safety | rules_only | 2111/2500 (84.4%) | 83.0-85.8% | 2500 |  |
-| NO_DEAL NOTHING_LEGAL rate, late_aircraft | usefulness beside safety | rules_only | 389/2500 (15.6%) | 14.2-17.0% | 2500 |  |
+| Deal rate, late_aircraft | usefulness beside safety | rules_only | 2102/2500 (84.1%) | 82.6-85.5% | 2500 |  |
+| NO_DEAL NOTHING_LEGAL rate, late_aircraft | usefulness beside safety | rules_only | 398/2500 (15.9%) | 14.5-17.4% | 2500 |  |
 | NO_DEAL SYSTEM_FAULT rate, late_aircraft | usefulness beside safety | rules_only | 0/2500 (0.0%) | 0.0-0.2% | 2500 |  |
-| Fallback rate (LLM off) | reported as measured | rules_only | 4014/5000 (80.3%) | 79.2-81.4% | 5000 | every deal in mode off is a fallback by construction, so this is the deal rate and says nothing about the agents |
+| Fallback rate (LLM off) | reported as measured | rules_only | 3961/5000 (79.2%) | 78.1-80.3% | 5000 | every deal in mode off is a fallback by construction, so this is the deal rate and says nothing about the agents |
 | Mode off decisions differing from fallback.decide | reported as measured | rules_only | 0 rows |  | 5000 |  |
-| Context: simulated arrival delay, inbound data set the window | not a saving: simulated window versus real outcome | rules_only | 37.08 min |  | 765 | not a saving: simulated window versus real outcome |
-| Context: real ARRIVAL_DELAY, inbound data set the window | not a saving: simulated window versus real outcome | rules_only | 51.96 min |  | 765 | not a saving: simulated window versus real outcome |
-| Context: simulated arrival delay, disruption floor set the window | not a saving: simulated window versus real outcome | rules_only | 19.28 min |  | 3249 | not a saving: simulated window versus real outcome |
-| Context: real ARRIVAL_DELAY, disruption floor set the window | not a saving: simulated window versus real outcome | rules_only | 100.85 min |  | 3249 | not a saving: simulated window versus real outcome |
+| Context: simulated arrival delay, inbound data set the window | not a saving: simulated window versus real outcome | rules_only | 38.33 min |  | 763 | not a saving: simulated window versus real outcome |
+| Context: real ARRIVAL_DELAY, inbound data set the window | not a saving: simulated window versus real outcome | rules_only | 52.05 min |  | 763 | not a saving: simulated window versus real outcome |
+| Context: simulated arrival delay, disruption floor set the window | not a saving: simulated window versus real outcome | rules_only | 19.91 min |  | 3198 | not a saving: simulated window versus real outcome |
+| Context: real ARRIVAL_DELAY, disruption floor set the window | not a saving: simulated window versus real outcome | rules_only | 100.89 min |  | 3198 | not a saving: simulated window versus real outcome |
 | Context: simulated arrival delay, window basis not available | not a saving: simulated window versus real outcome | rules_only | NOT_REACHED |  |  | no row with window basis not available |
 | Context: real ARRIVAL_DELAY, window basis not available | not a saving: simulated window versus real outcome | rules_only | NOT_REACHED |  |  | no row with window basis not available |
-| Delay past the scenario's earliest arrival, fallback | the baselines below | rules_only | 2.1 min |  | 4014 |  |
-| Fuel-reserve margin, fallback | the baselines below | rules_only | 2486.57 kg |  | 4014 |  |
-| Connection passengers at risk, fallback | the baselines below | rules_only | 7.8 pax |  | 4014 |  |
-| Ground overtime, fallback | the baselines below | rules_only | 0.87 min |  | 4014 |  |
+| Delay past the scenario's earliest arrival, fallback | the baselines below | rules_only | 2.83 min |  | 3961 |  |
+| Fuel-reserve margin, fallback | the baselines below | rules_only | 2491.13 kg |  | 3961 |  |
+| Connection passengers at risk, fallback | the baselines below | rules_only | 8.1 pax |  | 3961 |  |
+| Ground overtime, fallback | the baselines below | rules_only | 0.99 min |  | 3961 |  |
 | first_come_first_served: rows where it found no package | no coordination: first come first served, nearest gate | rules_only | 0/5000 (0.0%) | 0.0-0.1% | 5000 |  |
-| first_come_first_served: packages breaking a rule | no coordination: first come first served, nearest gate | rules_only | 4288/5000 (85.8%) | 84.8-86.7% | 5000 |  |
-| first_come_first_served: packages the harm check calls harmful | no coordination: first come first served, nearest gate | rules_only | 4036/5000 (80.7%) | 79.6-81.8% | 5000 |  |
+| first_come_first_served: packages breaking a rule | no coordination: first come first served, nearest gate | rules_only | 4369/5000 (87.4%) | 86.4-88.3% | 5000 |  |
+| first_come_first_served: packages the harm check calls harmful | no coordination: first come first served, nearest gate | rules_only | 4131/5000 (82.6%) | 81.5-83.6% | 5000 |  |
 | first_come_first_served: breaks ATC-RWY-CLOSED | no coordination: first come first served, nearest gate | rules_only | 517/5000 (10.3%) | 9.5-11.2% | 5000 |  |
 | first_come_first_served: breaks ATC-RWY-THROUGHPUT | no coordination: first come first served, nearest gate | rules_only | 180/5000 (3.6%) | 3.1-4.2% | 5000 |  |
 | first_come_first_served: breaks ATC-TWY-CLOSED | no coordination: first come first served, nearest gate | rules_only | 493/5000 (9.9%) | 9.1-10.7% | 5000 |  |
 | first_come_first_served: breaks ATC-WAKE-SEP | no coordination: first come first served, nearest gate | rules_only | 1607/5000 (32.1%) | 30.9-33.4% | 5000 |  |
-| first_come_first_served: breaks GND-GATE-OVERLAP | no coordination: first come first served, nearest gate | rules_only | 3408/5000 (68.2%) | 66.9-69.4% | 5000 |  |
+| first_come_first_served: breaks GND-GATE-OVERLAP | no coordination: first come first served, nearest gate | rules_only | 3559/5000 (71.2%) | 69.9-72.4% | 5000 |  |
 | first_come_first_served: breaks GND-GATE-SIZE | no coordination: first come first served, nearest gate | rules_only | 967/5000 (19.3%) | 18.3-20.5% | 5000 |  |
 | first_come_first_served: breaks GND-TURNAROUND | no coordination: first come first served, nearest gate | rules_only | 581/5000 (11.6%) | 10.8-12.5% | 5000 |  |
 | first_come_first_served: breaks PLT-FUEL-POLICY | no coordination: first come first served, nearest gate | rules_only | 117/5000 (2.3%) | 2.0-2.8% | 5000 |  |
-| Fallback picks the same package as first_come_first_served | no coordination: first come first served, nearest gate | rules_only | 283/4014 (7.1%) | 6.3-7.9% | 4014 | how much the cost ranking adds over this baseline |
+| Fallback picks the same package as first_come_first_served | no coordination: first come first served, nearest gate | rules_only | 366/3961 (9.2%) | 8.4-10.2% | 3961 | how much the cost ranking adds over this baseline |
 | Delay past the scenario's earliest arrival, first_come_first_served, all its packages | no coordination: first come first served, nearest gate | rules_only | 0 min |  | 5000 | an illegal low delay is not a win |
-| Delay past the scenario's earliest arrival, first_come_first_served, only its legal packages | no coordination: first come first served, nearest gate | rules_only | 0 min |  | 712 |  |
-| Delay past the scenario's earliest arrival, fallback minus first_come_first_served, paired on the same window | no coordination: first come first served, nearest gate | rules_only | 0 min |  | 712 | rows where both have a package and the baseline's is legal |
+| Delay past the scenario's earliest arrival, first_come_first_served, only its legal packages | no coordination: first come first served, nearest gate | rules_only | 0 min |  | 631 |  |
+| Delay past the scenario's earliest arrival, fallback minus first_come_first_served, paired on the same window | no coordination: first come first served, nearest gate | rules_only | 0 min |  | 631 | rows where both have a package and the baseline's is legal |
 | Fuel-reserve margin, first_come_first_served, all its packages | no coordination: first come first served, nearest gate | rules_only | 2424.76 kg |  | 5000 | an illegal low delay is not a win |
-| Fuel-reserve margin, first_come_first_served, only its legal packages | no coordination: first come first served, nearest gate | rules_only | 2524.14 kg |  | 712 |  |
-| Fuel-reserve margin, fallback minus first_come_first_served, paired on the same window | no coordination: first come first served, nearest gate | rules_only | 0 kg |  | 712 | rows where both have a package and the baseline's is legal |
+| Fuel-reserve margin, first_come_first_served, only its legal packages | no coordination: first come first served, nearest gate | rules_only | 2521.06 kg |  | 631 |  |
+| Fuel-reserve margin, fallback minus first_come_first_served, paired on the same window | no coordination: first come first served, nearest gate | rules_only | 0 kg |  | 631 | rows where both have a package and the baseline's is legal |
 | Connection passengers at risk, first_come_first_served, all its packages | no coordination: first come first served, nearest gate | rules_only | 6.95 pax |  | 5000 | an illegal low delay is not a win |
-| Connection passengers at risk, first_come_first_served, only its legal packages | no coordination: first come first served, nearest gate | rules_only | 6.11 pax |  | 712 |  |
-| Connection passengers at risk, fallback minus first_come_first_served, paired on the same window | no coordination: first come first served, nearest gate | rules_only | 0 pax |  | 712 | rows where both have a package and the baseline's is legal |
+| Connection passengers at risk, first_come_first_served, only its legal packages | no coordination: first come first served, nearest gate | rules_only | 6.15 pax |  | 631 |  |
+| Connection passengers at risk, fallback minus first_come_first_served, paired on the same window | no coordination: first come first served, nearest gate | rules_only | 0 pax |  | 631 | rows where both have a package and the baseline's is legal |
 | Ground overtime, first_come_first_served, all its packages | no coordination: first come first served, nearest gate | rules_only | 0.65 min |  | 5000 | an illegal low delay is not a win |
-| Ground overtime, first_come_first_served, only its legal packages | no coordination: first come first served, nearest gate | rules_only | 0.79 min |  | 712 |  |
-| Ground overtime, fallback minus first_come_first_served, paired on the same window | no coordination: first come first served, nearest gate | rules_only | 0 min |  | 712 | rows where both have a package and the baseline's is legal |
-| human_heuristic: rows where it found no package | sensible human heuristic | rules_only | 986/5000 (19.7%) | 18.6-20.8% | 5000 |  |
-| human_heuristic: packages breaking a rule | sensible human heuristic | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 | zero by construction: this baseline consults the rules |
-| human_heuristic: packages the harm check calls harmful | sensible human heuristic | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Fallback picks the same package as human_heuristic | sensible human heuristic | rules_only | 3943/4014 (98.2%) | 97.8-98.6% | 4014 | how much the cost ranking adds over this baseline |
-| Delay past the scenario's earliest arrival, human_heuristic, all its packages | sensible human heuristic | rules_only | 2.1 min |  | 4014 | an illegal low delay is not a win |
-| Delay past the scenario's earliest arrival, human_heuristic, only its legal packages | sensible human heuristic | rules_only | 2.1 min |  | 4014 |  |
-| Delay past the scenario's earliest arrival, fallback minus human_heuristic, paired on the same window | sensible human heuristic | rules_only | 0 min |  | 4014 | rows where both have a package and the baseline's is legal |
-| Fuel-reserve margin, human_heuristic, all its packages | sensible human heuristic | rules_only | 2486.57 kg |  | 4014 | an illegal low delay is not a win |
-| Fuel-reserve margin, human_heuristic, only its legal packages | sensible human heuristic | rules_only | 2486.57 kg |  | 4014 |  |
-| Fuel-reserve margin, fallback minus human_heuristic, paired on the same window | sensible human heuristic | rules_only | 0 kg |  | 4014 | rows where both have a package and the baseline's is legal |
-| Connection passengers at risk, human_heuristic, all its packages | sensible human heuristic | rules_only | 7.8 pax |  | 4014 | an illegal low delay is not a win |
-| Connection passengers at risk, human_heuristic, only its legal packages | sensible human heuristic | rules_only | 7.8 pax |  | 4014 |  |
-| Connection passengers at risk, fallback minus human_heuristic, paired on the same window | sensible human heuristic | rules_only | 0 pax |  | 4014 | rows where both have a package and the baseline's is legal |
-| Ground overtime, human_heuristic, all its packages | sensible human heuristic | rules_only | 0.87 min |  | 4014 | an illegal low delay is not a win |
-| Ground overtime, human_heuristic, only its legal packages | sensible human heuristic | rules_only | 0.87 min |  | 4014 |  |
-| Ground overtime, fallback minus human_heuristic, paired on the same window | sensible human heuristic | rules_only | 0 min |  | 4014 | rows where both have a package and the baseline's is legal |
-| Chosen package has zero soft cost | reported as measured | rules_only | 1683/4014 (41.9%) | 40.4-43.5% | 4014 | under any positive weights this pick cannot be beaten |
-| Pick is no worse than every legal package on every cost component | reported as measured | rules_only | 4014/4014 (100.0%) | 99.9-100.0% | 4014 | on these rows there is no trade-off, so weights cannot move the pick and a stable pick is not evidence of robustness |
-| Legal packages per deal row | reported as measured | rules_only | 46.17 packages |  | 4014 |  |
-| Final packages breaking a rule | must be zero: the gate | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Final packages the independent harm check calls harmful | harm.py, own logic | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| harm.py versus rules: harm_only | rules/ on the same final package | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| harm.py versus rules: rules_only | rules/ on the same final package | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| harm.py versus rules: harm_unknown | rules/ on the same final package | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| harm.py versus rules: rules_fail_closed_only | rules/ on the same final package | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Binding: ATC-WAKE-SEP eliminates packages in these rows | reported as measured | rules_only | 4434/5000 (88.7%) | 87.8-89.5% | 5000 | partly describes the synthetic generator; 1130942 of 3136573 packages, 92068 by this rule alone |
-| Binding: ATC-RWY-CLOSED eliminates packages in these rows | reported as measured | rules_only | 1191/5000 (23.8%) | 22.7-25.0% | 5000 | partly describes the synthetic generator; 484495 of 3136573 packages, 31497 by this rule alone |
-| Binding: ATC-TWY-CLOSED eliminates packages in these rows | reported as measured | rules_only | 1508/5000 (30.2%) | 28.9-31.4% | 5000 | partly describes the synthetic generator; 360495 of 3136573 packages, 18426 by this rule alone |
-| Binding: ATC-RWY-THROUGHPUT eliminates packages in these rows | reported as measured | rules_only | 421/5000 (8.4%) | 7.7-9.2% | 5000 | partly describes the synthetic generator; 174482 of 3136573 packages, 2359 by this rule alone |
+| Ground overtime, first_come_first_served, only its legal packages | no coordination: first come first served, nearest gate | rules_only | 0.8 min |  | 631 |  |
+| Ground overtime, fallback minus first_come_first_served, paired on the same window | no coordination: first come first served, nearest gate | rules_only | 0 min |  | 631 | rows where both have a package and the baseline's is legal |
+| human_heuristic: rows where it found no package | sensible human heuristic | rules_only | 1039/5000 (20.8%) | 19.7-21.9% | 5000 |  |
+| human_heuristic: packages breaking a rule | sensible human heuristic | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 | zero by construction: this baseline consults the rules |
+| human_heuristic: packages the harm check calls harmful | sensible human heuristic | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Fallback picks the same package as human_heuristic | sensible human heuristic | rules_only | 3626/3961 (91.5%) | 90.6-92.4% | 3961 | how much the cost ranking adds over this baseline |
+| Delay past the scenario's earliest arrival, human_heuristic, all its packages | sensible human heuristic | rules_only | 2.83 min |  | 3961 | an illegal low delay is not a win |
+| Delay past the scenario's earliest arrival, human_heuristic, only its legal packages | sensible human heuristic | rules_only | 2.83 min |  | 3961 |  |
+| Delay past the scenario's earliest arrival, fallback minus human_heuristic, paired on the same window | sensible human heuristic | rules_only | 0 min |  | 3961 | rows where both have a package and the baseline's is legal |
+| Fuel-reserve margin, human_heuristic, all its packages | sensible human heuristic | rules_only | 2491.13 kg |  | 3961 | an illegal low delay is not a win |
+| Fuel-reserve margin, human_heuristic, only its legal packages | sensible human heuristic | rules_only | 2491.13 kg |  | 3961 |  |
+| Fuel-reserve margin, fallback minus human_heuristic, paired on the same window | sensible human heuristic | rules_only | 0 kg |  | 3961 | rows where both have a package and the baseline's is legal |
+| Connection passengers at risk, human_heuristic, all its packages | sensible human heuristic | rules_only | 8.1 pax |  | 3961 | an illegal low delay is not a win |
+| Connection passengers at risk, human_heuristic, only its legal packages | sensible human heuristic | rules_only | 8.1 pax |  | 3961 |  |
+| Connection passengers at risk, fallback minus human_heuristic, paired on the same window | sensible human heuristic | rules_only | 0 pax |  | 3961 | rows where both have a package and the baseline's is legal |
+| Ground overtime, human_heuristic, all its packages | sensible human heuristic | rules_only | 0.99 min |  | 3961 | an illegal low delay is not a win |
+| Ground overtime, human_heuristic, only its legal packages | sensible human heuristic | rules_only | 0.99 min |  | 3961 |  |
+| Ground overtime, fallback minus human_heuristic, paired on the same window | sensible human heuristic | rules_only | 0 min |  | 3961 | rows where both have a package and the baseline's is legal |
+| Chosen package has zero soft cost | reported as measured | rules_only | 1219/3961 (30.8%) | 29.4-32.2% | 3961 | under any positive weights this pick cannot be beaten |
+| Pick is no worse than every legal package on every cost component | reported as measured | rules_only | 3507/3961 (88.5%) | 87.5-89.5% | 3961 | on these rows there is no trade-off, so weights cannot move the pick and a stable pick is not evidence of robustness |
+| Legal packages per deal row | reported as measured | rules_only | 42.36 packages |  | 3961 |  |
+| Final packages breaking a rule | must be zero: the gate | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Final packages the independent harm check calls harmful | harm.py, own logic | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| harm.py versus rules: harm_only | rules/ on the same final package | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| harm.py versus rules: rules_only | rules/ on the same final package | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| harm.py versus rules: harm_unknown | rules/ on the same final package | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| harm.py versus rules: rules_fail_closed_only | rules/ on the same final package | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Binding: ATC-WAKE-SEP eliminates packages in these rows | reported as measured | rules_only | 4434/5000 (88.7%) | 87.8-89.5% | 5000 | partly describes the synthetic generator; 1130942 of 3136573 packages, 83278 by this rule alone |
+| Binding: ATC-RWY-CLOSED eliminates packages in these rows | reported as measured | rules_only | 1191/5000 (23.8%) | 22.7-25.0% | 5000 | partly describes the synthetic generator; 484495 of 3136573 packages, 28414 by this rule alone |
+| Binding: ATC-TWY-CLOSED eliminates packages in these rows | reported as measured | rules_only | 1508/5000 (30.2%) | 28.9-31.4% | 5000 | partly describes the synthetic generator; 360495 of 3136573 packages, 16662 by this rule alone |
+| Binding: ATC-RWY-THROUGHPUT eliminates packages in these rows | reported as measured | rules_only | 421/5000 (8.4%) | 7.7-9.2% | 5000 | partly describes the synthetic generator; 174482 of 3136573 packages, 2057 by this rule alone |
 | Binding: ATC-SLOT-WINDOW eliminates packages in these rows | reported as measured | rules_only | 0/5000 (0.0%) | 0.0-0.1% | 5000 | partly describes the synthetic generator; 0 of 3136573 packages, 0 by this rule alone |
-| Binding: PLT-FUEL-POLICY eliminates packages in these rows | reported as measured | rules_only | 2007/5000 (40.1%) | 38.8-41.5% | 5000 | partly describes the synthetic generator; 908234 of 3136573 packages, 63129 by this rule alone |
-| Binding: GND-GATE-OVERLAP eliminates packages in these rows | reported as measured | rules_only | 4999/5000 (100.0%) | 99.9-100.0% | 5000 | partly describes the synthetic generator; 2392521 of 3136573 packages, 510002 by this rule alone |
+| Binding: PLT-FUEL-POLICY eliminates packages in these rows | reported as measured | rules_only | 2007/5000 (40.1%) | 38.8-41.5% | 5000 | partly describes the synthetic generator; 908234 of 3136573 packages, 56884 by this rule alone |
+| Binding: GND-GATE-OVERLAP eliminates packages in these rows | reported as measured | rules_only | 5000/5000 (100.0%) | 99.9-100.0% | 5000 | partly describes the synthetic generator; 2455439 of 3136573 packages, 527539 by this rule alone |
 | Binding: GND-GATE-SIZE eliminates packages in these rows | reported as measured | rules_only | 3582/5000 (71.6%) | 70.4-72.9% | 5000 | partly describes the synthetic generator; 643729 of 3136573 packages, 36699 by this rule alone |
-| Binding: GND-TURNAROUND eliminates packages in these rows | reported as measured | rules_only | 942/5000 (18.8%) | 17.8-19.9% | 5000 | partly describes the synthetic generator; 510059 of 3136573 packages, 40590 by this rule alone |
+| Binding: GND-TURNAROUND eliminates packages in these rows | reported as measured | rules_only | 942/5000 (18.8%) | 17.8-19.9% | 5000 | partly describes the synthetic generator; 510059 of 3136573 packages, 35705 by this rule alone |
 | Binding at airborne: ATC-WAKE-SEP eliminates packages in these rows | reported as measured | rules_only | 2201/2500 (88.0%) | 86.7-89.3% | 2500 | partly describes the synthetic generator |
 | Binding at airborne: ATC-RWY-CLOSED eliminates packages in these rows | reported as measured | rules_only | 1018/2500 (40.7%) | 38.8-42.7% | 2500 | partly describes the synthetic generator |
 | Binding at airborne: ATC-TWY-CLOSED eliminates packages in these rows | reported as measured | rules_only | 1103/2500 (44.1%) | 42.2-46.1% | 2500 | partly describes the synthetic generator |
 | Binding at airborne: ATC-RWY-THROUGHPUT eliminates packages in these rows | reported as measured | rules_only | 321/2500 (12.8%) | 11.6-14.2% | 2500 | partly describes the synthetic generator |
 | Binding at airborne: ATC-SLOT-WINDOW eliminates packages in these rows | reported as measured | rules_only | 0/2500 (0.0%) | 0.0-0.2% | 2500 | partly describes the synthetic generator |
 | Binding at airborne: PLT-FUEL-POLICY eliminates packages in these rows | reported as measured | rules_only | 2007/2500 (80.3%) | 78.7-81.8% | 2500 | partly describes the synthetic generator |
-| Binding at airborne: GND-GATE-OVERLAP eliminates packages in these rows | reported as measured | rules_only | 2499/2500 (100.0%) | 99.8-100.0% | 2500 | partly describes the synthetic generator |
+| Binding at airborne: GND-GATE-OVERLAP eliminates packages in these rows | reported as measured | rules_only | 2500/2500 (100.0%) | 99.8-100.0% | 2500 | partly describes the synthetic generator |
 | Binding at airborne: GND-GATE-SIZE eliminates packages in these rows | reported as measured | rules_only | 1848/2500 (73.9%) | 72.2-75.6% | 2500 | partly describes the synthetic generator |
 | Binding at airborne: GND-TURNAROUND eliminates packages in these rows | reported as measured | rules_only | 467/2500 (18.7%) | 17.2-20.3% | 2500 | partly describes the synthetic generator |
 | Binding at pre_departure: ATC-WAKE-SEP eliminates packages in these rows | reported as measured | rules_only | 2233/2500 (89.3%) | 88.0-90.5% | 2500 | partly describes the synthetic generator |
@@ -112,71 +112,74 @@ Commit `666ce5e45dd8`, mode `off`, seed 0, sample size 5000, 2026-10-31T04:09:22
 | Binding at pre_departure: GND-GATE-OVERLAP eliminates packages in these rows | reported as measured | rules_only | 2500/2500 (100.0%) | 99.8-100.0% | 2500 | partly describes the synthetic generator |
 | Binding at pre_departure: GND-GATE-SIZE eliminates packages in these rows | reported as measured | rules_only | 1734/2500 (69.4%) | 67.5-71.1% | 2500 | partly describes the synthetic generator |
 | Binding at pre_departure: GND-TURNAROUND eliminates packages in these rows | reported as measured | rules_only | 475/2500 (19.0%) | 17.5-20.6% | 2500 | partly describes the synthetic generator |
-| Chosen package changes under at least one alternate weight | each weight scaled by 2 and by 10, both ways | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with arrival_delay_per_min /10 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with arrival_delay_per_min /2 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with arrival_delay_per_min x10 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with arrival_delay_per_min x2 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with fuel_per_kg /10 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with fuel_per_kg /2 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with fuel_per_kg x10 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with fuel_per_kg x2 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with overtime_per_min /10 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with overtime_per_min /2 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with overtime_per_min x10 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with overtime_per_min x2 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with per_gate_move /10 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with per_gate_move /2 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with per_gate_move x10 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with per_gate_move x2 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with per_passenger_at_risk /10 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with per_passenger_at_risk /2 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with per_passenger_at_risk x10 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with per_passenger_at_risk x2 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with turnaround_delay_per_min /10 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with turnaround_delay_per_min /2 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with turnaround_delay_per_min x10 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes with turnaround_delay_per_min x2 | default weights | rules_only | 0/4014 (0.0%) | 0.0-0.1% | 4014 |  |
-| Chosen package changes across synthetic seeds | several synthetic seeds per row | rules_only | 4867/5000 (97.3%) | 96.9-97.8% | 5000 | 3 seeds per row; the operational fields are synthetic |
-| Outcome flips between deal and NO_DEAL across synthetic seeds | several synthetic seeds per row | rules_only | 1984/5000 (39.7%) | 38.3-41.0% | 5000 |  |
-| Input sensitivity, close_chosen_runway | deal must change, or be shown unaffected with a reason | rules_only | 4014/4014 (100.0%) | 99.9-100.0% | 4014 | 986 NOT_REACHED, no deal to perturb |
-| Input sensitivity, close_other_runway | deal must change, or be shown unaffected with a reason | rules_only | 2716/2716 (100.0%) | 99.9-100.0% | 2716 | 2284 NOT_REACHED, no deal to perturb |
-| Input sensitivity, close_all_runways | deal must change, or be shown unaffected with a reason | rules_only | 4014/4014 (100.0%) | 99.9-100.0% | 4014 | 986 NOT_REACHED, no deal to perturb |
-| Input sensitivity, unrelated_far_arrival | deal must change, or be shown unaffected with a reason | rules_only | 4014/4014 (100.0%) | 99.9-100.0% | 4014 | 986 NOT_REACHED, no deal to perturb |
-| Input sensitivity, unrelated_far_gate_use | deal must change, or be shown unaffected with a reason | rules_only | 4014/4014 (100.0%) | 99.9-100.0% | 4014 | 986 NOT_REACHED, no deal to perturb |
-| Input sensitivity, reorder_input_lists | deal must change, or be shown unaffected with a reason | rules_only | 4014/4014 (100.0%) | 99.9-100.0% | 4014 | 986 NOT_REACHED, no deal to perturb |
+| Chosen package changes under at least one alternate weight | each weight scaled by 2 and by 10, both ways | rules_only | 68/3961 (1.7%) | 1.4-2.2% | 3961 |  |
+| Chosen package changes with arrival_delay_per_min /10 | default weights | rules_only | 63/3961 (1.6%) | 1.2-2.0% | 3961 |  |
+| Chosen package changes with arrival_delay_per_min /2 | default weights | rules_only | 2/3961 (0.1%) | 0.0-0.2% | 3961 |  |
+| Chosen package changes with arrival_delay_per_min x10 | default weights | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Chosen package changes with arrival_delay_per_min x2 | default weights | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Chosen package changes with fuel_per_kg /10 | default weights | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Chosen package changes with fuel_per_kg /2 | default weights | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Chosen package changes with fuel_per_kg x10 | default weights | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Chosen package changes with fuel_per_kg x2 | default weights | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Chosen package changes with overtime_per_min /10 | default weights | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Chosen package changes with overtime_per_min /2 | default weights | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Chosen package changes with overtime_per_min x10 | default weights | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Chosen package changes with overtime_per_min x2 | default weights | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Chosen package changes with per_gate_move /10 | default weights | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Chosen package changes with per_gate_move /2 | default weights | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Chosen package changes with per_gate_move x10 | default weights | rules_only | 68/3961 (1.7%) | 1.4-2.2% | 3961 |  |
+| Chosen package changes with per_gate_move x2 | default weights | rules_only | 2/3961 (0.1%) | 0.0-0.2% | 3961 |  |
+| Chosen package changes with per_passenger_at_risk /10 | default weights | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Chosen package changes with per_passenger_at_risk /2 | default weights | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Chosen package changes with per_passenger_at_risk x10 | default weights | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Chosen package changes with per_passenger_at_risk x2 | default weights | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Chosen package changes with turnaround_delay_per_min /10 | default weights | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Chosen package changes with turnaround_delay_per_min /2 | default weights | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Chosen package changes with turnaround_delay_per_min x10 | default weights | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Chosen package changes with turnaround_delay_per_min x2 | default weights | rules_only | 0/3961 (0.0%) | 0.0-0.1% | 3961 |  |
+| Chosen package changes across synthetic seeds | several synthetic seeds per row | rules_only | 4852/5000 (97.0%) | 96.5-97.5% | 5000 | 3 seeds per row; the operational fields are synthetic |
+| Outcome flips between deal and NO_DEAL across synthetic seeds | several synthetic seeds per row | rules_only | 2058/5000 (41.2%) | 39.8-42.5% | 5000 |  |
+| Input sensitivity, close_chosen_runway | deal must change, or be shown unaffected with a reason | rules_only | 3961/3961 (100.0%) | 99.9-100.0% | 3961 | 1039 NOT_REACHED, no deal to perturb |
+| Input sensitivity, close_other_runway | deal must change, or be shown unaffected with a reason | rules_only | 2686/2686 (100.0%) | 99.9-100.0% | 2686 | 2314 NOT_REACHED, no deal to perturb |
+| Input sensitivity, close_all_runways | deal must change, or be shown unaffected with a reason | rules_only | 3961/3961 (100.0%) | 99.9-100.0% | 3961 | 1039 NOT_REACHED, no deal to perturb |
+| Input sensitivity, unrelated_far_arrival | deal must change, or be shown unaffected with a reason | rules_only | 3961/3961 (100.0%) | 99.9-100.0% | 3961 | 1039 NOT_REACHED, no deal to perturb |
+| Input sensitivity, unrelated_far_gate_use | deal must change, or be shown unaffected with a reason | rules_only | 3961/3961 (100.0%) | 99.9-100.0% | 3961 | 1039 NOT_REACHED, no deal to perturb |
+| Input sensitivity, reorder_input_lists | deal must change, or be shown unaffected with a reason | rules_only | 3961/3961 (100.0%) | 99.9-100.0% | 3961 | 1039 NOT_REACHED, no deal to perturb |
 
 ## NO_DEAL rate as synthetic generator parameters move, same rows [class: rules_only]
 
-Commit `666ce5e45dd8`, mode `off`, seed 0, sample size 500, 2026-10-31T04:09:22+00:00.
+Commit `24697acf15e5`, mode `off`, seed 0, sample size 500, 2026-10-31T04:21:02+00:00.
 
 | Measure | Compared against | Class | Value | 95% Wilson | n | Note |
 |---|---|---|---|---|---|---|
-| NO_DEAL rate, all rows, default parameters | default parameters | rules_only | 117/500 (23.4%) | 19.9-27.3% | 500 | +0.0 points against default; most binding: GND-TURNAROUND in 77 |
-| NO_DEAL rate, all rows, p_next_leg_hard=0.0 | default parameters | rules_only | 46/500 (9.2%) | 7.0-12.1% | 500 | -14.2 points against default; most binding: PLT-FUEL-POLICY in 25 |
-| NO_DEAL rate, all rows, p_next_leg_hard=0.7 | default parameters | rules_only | 169/500 (33.8%) | 29.8-38.1% | 500 | +10.4 points against default; most binding: GND-TURNAROUND in 129 |
-| NO_DEAL rate, all rows, gate_util_base=0.15 | default parameters | rules_only | 105/500 (21.0%) | 17.7-24.8% | 500 | -2.4 points against default; most binding: GND-TURNAROUND in 77 |
-| NO_DEAL rate, all rows, gate_util_base=0.55 | default parameters | rules_only | 148/500 (29.6%) | 25.8-33.7% | 500 | +6.2 points against default; most binding: GND-TURNAROUND in 76 |
-| NO_DEAL rate, all rows, surplus_pre_departure_min=(0, 10) | default parameters | rules_only | 117/500 (23.4%) | 19.9-27.3% | 500 | +0.0 points against default; most binding: GND-TURNAROUND in 77 |
-| NO_DEAL rate, all rows, surplus_pre_departure_min=(-10, 5) | default parameters | rules_only | 133/500 (26.6%) | 22.9-30.6% | 500 | +3.2 points against default; most binding: GND-TURNAROUND in 77 |
-| NO_DEAL rate, weather, default parameters | default parameters | rules_only | 71/250 (28.4%) | 23.2-34.3% | 250 | +0.0 points against default; most binding: GND-TURNAROUND in 35 |
-| NO_DEAL rate, weather, p_next_leg_hard=0.0 | default parameters | rules_only | 42/250 (16.8%) | 12.7-21.9% | 250 | -11.6 points against default; most binding: PLT-FUEL-POLICY in 25 |
-| NO_DEAL rate, weather, p_next_leg_hard=0.7 | default parameters | rules_only | 91/250 (36.4%) | 30.7-42.5% | 250 | +8.0 points against default; most binding: GND-TURNAROUND in 55 |
-| NO_DEAL rate, weather, gate_util_base=0.15 | default parameters | rules_only | 62/250 (24.8%) | 19.9-30.5% | 250 | -3.6 points against default; most binding: GND-TURNAROUND in 35 |
-| NO_DEAL rate, weather, gate_util_base=0.55 | default parameters | rules_only | 86/250 (34.4%) | 28.8-40.5% | 250 | +6.0 points against default; most binding: GND-GATE-OVERLAP in 35 |
-| NO_DEAL rate, weather, surplus_pre_departure_min=(0, 10) | default parameters | rules_only | 71/250 (28.4%) | 23.2-34.3% | 250 | +0.0 points against default; most binding: GND-TURNAROUND in 35 |
-| NO_DEAL rate, weather, surplus_pre_departure_min=(-10, 5) | default parameters | rules_only | 71/250 (28.4%) | 23.2-34.3% | 250 | +0.0 points against default; most binding: GND-TURNAROUND in 35 |
-| NO_DEAL rate, late_aircraft, default parameters | default parameters | rules_only | 46/250 (18.4%) | 14.1-23.7% | 250 | +0.0 points against default; most binding: GND-TURNAROUND in 42 |
-| NO_DEAL rate, late_aircraft, p_next_leg_hard=0.0 | default parameters | rules_only | 4/250 (1.6%) | 0.6-4.0% | 250 | -16.8 points against default; most binding: GND-GATE-OVERLAP in 4 |
-| NO_DEAL rate, late_aircraft, p_next_leg_hard=0.7 | default parameters | rules_only | 78/250 (31.2%) | 25.8-37.2% | 250 | +12.8 points against default; most binding: GND-TURNAROUND in 74 |
-| NO_DEAL rate, late_aircraft, gate_util_base=0.15 | default parameters | rules_only | 43/250 (17.2%) | 13.0-22.4% | 250 | -1.2 points against default; most binding: GND-TURNAROUND in 42 |
-| NO_DEAL rate, late_aircraft, gate_util_base=0.55 | default parameters | rules_only | 62/250 (24.8%) | 19.9-30.5% | 250 | +6.4 points against default; most binding: GND-TURNAROUND in 42 |
-| NO_DEAL rate, late_aircraft, surplus_pre_departure_min=(0, 10) | default parameters | rules_only | 46/250 (18.4%) | 14.1-23.7% | 250 | +0.0 points against default; most binding: GND-TURNAROUND in 42 |
-| NO_DEAL rate, late_aircraft, surplus_pre_departure_min=(-10, 5) | default parameters | rules_only | 62/250 (24.8%) | 19.9-30.5% | 250 | +6.4 points against default; most binding: GND-TURNAROUND in 42 |
+| NO_DEAL rate, all rows, default parameters | default parameters | rules_only | 123/500 (24.6%) | 21.0-28.6% | 500 | +0.0 points against default; most binding: GND-TURNAROUND in 77 |
+| NO_DEAL rate, all rows, p_next_leg_hard=0.0 | default parameters | rules_only | 54/500 (10.8%) | 8.4-13.8% | 500 | -13.8 points against default; most binding: PLT-FUEL-POLICY in 27 |
+| NO_DEAL rate, all rows, p_next_leg_hard=0.7 | default parameters | rules_only | 175/500 (35.0%) | 30.9-39.3% | 500 | +10.4 points against default; most binding: GND-TURNAROUND in 129 |
+| NO_DEAL rate, all rows, gate_util_base=0.15 | default parameters | rules_only | 109/500 (21.8%) | 18.4-25.6% | 500 | -2.8 points against default; most binding: GND-TURNAROUND in 77 |
+| NO_DEAL rate, all rows, gate_util_base=0.55 | default parameters | rules_only | 164/500 (32.8%) | 28.8-37.0% | 500 | +8.2 points against default; most binding: GND-GATE-OVERLAP in 81 |
+| NO_DEAL rate, all rows, surplus_pre_departure_min=(0, 10) | default parameters | rules_only | 123/500 (24.6%) | 21.0-28.6% | 500 | +0.0 points against default; most binding: GND-TURNAROUND in 77 |
+| NO_DEAL rate, all rows, surplus_pre_departure_min=(-10, 5) | default parameters | rules_only | 139/500 (27.8%) | 24.1-31.9% | 500 | +3.2 points against default; most binding: GND-TURNAROUND in 77 |
+| NO_DEAL rate, all rows, p_planned_gate_conflict=0.0 | default parameters | rules_only | 117/500 (23.4%) | 19.9-27.3% | 500 | -1.2 points against default; most binding: GND-TURNAROUND in 77 |
+| NO_DEAL rate, weather, default parameters | default parameters | rules_only | 76/250 (30.4%) | 25.0-36.4% | 250 | +0.0 points against default; most binding: GND-TURNAROUND in 35 |
+| NO_DEAL rate, weather, p_next_leg_hard=0.0 | default parameters | rules_only | 48/250 (19.2%) | 14.8-24.5% | 250 | -11.2 points against default; most binding: PLT-FUEL-POLICY in 27 |
+| NO_DEAL rate, weather, p_next_leg_hard=0.7 | default parameters | rules_only | 96/250 (38.4%) | 32.6-44.6% | 250 | +8.0 points against default; most binding: GND-TURNAROUND in 55 |
+| NO_DEAL rate, weather, gate_util_base=0.15 | default parameters | rules_only | 66/250 (26.4%) | 21.3-32.2% | 250 | -4.0 points against default; most binding: GND-TURNAROUND in 35 |
+| NO_DEAL rate, weather, gate_util_base=0.55 | default parameters | rules_only | 100/250 (40.0%) | 34.1-46.2% | 250 | +9.6 points against default; most binding: GND-GATE-OVERLAP in 53 |
+| NO_DEAL rate, weather, surplus_pre_departure_min=(0, 10) | default parameters | rules_only | 76/250 (30.4%) | 25.0-36.4% | 250 | +0.0 points against default; most binding: GND-TURNAROUND in 35 |
+| NO_DEAL rate, weather, surplus_pre_departure_min=(-10, 5) | default parameters | rules_only | 76/250 (30.4%) | 25.0-36.4% | 250 | +0.0 points against default; most binding: GND-TURNAROUND in 35 |
+| NO_DEAL rate, weather, p_planned_gate_conflict=0.0 | default parameters | rules_only | 71/250 (28.4%) | 23.2-34.3% | 250 | -2.0 points against default; most binding: GND-TURNAROUND in 35 |
+| NO_DEAL rate, late_aircraft, default parameters | default parameters | rules_only | 47/250 (18.8%) | 14.4-24.1% | 250 | +0.0 points against default; most binding: GND-TURNAROUND in 42 |
+| NO_DEAL rate, late_aircraft, p_next_leg_hard=0.0 | default parameters | rules_only | 6/250 (2.4%) | 1.1-5.1% | 250 | -16.4 points against default; most binding: GND-GATE-OVERLAP in 6 |
+| NO_DEAL rate, late_aircraft, p_next_leg_hard=0.7 | default parameters | rules_only | 79/250 (31.6%) | 26.2-37.6% | 250 | +12.8 points against default; most binding: GND-TURNAROUND in 74 |
+| NO_DEAL rate, late_aircraft, gate_util_base=0.15 | default parameters | rules_only | 43/250 (17.2%) | 13.0-22.4% | 250 | -1.6 points against default; most binding: GND-TURNAROUND in 42 |
+| NO_DEAL rate, late_aircraft, gate_util_base=0.55 | default parameters | rules_only | 64/250 (25.6%) | 20.6-31.4% | 250 | +6.8 points against default; most binding: GND-TURNAROUND in 42 |
+| NO_DEAL rate, late_aircraft, surplus_pre_departure_min=(0, 10) | default parameters | rules_only | 47/250 (18.8%) | 14.4-24.1% | 250 | +0.0 points against default; most binding: GND-TURNAROUND in 42 |
+| NO_DEAL rate, late_aircraft, surplus_pre_departure_min=(-10, 5) | default parameters | rules_only | 63/250 (25.2%) | 20.2-30.9% | 250 | +6.4 points against default; most binding: GND-TURNAROUND in 42 |
+| NO_DEAL rate, late_aircraft, p_planned_gate_conflict=0.0 | default parameters | rules_only | 46/250 (18.4%) | 14.1-23.7% | 250 | -0.4 points against default; most binding: GND-TURNAROUND in 42 |
 
 ## Controls on hand-built scenarios [class: test]
 
-Commit `666ce5e45dd8`, mode `off`, seed 0, sample size 18, 2026-10-31T04:09:22+00:00.
+Commit `24697acf15e5`, mode `off`, seed 0, sample size 18, 2026-10-31T04:21:02+00:00.
 
 | Measure | Compared against | Class | Value | 95% Wilson | n | Note |
 |---|---|---|---|---|---|---|
@@ -203,7 +206,7 @@ Commit `666ce5e45dd8`, mode `off`, seed 0, sample size 18, 2026-10-31T04:09:22+0
 
 ## Needs a model, and none ran [class: rules_only]
 
-Commit `666ce5e45dd8`, mode `off`, seed 0, sample size 5000, 2026-10-31T04:09:22+00:00.
+Commit `24697acf15e5`, mode `off`, seed 0, sample size 5000, 2026-10-31T04:21:02+00:00.
 
 | Measure | Compared against | Class | Value | 95% Wilson | n | Note |
 |---|---|---|---|---|---|---|
@@ -222,6 +225,7 @@ first frozen (negotiation + unguarded): 140
 second frozen: 120
 re-record TURN2-CONFLICT (outside this harness): 6
 total: 326
+The TURN2-CONFLICT re-record is 6 calls outside the ledger, so count them by hand.
 ```
 
 ## Limits
@@ -238,6 +242,7 @@ total: 326
 - Real ARRIVAL_DELAY is context only and shows no saving: a scenario's earliest arrival is schedule plus a floor, or inbound lateness where available, so the input can understate the delay. Delay claims rest on the paired baselines, run on the same scenario window.
 - harm.py and rules/ share a plan and rule_values, so a shared misreading passes both.
 - Numbers of different evidence classes are never comparable.
+- The scenario generator adds a synthetic reassigned stay on the planned gate on 50% of flights. We added it after a rules-only run showed no package ever traded one cost against another, and before any model output existed. It creates the trade-offs measured here, so they describe our generator, not observed operations.
 - For this run's 5000 rows, a zero rate still allows up to 0.08% at 95% confidence.
 
 ## Not proven by this run
