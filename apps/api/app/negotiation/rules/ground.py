@@ -171,7 +171,7 @@ RULES: tuple[Rule, ...] = (
         rule_id=GATE_OVERLAP,
         domain=Domain.GROUND,
         source="rule_values.gate_buffer_min",
-        description="Gate occupancy must not overlap another flight, allowing the buffer",
+        description="Gate occupancy must not overlap another flight, with buffer",
         public_reason=PublicReason.RESOURCE_CONFLICT,
         check=check_gate_overlap,
     ),
