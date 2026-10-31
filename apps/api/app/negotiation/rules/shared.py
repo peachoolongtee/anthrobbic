@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 
 from app.negotiation import rule_values as rv
-from app.negotiation.contracts import Gate, Runway, WeatherPeriod
+from app.negotiation.contracts import FlightRules, Gate, Runway, WeatherPeriod
 
 
 def gates_with_id(gates: Sequence[Gate], gate_id: str) -> tuple[Gate, ...]:
@@ -38,3 +38,14 @@ def poor_or_unknown_at(forecast: Sequence[WeatherPeriod] | None, time_min: int) 
         return True
     covering = [p for p in forecast if p.start_min <= time_min <= p.end_min]
     return not covering or any(is_poor(p) for p in covering)
+
+
+def airport_conditions(
+    forecast: Sequence[WeatherPeriod] | None, time_min: int
+) -> FlightRules:
+    """The conditions that set the runway cap at this minute: IFR when the
+    forecast is poor or unknown there, otherwise VFR. The throughput rule and
+    the card both read the cap through this one function."""
+    return (
+        FlightRules.IFR if poor_or_unknown_at(forecast, time_min) else FlightRules.VFR
+    )

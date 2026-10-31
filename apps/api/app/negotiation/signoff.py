@@ -247,7 +247,7 @@ _STATUS_LINES: Mapping[SignOffStatus, str] = {
 
 
 def _terms(terms: tuple[PackageTerm, ...]) -> str:
-    return "; ".join(f"{t.name}: {t.value}" for t in terms) or "none"
+    return "; ".join(f"{t.label}: {t.value}" for t in terms) or "none"
 
 
 def render_record(outcome: SignOffOutcome) -> str:

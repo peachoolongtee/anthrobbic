@@ -125,7 +125,7 @@ def test_record_prints_card_hash_and_log_head_and_does_not_claim_execution() -> 
     assert outcome.card_hash in record and outcome.log_head in record
     assert package_name(PACKAGE) in record
     assert "Requests were issued, not granted. Nothing has been executed." in record
-    assert "gate_id: gate A1" in record
+    assert "Gate: A1" in record
 
 
 def test_only_the_parts_the_manager_chose_are_approved() -> None:

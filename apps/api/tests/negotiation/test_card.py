@@ -13,6 +13,8 @@ from app.negotiation.card import (
     MODEL_NOTE_LABEL,
     MODEL_NOTE_MAX_CHARS,
     REASON_CODES,
+    RULE_BREACHES,
+    RULE_REQUIREMENTS,
     SCENARIO_DEFINED,
     UNRECOGNISED_CODE,
     Card,
@@ -32,12 +34,16 @@ from app.negotiation.contracts import (
     Domain,
     DomainCosts,
     FlightPlanAction,
+    FlightRules,
     NoDeal,
     NoDealReason,
+    OtherArrival,
     Provenance,
     Runway,
     Violation,
     ViolationCause,
+    WakeCategory,
+    WeatherPeriod,
 )
 from app.negotiation.fallback import decide
 from app.negotiation.options import enumerate_packages
@@ -115,8 +121,11 @@ def test_authority_split_follows_the_package_contract() -> None:
     assert card.authority.airline_decides == airline
     assert card.authority.requests_only == requests
     text = render(card)
-    assert "The airline decides: gate_id: gate A1" in text
-    assert "Requests only: slot: runway 28L at minute 100; action: direct" in text
+    assert "The airline decides: Gate: A1" in text
+    assert (
+        "Requests only: Arrival slot: runway 28L at minute 100; "
+        "Flight-plan action: direct" in text
+    )
     assert "pilot in command keeps their own fuel and safety authority" in text
 
 
@@ -210,9 +219,8 @@ def test_each_rules_status_comes_from_rule_values() -> None:
     lines = lines_by_rule(good_card())
     expected = {
         "ATC-WAKE-SEP": rv.rule_value(rv.WAKE_DEFAULT_KEY).status,
-        "ATC-RWY-THROUGHPUT": rv.runway_hourly_arrivals(
-            make_scenario().flight_rules.value  # type: ignore[arg-type]
-        ).status,
+        # The baseline forecast is poor at the ETA, so the IFR cap applies.
+        "ATC-RWY-THROUGHPUT": rv.rule_value(rv.RUNWAY_HOURLY_ARRIVALS_IFR).status,
         "PLT-FUEL-POLICY": rv.rule_value(rv.FUEL_RESERVE_MIN).status,
         "GND-GATE-OVERLAP": rv.rule_value(rv.GATE_BUFFER_MIN).status,
         "GND-TURNAROUND": rv.turnaround(make_scenario().aircraft_size.value).status,  # type: ignore[arg-type]
@@ -222,7 +230,12 @@ def test_each_rules_status_comes_from_rule_values() -> None:
     assert lines["GND-GATE-OVERLAP"].basis_status == "assumption"
     assert not lines["GND-GATE-OVERLAP"].is_regulation
     assert lines["GND-TURNAROUND"].basis_status == "secondary"
-    for rule_id in ("ATC-RWY-CLOSED", "ATC-TWY-CLOSED", "GND-GATE-SIZE"):
+    for rule_id in (
+        "ATC-RWY-CLOSED",
+        "ATC-TWY-CLOSED",
+        "ATC-SLOT-WINDOW",
+        "GND-GATE-SIZE",
+    ):
         assert lines[rule_id].basis_status == SCENARIO_DEFINED
 
 
@@ -527,3 +540,161 @@ def test_a_hand_made_cost_breakdown_is_shown_as_given() -> None:
     )
     card = decision_card(make_scenario(), BASELINE_PACKAGE, cost)
     assert [c.units for c in card.costs] == [1, 2, 3, 4, 5, 0, 15]
+
+
+# ----------------------------------------------- wording, labels and basis
+
+FINE = (
+    WeatherPeriod(
+        start_min=0, end_min=1_000, ceiling_ft=5_000, visibility_tenth_mi=100
+    ),
+)
+POOR = (
+    WeatherPeriod(start_min=0, end_min=1_000, ceiling_ft=500, visibility_tenth_mi=10),
+)
+
+
+def throughput_basis(**overrides: Any) -> str | None:
+    scenario = make_scenario(**overrides)
+    card = decision_card(
+        scenario, BASELINE_PACKAGE, compute_cost(scenario, BASELINE_PACKAGE)
+    )
+    return lines_by_rule(card)["ATC-RWY-THROUGHPUT"].basis_key
+
+
+@pytest.mark.parametrize("flight_rules", [FlightRules.IFR, FlightRules.VFR])
+def test_throughput_basis_follows_the_forecast_not_the_flights_rules(
+    flight_rules: FlightRules,
+) -> None:
+    assert (
+        throughput_basis(destination_forecast=FINE, flight_rules=flight_rules)
+        == rv.RUNWAY_HOURLY_ARRIVALS_VFR
+    )
+    assert (
+        throughput_basis(destination_forecast=POOR, flight_rules=flight_rules)
+        == rv.RUNWAY_HOURLY_ARRIVALS_IFR
+    )
+    # An unknown forecast fails to the stricter cap, as the rule does.
+    assert (
+        throughput_basis(destination_forecast=None, flight_rules=flight_rules)
+        == rv.RUNWAY_HOURLY_ARRIVALS_IFR
+    )
+
+
+@pytest.mark.parametrize("forecast", [FINE, POOR, None])
+def test_pass_line_basis_matches_the_cap_the_rule_cites_when_it_fails(
+    forecast: Any,
+) -> None:
+    crowd = tuple(
+        OtherArrival(
+            flight_id=f"X{i}",
+            wake_category=WakeCategory.SMALL,
+            runway_id="28L",
+            time_min=60 + i,
+        )
+        for i in range(45)
+    )
+    busy = make_scenario(destination_forecast=forecast, other_arrivals=crowd)
+    violations = [
+        v
+        for v in check_package(busy, BASELINE_PACKAGE)
+        if v.rule_id == "ATC-RWY-THROUGHPUT"
+    ]
+    assert violations
+    failing = lines_by_rule(
+        decision_card(
+            busy, BASELINE_PACKAGE, compute_cost(busy, BASELINE_PACKAGE), violations
+        )
+    )["ATC-RWY-THROUGHPUT"]
+    quiet = make_scenario(destination_forecast=forecast)
+    passing = lines_by_rule(
+        decision_card(quiet, BASELINE_PACKAGE, compute_cost(quiet, BASELINE_PACKAGE))
+    )["ATC-RWY-THROUGHPUT"]
+    assert failing.basis_key == passing.basis_key
+    assert failing.limit == rv.rule_value(passing.basis_key).value  # type: ignore[arg-type]
+
+
+def test_a_held_rule_shows_a_requirement_and_a_broken_rule_a_sentence() -> None:
+    held = lines_by_rule(good_card())
+    assert held["ATC-WAKE-SEP"].description == "Spacing behind the aircraft ahead"
+    assert all(line.message is None for line in held.values())
+    broken = lines_by_rule(failing_card())["ATC-RWY-CLOSED"]
+    assert broken.message == "Uses a closed runway"
+    assert "Uses a closed runway" in render(failing_card())
+
+
+def test_every_rule_has_a_requirement_and_a_breach_wording() -> None:
+    ids = {rule.rule_id for rule in ALL_RULES}
+    assert set(RULE_REQUIREMENTS) == ids
+    assert set(RULE_BREACHES) == ids
+    assert RULE_BREACHES["ATC-WAKE-SEP"] == "Lands too close behind the aircraft ahead"
+    assert RULE_BREACHES["ATC-RWY-THROUGHPUT"] == (
+        "Puts too many arrivals on the runway in an hour"
+    )
+    assert RULE_BREACHES["PLT-FUEL-POLICY"] == (
+        "Lands with less fuel than the reserve policy allows"
+    )
+    assert (
+        RULE_BREACHES["GND-GATE-OVERLAP"] == "Uses a gate that is occupied or blocked"
+    )
+    assert RULE_BREACHES["GND-TURNAROUND"] == (
+        "Leaves too little time to turn the aircraft round"
+    )
+
+
+def test_every_failed_line_gets_a_message_even_for_missing_data() -> None:
+    scenario = make_scenario(runways=None)
+    violations = check_package(scenario, BASELINE_PACKAGE)
+    card = decision_card(
+        scenario, BASELINE_PACKAGE, compute_cost(scenario, BASELINE_PACKAGE), violations
+    )
+    failed = [r for r in card.rules if r.status is not RuleStatus.PASS]
+    assert failed and all(r.message for r in failed)
+
+
+def test_term_values_do_not_repeat_their_label() -> None:
+    airline, requests = authority_terms(make_package(gate_id="B12"))
+    (gate,) = airline
+    assert (gate.label, gate.value) == ("Gate", "B12")
+    assert [t.label for t in requests] == ["Arrival slot", "Flight-plan action"]
+    for term in (*airline, *requests):
+        assert term.label.split()[0].lower() not in term.value.lower().split()
+
+
+def test_no_deal_shows_the_binding_violations_with_numbers_and_sources() -> None:
+    closed = decide(
+        make_scenario(
+            runways=(
+                Runway(runway_id="28L", closed=True),
+                Runway(runway_id="28R", closed=True),
+            )
+        )
+    )
+    assert isinstance(closed, NoDeal) and closed.binding_violations
+    card = no_deal_card(closed)
+    assert [e.rule_id for e in card.binding_evidence] == [
+        v.rule_id for v in closed.binding_violations
+    ]
+    line = card.binding_evidence[0]
+    assert (line.observed, line.limit, line.unit) == (1, 0, "closed runways")
+    assert line.message == "Uses a closed runway"
+    assert line.source
+    text = render(card)
+    assert "BINDING RULE EVIDENCE" in text
+    assert "observed 1, limit 0, closed runways" in text and "Source:" in text
+
+
+def test_binding_evidence_never_echoes_free_text() -> None:
+    closed = decide(make_scenario(runways=(Runway(runway_id="28L", closed=True),)))
+    assert isinstance(closed, NoDeal)
+    dirty = closed.model_copy(
+        update={
+            "binding_violations": tuple(
+                v.model_copy(
+                    update={"message": POISON, "source": POISON, "unit": POISON}
+                )
+                for v in closed.binding_violations
+            )
+        }
+    )
+    assert POISON not in render(no_deal_card(dirty))

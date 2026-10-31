@@ -38,6 +38,7 @@ from app.negotiation.contracts import (
     ViolationCause,
 )
 from app.negotiation.rules import ALL_RULES
+from app.negotiation.rules.shared import airport_conditions
 
 # ---------------------------------------------------------------- names
 
@@ -48,14 +49,29 @@ def package_name(package: Package) -> str:
 
 
 class PackageTerm(FrozenModel):
+    """One term. `name` is the stable key; `label` is the heading to show over
+    `value`, which never repeats the label's word."""
+
     name: str
+    label: str
     value: str
+
+
+_TERM_LABELS: Mapping[str, str] = MappingProxyType(
+    {"gate_id": "Gate", "slot": "Arrival slot", "action": "Flight-plan action"}
+)
+
+
+def _term(package: Package, name: str) -> PackageTerm:
+    return PackageTerm(
+        name=name, label=_TERM_LABELS[name], value=_term_value(package, name)
+    )
 
 
 def _term_value(package: Package, name: str) -> str:
     match name:
         case "gate_id":
-            return f"gate {package.gate_id}"
+            return package.gate_id
         case "slot":
             return f"runway {package.slot.runway_id} at minute {package.slot.time_min}"
         case "action":
@@ -71,8 +87,8 @@ def authority_terms(
     decides = Package.AUTHORITY["airline_decides"]
     requests = Package.AUTHORITY["requires_request"]
     return (
-        tuple(PackageTerm(name=n, value=_term_value(package, n)) for n in decides),
-        tuple(PackageTerm(name=n, value=_term_value(package, n)) for n in requests),
+        tuple(_term(package, n) for n in decides),
+        tuple(_term(package, n) for n in requests),
     )
 
 
@@ -170,7 +186,7 @@ _UNKNOWN_UNIT = "unit not recognised"
 
 _RULES_BY_ID = {rule.rule_id: rule for rule in ALL_RULES}
 _SCENARIO_DEFINED_RULES = frozenset(
-    {"ATC-RWY-CLOSED", "ATC-TWY-CLOSED", "GND-GATE-SIZE"}
+    {"ATC-RWY-CLOSED", "ATC-TWY-CLOSED", "ATC-SLOT-WINDOW", "GND-GATE-SIZE"}
 )
 _DEFAULT_BASIS: Mapping[str, str] = MappingProxyType(
     {
@@ -178,6 +194,41 @@ _DEFAULT_BASIS: Mapping[str, str] = MappingProxyType(
         "PLT-FUEL-POLICY": rv.FUEL_RESERVE_MIN,
         "GND-GATE-OVERLAP": rv.GATE_BUFFER_MIN,
     }
+)
+
+
+# Matches the dashboard: a held rule is a requirement (a noun phrase); a broken
+# rule says what the plan does wrong (a verb sentence).
+RULE_REQUIREMENTS: Mapping[str, str] = MappingProxyType(
+    {
+        "ATC-WAKE-SEP": "Spacing behind the aircraft ahead",
+        "ATC-RWY-CLOSED": "An open arrival runway",
+        "ATC-TWY-CLOSED": "An open taxiway to the gate",
+        "ATC-RWY-THROUGHPUT": "Arrivals per hour on the runway",
+        "ATC-SLOT-WINDOW": "An arrival slot inside the planning window",
+        "PLT-FUEL-POLICY": "Fuel at landing against the reserve policy",
+        "GND-GATE-OVERLAP": "A gate that is free for the turnaround",
+        "GND-GATE-SIZE": "A gate that fits the aircraft",
+        "GND-TURNAROUND": "Time to turn the aircraft round",
+    }
+)
+RULE_BREACHES: Mapping[str, str] = MappingProxyType(
+    {
+        "ATC-WAKE-SEP": "Lands too close behind the aircraft ahead",
+        "ATC-RWY-CLOSED": "Uses a closed runway",
+        "ATC-TWY-CLOSED": "Uses a gate that is occupied or blocked",
+        "ATC-RWY-THROUGHPUT": "Puts too many arrivals on the runway in an hour",
+        "ATC-SLOT-WINDOW": "Lands outside the planning window or off the slot grid",
+        "PLT-FUEL-POLICY": "Lands with less fuel than the reserve policy allows",
+        "GND-GATE-OVERLAP": "Uses a gate that is occupied or blocked",
+        "GND-GATE-SIZE": "Uses a gate too small for the aircraft",
+        "GND-TURNAROUND": "Leaves too little time to turn the aircraft round",
+    }
+)
+UNKNOWN_RULE_REQUIREMENT = "A rule this system does not know"
+UNKNOWN_RULE_BREACH = "Breaks a rule this system does not know"
+MISSING_DATA_MESSAGE = (
+    "Cannot be checked because an input is unknown or invalid, so it is blocked"
 )
 
 
@@ -190,7 +241,10 @@ class RuleStatus(StrEnum):
 class RuleLine(FrozenModel):
     rule_id: str
     domain: Domain
+    # The requirement as a noun phrase, shown when the rule holds.
     description: str
+    # What the plan does wrong, as a sentence; None when the rule holds.
+    message: str | None
     status: RuleStatus
     observed: int | None
     limit: int | None
@@ -200,10 +254,15 @@ class RuleLine(FrozenModel):
     basis_status: str  # a `rule_values.Status` value or SCENARIO_DEFINED
     basis_label: str
     is_regulation: bool
+    # Where the limit comes from: the rule value's source, else the rule's own.
+    source: str
 
 
 def _basis(
-    rule_id: str, scenario: Scenario | None, violation: Violation | None
+    rule_id: str,
+    scenario: Scenario | None,
+    package: Package | None,
+    violation: Violation | None,
 ) -> rv.RuleValue | None:
     """The rule value behind a rule's limit, or None when scenario-defined or
     unknown. A violation's source is read only for a key that is in the
@@ -216,36 +275,51 @@ def _basis(
         return rv.RULE_VALUES[_DEFAULT_BASIS[rule_id]]
     if scenario is None:
         return None
-    if rule_id == "ATC-RWY-THROUGHPUT" and scenario.flight_rules.value is not None:
-        return rv.runway_hourly_arrivals(scenario.flight_rules.value)
+    if rule_id == "ATC-RWY-THROUGHPUT" and package is not None:
+        # The same function the rule uses: the cap follows the forecast at ETA.
+        return rv.runway_hourly_arrivals(
+            airport_conditions(
+                scenario.destination_forecast.value, package.slot.time_min
+            )
+        )
     if rule_id == "GND-TURNAROUND" and scenario.aircraft_size.value is not None:
         return rv.turnaround(scenario.aircraft_size.value)
     return None
 
 
 def _rule_line(
-    rule_id: str, scenario: Scenario | None, violation: Violation | None
+    rule_id: str,
+    scenario: Scenario | None,
+    package: Package | None,
+    violation: Violation | None,
 ) -> RuleLine:
     rule = _RULES_BY_ID.get(rule_id)
-    basis = _basis(rule_id, scenario, violation) if rule else None
+    basis = _basis(rule_id, scenario, package, violation) if rule else None
     if basis is not None:
         basis_status, label = basis.status.value, STATUS_LABELS[basis.status]
     elif rule_id in _SCENARIO_DEFINED_RULES:
         basis_status, label = SCENARIO_DEFINED, SCENARIO_DEFINED_LABEL
     else:
         basis_status, label = "unknown", _NO_BASIS_LABEL
+    message: str | None
     if violation is None:
         status = RuleStatus.PASS
-        observed = limit = unit = None
+        observed = limit = unit = message = None
     else:
         missing = violation.cause is ViolationCause.MISSING_DATA
         status = RuleStatus.MISSING_DATA if missing else RuleStatus.FAIL
         observed, limit = violation.observed, violation.limit
         unit = None if missing else _safe_unit(violation.unit)
+        message = (
+            MISSING_DATA_MESSAGE
+            if missing
+            else RULE_BREACHES.get(rule_id, UNKNOWN_RULE_BREACH)
+        )
     return RuleLine(
         rule_id=rule_id if rule else "UNKNOWN-RULE",
         domain=rule.domain if rule else (violation.domain if violation else Domain.ATC),
-        description=rule.description if rule else "A rule this system does not know.",
+        description=RULE_REQUIREMENTS.get(rule_id, UNKNOWN_RULE_REQUIREMENT),
+        message=message,
         status=status,
         observed=observed,
         limit=limit,
@@ -254,6 +328,7 @@ def _rule_line(
         basis_status=basis_status,
         basis_label=label,
         is_regulation=basis is not None and basis.status is rv.Status.CONFIRMED,
+        source=basis.source if basis else (rule.source if rule else "unknown"),
     )
 
 
@@ -261,8 +336,19 @@ def _safe_unit(unit: str) -> str:
     return unit if unit in KNOWN_UNITS else _UNKNOWN_UNIT
 
 
+def violation_lines(
+    scenario: Scenario | None,
+    violations: Sequence[Violation],
+    package: Package | None = None,
+) -> tuple[RuleLine, ...]:
+    """One line per violation, with no pass lines."""
+    return tuple(_rule_line(v.rule_id, scenario, package, v) for v in violations)
+
+
 def rule_lines(
-    scenario: Scenario | None, violations: Sequence[Violation]
+    scenario: Scenario | None,
+    violations: Sequence[Violation],
+    package: Package | None = None,
 ) -> tuple[RuleLine, ...]:
     """One line per violation, plus a pass line for each rule with none."""
     by_rule: dict[str, list[Violation]] = {}
@@ -272,11 +358,11 @@ def rule_lines(
     for rule in ALL_RULES:
         found = by_rule.pop(rule.rule_id, [])
         if found:
-            lines.extend(_rule_line(rule.rule_id, scenario, v) for v in found)
+            lines.extend(_rule_line(rule.rule_id, scenario, package, v) for v in found)
         else:
-            lines.append(_rule_line(rule.rule_id, scenario, None))
+            lines.append(_rule_line(rule.rule_id, scenario, package, None))
     for stray in by_rule.values():  # rule IDs outside the registry
-        lines.extend(_rule_line(stray[0].rule_id, scenario, v) for v in stray)
+        lines.extend(_rule_line(v.rule_id, scenario, package, v) for v in stray)
     return tuple(lines)
 
 
@@ -458,7 +544,7 @@ def decision_card(
 
     name = package_name(package)
     airline, requests = authority_terms(package)
-    lines = rule_lines(scenario, violations)
+    lines = rule_lines(scenario, violations, package)
     failing = [line for line in lines if line.status is not RuleStatus.PASS]
     passed = not failing
     provenance = _provenance_lines(scenario)
@@ -583,6 +669,8 @@ class NoDealCard(FrozenModel):
     what_to_do: str
     packages_considered: int
     binding_rules: tuple[BindingRule, ...]
+    # One violation per binding rule with its numbers, limit, unit and source.
+    binding_evidence: tuple[RuleLine, ...]
     nearest_package_name: str | None
     nearest_authority: AuthoritySplit | None
     nearest_rules: tuple[RuleLine, ...]
@@ -619,9 +707,9 @@ def no_deal_card(no_deal: NoDeal, scenario: Scenario | None = None) -> NoDealCar
         BindingRule(
             rule_id=rule_id if rule_id in _RULES_BY_ID else "UNKNOWN-RULE",
             description=(
-                _RULES_BY_ID[rule_id].description
-                if rule_id in _RULES_BY_ID
-                else "A rule this system does not know."
+                RULE_REQUIREMENTS[rule_id]
+                if rule_id in RULE_REQUIREMENTS and rule_id in _RULES_BY_ID
+                else UNKNOWN_RULE_REQUIREMENT
             ),
             packages_eliminated=counts.get(rule_id, 0),
             binding=rule_id in binding_ids,
@@ -629,7 +717,7 @@ def no_deal_card(no_deal: NoDeal, scenario: Scenario | None = None) -> NoDealCar
         for rule_id in dict.fromkeys((*no_deal.binding_rule_ids, *counts))
     )
     nearest = no_deal.nearest_package
-    lines = rule_lines(scenario, no_deal.nearest_violations) if nearest else ()
+    lines = rule_lines(scenario, no_deal.nearest_violations, nearest) if nearest else ()
     failing = tuple(line for line in lines if line.status is not RuleStatus.PASS)
     authority: AuthoritySplit | None = None
     if nearest is not None:
@@ -643,6 +731,7 @@ def no_deal_card(no_deal: NoDeal, scenario: Scenario | None = None) -> NoDealCar
         what_to_do=_NO_DEAL_ACTIONS[no_deal.reason_type],
         packages_considered=no_deal.packages_considered,
         binding_rules=binding,
+        binding_evidence=violation_lines(scenario, no_deal.binding_violations),
         nearest_package_name=package_name(nearest) if nearest else None,
         nearest_authority=authority,
         nearest_rules=failing,
@@ -686,7 +775,7 @@ def model_note(text: str) -> ModelNote:
 
 
 def _terms(terms: Sequence[PackageTerm]) -> str:
-    return "; ".join(f"{t.name}: {t.value}" for t in terms) or "none"
+    return "; ".join(f"{t.label}: {t.value}" for t in terms) or "none"
 
 
 def _rule_text(line: RuleLine) -> str:
@@ -696,9 +785,11 @@ def _rule_text(line: RuleLine) -> str:
         values = "input unknown, so the rule fails closed"
     else:
         values = f"observed {line.observed}, limit {line.limit}, {line.unit}"
+    text = line.message or line.description
     return (
-        f"  [{line.status.value.upper()}] {line.rule_id} ({line.domain.value}): "
-        f"{values}. Basis {line.basis_status}: {line.basis_label}"
+        f"  [{line.status.value.upper()}] {line.rule_id} ({line.domain.value}) "
+        f"{text}: {values}. Basis {line.basis_status}: {line.basis_label} "
+        f"Source: {line.source}"
     )
 
 
@@ -753,6 +844,8 @@ def render(card: Card | NoDealCard, note: ModelNote | None = None) -> str:
                 f"eliminated {b.packages_eliminated}"
                 for b in card.binding_rules
             ),
+            "BINDING RULE EVIDENCE",
+            *(_rule_text(r) for r in card.binding_evidence),
             f"Nearest package: {card.nearest_package_name or 'none'}",
         ]
         if card.nearest_authority is not None:

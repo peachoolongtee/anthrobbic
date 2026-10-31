@@ -3,7 +3,6 @@
 from app.negotiation import rule_values as rv
 from app.negotiation.contracts import (
     Domain,
-    FlightRules,
     Package,
     PublicReason,
     Rule,
@@ -12,8 +11,8 @@ from app.negotiation.contracts import (
     WakeCategory,
 )
 from app.negotiation.rules.shared import (
+    airport_conditions,
     gates_with_id,
-    poor_or_unknown_at,
     runway_group,
 )
 
@@ -217,11 +216,7 @@ def check_runway_throughput(
 
     hour = rv.rule_value(rv.MINUTES_PER_HOUR).value
     mine = package.slot.time_min
-    conditions = (
-        FlightRules.IFR
-        if poor_or_unknown_at(scenario.destination_forecast.value, mine)
-        else FlightRules.VFR
-    )
+    conditions = airport_conditions(scenario.destination_forecast.value, mine)
     cap = rv.runway_hourly_arrivals(conditions)
 
     known = {r.runway_id for r in runways}
