@@ -460,6 +460,8 @@ def decision_card(
     passed = not failing
     provenance = _provenance_lines(scenario)
 
+    todo: tuple[str, ...]
+    why: tuple[str, ...]
     if passed:
         headline = f"{name}: every hard rule passes at the current state."
         todo = (

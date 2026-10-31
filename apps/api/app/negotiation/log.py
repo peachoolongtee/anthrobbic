@@ -196,7 +196,8 @@ def _plain(payload: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(payload, Mapping):
         raise TypeError("payload must be a mapping")
     _check_plain(payload)
-    return json.loads(canonical_json(dict(payload)))
+    plain: dict[str, Any] = json.loads(canonical_json(dict(payload)))
+    return plain
 
 
 def _check_plain(value: Any) -> None:
