@@ -38,6 +38,7 @@ import { NegotiationView } from "@/components/dashboard/negotiation-view";
 import { NoGoView } from "@/components/dashboard/no-go-view";
 import { PlanCard } from "@/components/dashboard/plan-card";
 import { PlanSummary } from "@/components/dashboard/plan-summary";
+import { AgentsWorking } from "@/components/dashboard/agents-working";
 import { SignoffPanel } from "@/components/dashboard/signoff-panel";
 import { EmptyPanel, ErrorPanel, LoadingBlock } from "@/components/dashboard/states";
 
@@ -492,7 +493,7 @@ export function Dashboard() {
           )}
 
           <div className={banner?.outOfDate ? "opacity-50" : undefined}>
-            <PlanSummary flight={selected} run={running ? null : run} onDetails={() => setTab("details")} />
+            <PlanSummary flight={selected} run={running ? null : run} pending={running} onDetails={() => setTab("details")} />
           </div>
 
           <RunGate d={d} running={running} run={run} compact>
@@ -526,14 +527,7 @@ function RunGate({
   compact?: boolean;
   children: React.ReactNode;
 }) {
-  if (running && d.mode === "live")
-    return (
-      <div className="space-y-2">
-        <p className="text-sm font-medium">Asking the model, live. This usually takes 15 to 20 seconds.</p>
-        <LoadingBlock label="Making a recovery plan" lines={compact ? 3 : 6} />
-      </div>
-    );
-  if (running) return <LoadingBlock label="Making a recovery plan" lines={compact ? 3 : 6} />;
+  if (running) return <AgentsWorking live={d.mode === "live"} />;
   if (d.runState.status === "idle" && d.scenarios.status === "loading")
     return <LoadingBlock label="Loading flights" lines={compact ? 3 : 6} />;
   if (d.runState.status === "idle" && d.scenarios.status === "error")

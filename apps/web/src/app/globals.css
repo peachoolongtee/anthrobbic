@@ -175,3 +175,13 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+/* The indeterminate bar in the agents-working loader. */
+@keyframes sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}

@@ -20,7 +20,6 @@ import type { Provenance, Run, ScenarioSummary } from "@/lib/api-types";
 import { ACTION_LABEL, CAUSE_LABEL, DOMAIN_LABEL, FAULT_LABEL, PATH_LABEL } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { ProvenanceMark } from "@/components/dashboard/provenance-badge";
 import { RouteCodes } from "@/components/dashboard/flight-list";
 
 const CAUSE_ICON = { weather: CloudLightning, late_aircraft: PlaneLanding } as const;
@@ -86,10 +85,13 @@ function Pill({ ok, icon: Icon, title, children }: { ok: boolean; icon: LucideIc
 export function PlanSummary({
   flight,
   run,
+  pending = false,
   onDetails,
 }: {
   flight: ScenarioSummary | undefined;
   run: Run | null;
+  /** A recovery plan is being made: read "planning", not "no plan". */
+  pending?: boolean;
   onDetails: () => void;
 }) {
   if (!flight) return null;
@@ -139,7 +141,7 @@ export function PlanSummary({
 
         <div aria-hidden className="flex flex-col items-center gap-0.5 px-1">
           <span className={cn("text-xs font-semibold whitespace-nowrap", change === null ? "text-muted-foreground" : "text-beacon")}>
-            {change === null ? "no plan" : `${change >= 0 ? "+" : "−"}${Math.abs(change)} min`}
+            {change === null ? (pending ? "planning" : "no plan") : `${change >= 0 ? "+" : "−"}${Math.abs(change)} min`}
           </span>
           <span className="flex items-center text-muted-foreground">
             <span className="h-px w-8 bg-gradient-to-r from-muted-foreground/30 to-beacon/70" />
@@ -149,11 +151,10 @@ export function PlanSummary({
 
         <div className="text-right">
           <div className="flex justify-end">
-            <IconLabel icon={Clock} label={arrival ? "Lands" : "No plan"} />
+            <IconLabel icon={Clock} label={arrival ? "Lands" : pending ? "Planning" : "No plan"} />
           </div>
           <p className="flex items-center justify-end gap-1 font-display text-2xl font-semibold">
             {arrival?.clock ?? "—"}
-            {arrival && <ProvenanceMark provenance={arrival.provenance} />}
           </p>
         </div>
         {change !== null && (
@@ -208,15 +209,10 @@ export function PlanSummary({
               </dt>
               <dd className="mt-0.5 flex items-start gap-1 font-display text-base leading-tight font-semibold">
                 <span className="min-w-0">{f.value}</span>
-                <ProvenanceMark provenance={f.provenance} className="shrink-0" />
               </dd>
             </div>
           ))}
         </dl>
-      )}
-
-      {facts.length > 0 && (
-        <p className="text-xs text-muted-foreground">R real, D derived, S synthetic</p>
       )}
 
       {run && (
