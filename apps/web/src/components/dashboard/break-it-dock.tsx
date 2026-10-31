@@ -1,7 +1,19 @@
 "use client";
 
-import { useState } from "react";
-import { CircleAlert, CircleCheck, FileWarning, Info, Loader2, RotateCcw, ShieldAlert, TimerReset } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import {
+  CircleAlert,
+  CircleCheck,
+  FileWarning,
+  Info,
+  Loader2,
+  MousePointerClick,
+  RotateCcw,
+  ShieldAlert,
+  TimerReset,
+  Wrench,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Run, RunOverrides } from "@/lib/api-types";
@@ -14,23 +26,19 @@ interface Props {
   overrides: RunOverrides;
   busy: BreakKind | null;
   disabled: boolean;
-  outcome: BreakOutcome | null;
+  /** Where runways and gates are closed: the diagram, or a hint for the 3D view. */
+  children?: ReactNode;
+  className?: string;
   onUnsafe: (ruleId: string) => void;
   onStale: () => void;
   onTamper: () => void;
   onReset: () => void;
 }
 
-const TONE = {
-  ok: { icon: CircleCheck, cls: "border-success/40", iconCls: "text-success" },
-  bad: { icon: CircleAlert, cls: "border-destructive/50", iconCls: "text-destructive" },
-  info: { icon: Info, cls: "border-info/40", iconCls: "text-info" },
-} as const;
-
 /**
- * The try-to-break-it controls that are not on the map: inject an unsafe
- * plan, change the airport behind the screen, tamper with the log, reset.
- * Runways and gates are closed by selecting them on the map.
+ * Every try-to-break-it control in one card: close runways and gates on the
+ * diagram, inject an unsafe recovery plan, change the airport behind the
+ * screen, tamper with the log, or reset. Results show in BreakNotice.
  */
 export function BreakItDock(p: Props) {
   const [unsafe, setUnsafe] = useState<string>(UNSAFE_OPTIONS[0].value);
@@ -39,37 +47,33 @@ export function BreakItDock(p: Props) {
     (p.overrides.closed_runways?.length ?? 0) > 0 ||
     (p.overrides.closed_gates?.length ?? 0) > 0 ||
     !!p.overrides.inject_unsafe;
-  const tone = p.outcome ? TONE[p.outcome.tone] : null;
-  const Icon = tone?.icon;
 
   return (
-    <section aria-label="Try to break it" className="flex flex-col items-center gap-2">
-      <div role="status" aria-live="polite" className="min-h-0">
-        {p.busy !== null && (
-          <p className="flex items-center gap-2 rounded-full border border-border bg-card/90 px-3 py-1 text-sm backdrop-blur">
-            <Loader2 aria-hidden className="size-4 animate-spin" />
-            Re-running
-          </p>
-        )}
-        {p.busy === null && p.outcome && tone && Icon && (
-          <p
-            className={cn(
-              "flex max-w-xl items-start gap-2 rounded-xl border bg-card/90 px-3 py-1.5 text-sm backdrop-blur",
-              tone.cls,
-            )}
-          >
-            <Icon aria-hidden className={cn("mt-0.5 size-4 shrink-0", tone.iconCls)} />
-            <span>
-              <strong className="font-semibold">{p.outcome.title}.</strong>{" "}
-              <span className="text-muted-foreground">{p.outcome.detail}</span>
-            </span>
-          </p>
-        )}
-      </div>
+    <section aria-labelledby="break-heading" className={cn("space-y-2", p.className)}>
+      <header className="flex items-center gap-2">
+        <Wrench aria-hidden className="size-4 text-muted-foreground" />
+        <h2 id="break-heading" className="text-sm font-semibold">
+          Try to break it
+        </h2>
+        {p.busy !== null && <Loader2 aria-label="Re-running" className="size-4 animate-spin text-muted-foreground" />}
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          disabled={off || !hasOverrides}
+          onClick={p.onReset}
+          aria-label="Reset every change"
+          title="Reset every change"
+          className="ml-auto"
+        >
+          <RotateCcw aria-hidden />
+        </Button>
+      </header>
 
-      <div className="flex flex-wrap items-center justify-center gap-1 rounded-xl border border-border bg-card/85 p-1 shadow-lg shadow-black/30 backdrop-blur">
+      {p.children}
+
+      <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2">
         <Select items={UNSAFE_OPTIONS} value={unsafe} onValueChange={(v) => v && setUnsafe(v)} disabled={off}>
-          <SelectTrigger size="sm" aria-label="Unsafe recovery plan to inject" className="w-34 border-transparent bg-transparent">
+          <SelectTrigger size="sm" aria-label="Unsafe recovery plan to inject" className="min-w-0 flex-1">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -84,31 +88,85 @@ export function BreakItDock(p: Props) {
           <ShieldAlert aria-hidden />
           Inject
         </Button>
-        <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+      </div>
+      <div className="grid grid-cols-2 gap-1.5">
         <Button
-          size="icon-sm"
-          variant="ghost"
+          size="sm"
+          variant="outline"
           disabled={off}
           onClick={p.onStale}
-          aria-label="Change the airport behind the screen"
-          title="Block the recovery plan's gate on the server while this screen keeps the old recovery plan. Then try to approve."
+          title="Block this recovery plan's gate on the server while the screen keeps the old plan. Then try to approve."
         >
           <TimerReset aria-hidden />
+          Late change
         </Button>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          disabled={off}
-          onClick={p.onTamper}
-          aria-label="Tamper with the log"
-          title="Edit the decision log and check it"
-        >
+        <Button size="sm" variant="outline" disabled={off} onClick={p.onTamper} title="Edit the decision log, then check it">
           <FileWarning aria-hidden />
-        </Button>
-        <Button size="icon-sm" variant="ghost" disabled={off || !hasOverrides} onClick={p.onReset} aria-label="Reset" title="Reset">
-          <RotateCcw aria-hidden />
+          Tamper log
         </Button>
       </div>
     </section>
+  );
+}
+
+/** The hint shown in place of the diagram when runways and gates are clicked in 3D. */
+export function SceneHint() {
+  return (
+    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <MousePointerClick aria-hidden className="size-4" />
+      Click a runway or gate in the scene to close it.
+    </p>
+  );
+}
+
+const TONE = {
+  ok: { icon: CircleCheck, cls: "border-success/40", iconCls: "text-success" },
+  bad: { icon: CircleAlert, cls: "border-destructive/50", iconCls: "text-destructive" },
+  info: { icon: Info, cls: "border-border", iconCls: "text-muted-foreground" },
+} as const;
+
+const SHOW_MS = 9000;
+
+/**
+ * The result of the last try-to-break-it action, shown once near the top of
+ * the stage. It closes itself after a few seconds, or on X.
+ */
+export function BreakNotice({ outcome, className }: { outcome: BreakOutcome | null; className?: string }) {
+  const [closed, setClosed] = useState<BreakOutcome | null>(null);
+
+  useEffect(() => {
+    if (!outcome) return;
+    const t = window.setTimeout(() => setClosed(outcome), SHOW_MS);
+    return () => window.clearTimeout(t);
+  }, [outcome]);
+
+  const visible = outcome && closed !== outcome ? outcome : null;
+  const tone = visible ? TONE[visible.tone] : null;
+
+  return (
+    <div role="status" aria-live="polite" className={className}>
+      {visible && tone && (
+        <p
+          className={cn(
+            "flex max-w-md items-start gap-2 rounded-xl border bg-card/95 py-2 pr-1.5 pl-3 text-sm shadow-lg shadow-black/40 backdrop-blur-xl animate-in fade-in slide-in-from-top-2",
+            tone.cls,
+          )}
+        >
+          <tone.icon aria-hidden className={cn("mt-0.5 size-4 shrink-0", tone.iconCls)} />
+          <span className="flex-1">
+            <strong className="font-semibold">{visible.title}.</strong>{" "}
+            <span className="text-muted-foreground">{visible.detail}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => setClosed(visible)}
+            aria-label="Dismiss"
+            className="rounded-md p-0.5 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <X aria-hidden className="size-4" />
+          </button>
+        </p>
+      )}
+    </div>
   );
 }

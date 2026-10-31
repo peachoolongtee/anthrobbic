@@ -19,7 +19,7 @@ import { isApproved, signoffStatusLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { AgentStrip } from "@/components/dashboard/agent-strip";
 import { AirportMap } from "@/components/dashboard/airport-map";
-import { BreakItDock } from "@/components/dashboard/break-it-dock";
+import { BreakItDock, BreakNotice, SceneHint } from "@/components/dashboard/break-it-dock";
 import { EvidenceView } from "@/components/dashboard/evidence-view";
 import { FlightList } from "@/components/dashboard/flight-list";
 import { FlightMap } from "@/components/dashboard/flight-map";
@@ -135,8 +135,8 @@ export function Dashboard() {
           className="relative flex flex-col gap-3 lg:pointer-events-none lg:absolute lg:inset-y-0 lg:right-[24.5rem] lg:left-[20.5rem] lg:gap-0 [&>*]:pointer-events-auto"
         >
           {/* Not drawn: marks the space below the agent strip and above the
-              runway inset, for framing the route. Hidden on small screens. */}
-          <div ref={clearArea} aria-hidden className="pointer-events-none! absolute inset-x-0 top-14 bottom-[19rem] max-lg:hidden" />
+              try-to-break-it card, for framing the route. Hidden on small screens. */}
+          <div ref={clearArea} aria-hidden className="pointer-events-none! absolute inset-x-0 top-28 bottom-[21rem] max-lg:hidden" />
           <div className="flex justify-center lg:absolute lg:top-3 lg:left-1/2 lg:-translate-x-1/2">
             <AgentStrip run={running ? null : run} />
           </div>
@@ -169,31 +169,50 @@ export function Dashboard() {
             ))}
           </div>
 
-          {/* Runways and gates: select one to close it. The 3D view has its own. */}
-          {view === "map" && (
-          <section
-            aria-label="Runways and gates"
-            className={cn(
-              PANEL,
-              "p-2 lg:absolute lg:right-0 lg:bottom-[7.75rem] lg:w-[21rem]",
-              running && "opacity-60",
-            )}
-          >
-            <AirportMap
+          {/* Result of the last try-to-break-it action, under the agent strip. */}
+          <BreakNotice
+            outcome={d.outcome}
+            className="z-30 flex justify-center lg:absolute lg:top-28 lg:left-1/2 lg:w-[min(28rem,100%)] lg:-translate-x-1/2"
+          />
+
+          {/* Every try-to-break-it control in one card: the runway diagram (or
+              a hint in 3D, where the scene is clickable) and the other actions. */}
+          <div className={cn(PANEL, "p-3 lg:absolute lg:right-0 lg:bottom-[4.25rem] lg:w-[22rem]", running && "opacity-80")}>
+            <BreakItDock
               run={run}
               overrides={d.overrides}
-              disabled={running || d.busy !== null || run === null}
-              onRunway={(id) => {
-                setTab(null);
-                d.closeRunway(id);
+              busy={d.busy}
+              disabled={running}
+              onUnsafe={(rule) => {
+                setTab("negotiation");
+                d.injectUnsafe(rule);
               }}
-              onGate={(id) => {
-                setTab(null);
-                d.blockGate(id);
+              onStale={d.changeAfterViewing}
+              onTamper={() => {
+                setTab("log");
+                d.tamperLog();
               }}
-            />
-          </section>
-          )}
+              onReset={d.reset}
+            >
+              {view === "map" ? (
+                <AirportMap
+                  run={run}
+                  overrides={d.overrides}
+                  disabled={running || d.busy !== null || run === null}
+                  onRunway={(id) => {
+                    setTab(null);
+                    d.closeRunway(id);
+                  }}
+                  onGate={(id) => {
+                    setTab(null);
+                    d.blockGate(id);
+                  }}
+                />
+              ) : (
+                <SceneHint />
+              )}
+            </BreakItDock>
+          </div>
 
           {/* Drawer with the detail views */}
           {tab && (
@@ -201,7 +220,7 @@ export function Dashboard() {
               aria-label={TABS.find((t) => t.id === tab)?.label}
               className={cn(
                 PANEL,
-                "relative z-10 flex flex-col bg-card/95 animate-in fade-in slide-in-from-bottom-4 duration-200 lg:absolute lg:inset-x-0 lg:top-3 lg:bottom-[7.25rem]",
+                "relative z-20 flex flex-col bg-card/95 animate-in fade-in slide-in-from-bottom-4 duration-200 lg:absolute lg:inset-x-0 lg:top-3 lg:bottom-[4.25rem]",
               )}
             >
               <div className="flex items-center justify-between border-b border-border px-4 py-2">
@@ -236,24 +255,8 @@ export function Dashboard() {
             </section>
           )}
 
-          <div className="z-10 flex flex-col items-center gap-2 lg:absolute lg:inset-x-0 lg:bottom-3">
-            <BreakItDock
-                run={run}
-                overrides={d.overrides}
-                busy={d.busy}
-                disabled={running}
-                outcome={d.outcome}
-                onUnsafe={(rule) => {
-                  setTab("negotiation");
-                  d.injectUnsafe(rule);
-                }}
-                onStale={d.changeAfterViewing}
-                onTamper={() => {
-                  setTab("log");
-                  d.tamperLog();
-                }}
-                onReset={d.reset}
-              />
+          {/* The detail views, alone at the bottom. */}
+          <div className="z-10 flex justify-center lg:absolute lg:inset-x-0 lg:bottom-3">
             <nav
               aria-label="Views"
               className="flex items-center gap-0.5 rounded-xl border border-border bg-card/85 p-1 backdrop-blur"
