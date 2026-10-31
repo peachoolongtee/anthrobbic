@@ -21,7 +21,7 @@ const NIGHT = "#0a0a0a";
 const ASPHALT = "#2b2b2b";
 const ASPHALT_HOVER = "#3c3c3c";
 const MARKING = "#d8d8d8";
-const BEACON = "#ff3d9e";
+const BEACON = "#cd7a9b";
 const DANGER = "#f87171";
 const HULL = "#e6e7ec";
 
@@ -347,7 +347,7 @@ export function AirportScene({
         <color attach="background" args={[NIGHT]} />
         <fog attach="fog" args={[NIGHT, 130, 260]} />
         <ambientLight intensity={0.9} />
-        <hemisphereLight args={["#ffd6ea", "#0a0a0a", 0.5]} />
+        <hemisphereLight args={["#f0dde5", "#0a0a0a", 0.5]} />
         <directionalLight position={[30, 60, 40]} intensity={1.9} castShadow />
 
         {/* Ground and a faint grid */}

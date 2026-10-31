@@ -12,6 +12,7 @@
   --font-heading: var(--font-sans);
   --font-display: var(--font-sans);
   --color-beacon: var(--beacon);
+  --color-beacon-bright: var(--beacon-bright);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -99,7 +100,7 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
-/* Black and hot pink. Neutral untinted greys on near black, one hot pink
+/* Black and muted pink. Neutral untinted greys on near black, one dusty pink
    accent for actions and the selected flight, green for pass, red for fail.
    The pink sits at hue 355 and the red at hue 35, so fail never reads as the
    accent. Caution is neutral grey with an icon. The site always runs dark (see
@@ -111,13 +112,13 @@
   --card-foreground: oklch(0.96 0 0);
   --popover: oklch(0.18 0 0);
   --popover-foreground: oklch(0.96 0 0);
-  --primary: oklch(0.7 0.24 355);
+  --primary: oklch(0.68 0.13 355);
   --primary-foreground: oklch(0.14 0.03 355);
   --secondary: oklch(0.21 0 0);
   --secondary-foreground: oklch(0.96 0 0);
   --muted: oklch(0.2 0 0);
   --muted-foreground: oklch(0.72 0 0);
-  --accent: oklch(0.22 0.02 355);
+  --accent: oklch(0.22 0.012 355);
   --accent-foreground: oklch(0.96 0 0);
   --destructive: oklch(0.7 0.19 35);
   --destructive-soft: oklch(0.7 0.19 35 / 14%);
@@ -126,11 +127,11 @@
   --warning: oklch(0.8 0 0);
   --warning-soft: oklch(1 0 0 / 7%);
   /* Pale pink: weather and late aircraft differ by lightness, not hue. */
-  --info: oklch(0.86 0.07 355);
-  --info-soft: oklch(0.86 0.07 355 / 14%);
+  --info: oklch(0.85 0.045 355);
+  --info-soft: oklch(0.85 0.045 355 / 14%);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 14%);
-  --ring: oklch(0.7 0.24 355);
+  --ring: oklch(0.68 0.13 355);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.6 0 0);
   --chart-3: oklch(0.48 0 0);
@@ -138,14 +139,16 @@
   --chart-5: oklch(0.3 0 0);
   --sidebar: oklch(0.14 0 0);
   --sidebar-foreground: oklch(0.96 0 0);
-  --sidebar-primary: oklch(0.7 0.24 355);
+  --sidebar-primary: oklch(0.68 0.13 355);
   --sidebar-primary-foreground: oklch(0.14 0.03 355);
-  --sidebar-accent: oklch(0.22 0.02 355);
+  --sidebar-accent: oklch(0.22 0.012 355);
   --sidebar-accent-foreground: oklch(0.96 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.7 0.24 355);
+  --sidebar-ring: oklch(0.68 0.13 355);
   /* The selected flight shares the accent, so there is one highlight colour. */
-  --beacon: oklch(0.7 0.24 355);
+  --beacon: oklch(0.68 0.13 355);
+  /* The original hot pink, kept for the globe, its orbiting planes and the logo. */
+  --beacon-bright: oklch(0.7 0.24 355);
 }
 
 @layer base {

@@ -29,7 +29,7 @@ import { cn } from "@/lib/utils";
 const NIGHT = "#0a0a0a";
 const LAND = "#191919";
 const BORDER = "rgba(190, 190, 190, 0.16)";
-const BEACON = "#ff3d9e";
+const BEACON = "#cd7a9b";
 const ROUTE_DIM = "rgba(190, 190, 190, 0.28)";
 
 const STYLE = {
