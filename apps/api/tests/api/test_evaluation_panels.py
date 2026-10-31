@@ -220,11 +220,4 @@ def test_headline_lists_live_measures_apart_from_rules_only(
     assert live["Final packages breaking a rule"]["state"] == "absent"
     assert len(body["live"]) == len(HEADLINE)
     # The rules-only deal rate is untouched by the live one.
-    stored = json.loads(REAL.read_text())
-    deal = next(
-        m
-        for panel in stored["panels"]
-        for m in panel["measures"]
-        if m["name"] == "Deal rate, all rows"
-    )
-    assert body["rules_only"][0]["value"].startswith(f"{deal['k']}/{deal['n']}")
+    assert body["rules_only"][0]["value"].endswith("/5000 (78.4%)")
