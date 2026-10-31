@@ -117,7 +117,7 @@ The crew-duty and gate-notice rules measured time across a time-zone difference.
 
 ## 26. Why can the live run differ from the recording?
 
-A live run asks the model again. Recorded replays what it answered once. In the one live test we measured on WN4832 (n=1), the counts were ATC 4 then 12, Pilot 8 then 8, Ground 7 then 7, and the plan was gate G2, runway R3, hold, landing 21:15. The recording has Ground 7 then 12 and gate G1. We make no claim about how often they differ. In both, code decides what is legal, and Live is available only when the API is started with `ALLOW_LIVE=1`.
+The demo runs on Live, and falls back to the saved run if the call does not come back. A live run asks the model again. Recorded replays what it answered once. In the one live test we measured on WN4832 (n=1), the counts were ATC 4 then 12, Pilot 8 then 8, Ground 7 then 7, and the plan was gate G2, runway R3, hold, landing 21:15. The recording has Ground 7 then 12 and gate G1. We make no claim about how often they differ. In both, code decides what is legal, and Live is available only when the API is started with `ALLOW_LIVE=1`.
 
 ---
 
