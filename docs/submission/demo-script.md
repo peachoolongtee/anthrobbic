@@ -1,8 +1,8 @@
-# Demo script: 3 minutes, five beats, new dashboard design
+# Demo script: 3 minutes, five beats and a live moment, new dashboard design
 
-Autonomous SG 2026, Airbus track, Challenge 2. Read aloud at 150 words a minute. The spoken text is 344 words in total (about 138 seconds of speech), which leaves about 42 seconds for the clicks. Each beat has its own word budget in its heading. Rehearse once with a timer.
+Autonomous SG 2026, Airbus track, Challenge 2. Read aloud at 150 words a minute. The spoken text is 315 words in total (about 126 seconds of speech), which leaves about 54 seconds for the clicks and the wait for the live run, which you speak over. Each beat has its own word budget in its heading. Rehearse once with a timer.
 
-Every click and screen text below was checked on the integrated design at 1280x720, on the real API with the real dataset, the saved WN4832 answers, and every non-local request aborted. The results are at the end.
+Every click and screen text below was checked on the integrated design at 1280x720, on the real API with the real dataset, the saved WN4832 answers, and every non-local request aborted, apart from the live moment, which needs the network. The results are at the end.
 
 ## Marks used in this file
 
@@ -13,7 +13,7 @@ Every click and screen text below was checked on the integrated design at 1280x7
 Follow `runbook.md` first. Then:
 
 1. The intro (a plane crossing the screen) plays once per browser tab. Open `http://localhost:3000` in the tab you will use, click anywhere to skip it, and leave the tab open on the overview. Landing and intro are not part of the 3 minutes.
-2. The flights page opens in **Recorded** when the flight has saved answers, and in **Model off** when it has none. Never use **Live** on stage. Restart the API before each rehearsal: a used approval is refused until then.
+2. The flights page opens in **Recorded** when the flight has saved answers, and in **Model off** when it has none. Use **Live** only in the last part of the talk. Restart the API before each rehearsal: a used approval is refused until then.
 3. Know where WN4832 is. In the overview's **Arrivals** list (scroll down past the globe), look for the row "DCA → MDW" with "WN4832" under it. The list holds 12 flights, those with saved answers first, then by scheduled arrival. If it is not there, on the flights page type WN4832 in **Search** in the left panel. The first load after an API restart takes several seconds, so open the overview once before you go on.
 
 ## Beat 1. The user (0:00 to 0:20). Budget 50 words, spoken text 42
@@ -26,7 +26,7 @@ Follow `runbook.md` first. Then:
 
 > A flight is late. Today a duty manager phones air traffic control, the crew and the ramp, one by one, while the delay spreads. These are delayed arrivals from the real 2015 US record. I pick WN4832, Washington National to Chicago Midway.
 
-## Beat 2. The negotiation (0:20 to 1:20). Budget 150 words, spoken text 100 (fallback wording 46)
+## Beat 2. The negotiation (0:20 to 1:00). Budget 100 words, spoken text 75 (fallback wording 46)
 
 **Screen:** the flights page. Flights list on the left, the map in the middle, the plan and sign-off on the right. Across the top of the map is the agent strip with ATC, Pilot and Ground, each with a count per turn.
 
@@ -36,23 +36,22 @@ Follow `runbook.md` first. Then:
 2. At the bottom, click **Negotiation** (in the bar with Plan, Negotiation, Log, Evidence).
 3. The drawer opens on the outcome and the turns. Point at **Turn 1**, the three columns ATC, Pilot, Ground, each "Would accept N plans", and the dashed note marked **Unverified**. Then scroll to **Turn 2** and point at ATC's and Ground's "Withdrew its objection to" and the notes beside them.
 4. Click the **X** (Close) at the top right of the drawer.
-5. Point at the right panel: "Agents agreed", "Passes the rules checked", "2 turns".
 
 The view shows each agent's accepted count, reasons in plain words, objections withdrawn, and the model's own note, labelled **Unverified**. The private synthetic notes themselves are not shown: the words "no direct" and "R3" on screen are the model's, in its note. Say only what the screen shows. WN4832 is a saved two-turn case and not the usual one: in the first frozen run all 14 agreed on turn 1 (beat 5). Do not call withdrawal typical.
 
 **Say**:
 
-> Three agents negotiate: ATC, the pilot and the ground crew. Code first removes every plan that breaks a rule. The agents choose only among what is left. Each reads a short note about its own side. Those notes are synthetic, written by our generator.
+> Three agents negotiate: ATC, the pilot and the ground crew. Code first removes every plan that breaks a rule. Each agent reads a synthetic note about its own side.
 >
-> Turn one: no shared plan. The pilot's firm note says no direct routing. ATC's soft note says avoid runway R3. They conflict.
+> Turn one: no shared plan. The pilot's firm note says no direct routing. ATC's soft note says avoid runway R3.
 >
-> Turn two: the prompt invites each agent to withdraw soft objections, so this is not persuasion. ATC and Ground withdraw theirs. The pilot holds. A shared plan appears. Code still decides what is legal.
+> Turn two: the prompt invites them to withdraw soft objections, so this is not persuasion. ATC and Ground withdraw. The pilot holds. A shared plan appears.
 
 **If the screen says "Rule-based fallback".** The saved answers did not load, the right panel lists "No recording: ATC, Pilot, Ground", and the agent strip shows × for each agent. Say this instead, and say nothing about agents agreeing:
 
 > Three agents are meant to negotiate here. This time they did not: the saved model answers did not load. The rules alone chose this plan, and the screen says so. Code removes every illegal plan first, so even a fallback plan has passed every rule.
 
-## Beat 3. The trust (1:20 to 2:00). Budget 100 words, spoken text 76
+## Beat 3. The trust (1:00 to 1:35). Budget 87 words, spoken text 50
 
 **Click, in order:**
 
@@ -60,17 +59,17 @@ The view shows each agent's accepted count, reasons in plain words, objections w
 2. Click the **Try to break it** heading to open the card, which stays open for the rest of the talk. Click **Late change**. This blocks the plan's gate on the server while the screen keeps the old plan.
 3. In the **Sign off** panel, the two boxes sit directly above **Approve**, with no scrolling. Tick **I approve these decisions** and **Send these requests**, then click **Approve**.
 4. A red alert appears: "This plan is out of date. Sign-off refused: the airport changed after you looked." In the Sign off panel the refusal reads "Refused: the airport changed after you looked", and it names "Gate occupancy".
-5. In the **Try to break it** card, click **Tamper log**. It opens the **Log** view. Point at "Tampered copy: detected" and "First bad entry". If you have time, point at "The log checks out." for the real log. Click the **X** to close the drawer.
+5. In the **Try to break it** card, click **Tamper log**. It opens the **Log** view. Point at "Tampered copy: detected" and "First bad entry". Click the **X** to close the drawer.
 
 **Say:**
 
-> Every field is marked real, derived or synthetic. Fuel, runways and gates are synthetic, and we say so.
+> Every field is marked real, derived or synthetic.
 >
 > I block this plan's gate after the manager looked, then approve. Sign-off runs every rule again on the current airport, and refuses. Nothing is issued.
 >
-> Every message goes into a hash-chained log. I edit a copy: caught, with the first bad entry. A chain alone cannot catch a full rewrite, so its head is recorded on the sign-off.
+> Every message goes into a hash-chained log. I edit a copy: caught, with the first bad entry.
 
-## Beat 4. The failure (2:00 to 2:30). Budget 75 words, spoken text 54
+## Beat 4. The failure (1:35 to 2:05). Budget 75 words, spoken text 54
 
 **Click, in order:**
 
@@ -83,13 +82,36 @@ The view shows each agent's accepted count, reasons in plain words, objections w
 
 > Now I close every runway. The system does not guess. It says no legal recovery plan, names the rules that block every plan, and shows the closest one. This is a no-go. No-go means no plan was cleared and a person decides. It does not mean the flight should not land. Nothing was approved.
 
-## Beat 5. The numbers (2:30 to 3:00). Budget 75 words, spoken text 72
+## Beat 5. The numbers (2:05 to 2:38). Budget 82 words, spoken text 72
 
 **Click:** the **Evidence** tab at the bottom. It opens on the numbers, with no scrolling: **Rules only** on the left, **With the model: tuned and unseen flights** on the right, each set with its class, commit, mode and seed. Point at those for the 3150 and the 0. The 14, the turn count and the 9 of 14 are in **Full results: with the model**, further down; scroll there only if asked. "Where we differ from the challenge workbook" and the limits are closed sections under them, then the full tables. The tab reads the evaluation through the API, so check that it shows the same commit as the file.
 
 **Say:**
 
 > Rules only, 5000 flights, model off. First-come-first-served broke a rule on 3150 of 5000. Our final plans: 0 of 3919. A rule of thumb that checks the rules also breaks none, so the gate does the safety work. Live, 20 unseen flights: 14 reached the agents, all 14 agreed on turn 1, and 9 of 14 cost more than the fallback. Agents are not shown to beat the rules. Simulated, not savings.
+
+## The live moment (2:38 to 3:00). Budget 55 words, spoken text 22
+
+**Skip it if** the clock is past 2:40, or there is no network, or the API was not started for Live (`runbook.md`). The talk then ends on "Simulated, not savings."
+
+**Click, in order:**
+
+1. Click the **X** to close the Evidence drawer.
+2. Click **Reset every change** (the circular arrow at the top of the **Try to break it** card). Otherwise the closed runways give a no-go and no agents run.
+3. With WN4832 still selected, click **Live** at the top right. It takes about 15 to 20 seconds. Speak while it runs.
+4. Point at the agent strip and the outcome on the right panel. Read them from the screen. They may not match the saved run, so never state them in advance.
+
+**Do not approve the live plan.** Do nothing else in Live: each new flight or airport change can use up to 6 more model calls.
+
+**Say:**
+
+> That was a saved run. This one is live, right now, so the numbers may differ. Code still decides what is legal.
+
+**If it comes back as "Rule-based fallback" with faults,** add:
+
+> The screen shows the model did not answer, so code decided.
+
+**If Live is refused,** click **Recorded** and say nothing about a live result.
 
 ## Where the spoken numbers come from
 
@@ -142,6 +164,8 @@ Also read these before the talk, because judges ask: "NO_GO NOTHING_LEGAL rate, 
 | C16 | No-go wording | Corrected above |
 | C17 | **I've taken this case** | Present, and two-step **Reject plan** too |
 | C18 | Evidence opens on the headline numbers with commit, mode and seed, then the rows | Yes; re-read the values before the talk |
+| C19 | In Live, the flight cards drop the "Recorded" tag, and it returns in Recorded | Yes, on a faked Live response, with no model call |
+| C20 | Live on WN4832 from the dashboard | Run once by the coordinator: 6 calls, 2 turns, 0 faults. Not rerun for this check |
 
 ## If something goes wrong on stage
 
