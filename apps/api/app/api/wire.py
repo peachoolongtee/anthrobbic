@@ -89,9 +89,18 @@ class RuleResult(FrozenModel):
     cause: Literal["constraint", "missing_data"] | None
 
 
+class DeclinedView(FrozenModel):
+    # The one package name, and the coarse public reason. No private value.
+    package: str
+    reason: str
+
+
 class TurnResponse(FrozenModel):
     domain: Domain
     acceptable_count: int
+    # Package names, so a viewer can see what moved between turns.
+    accepted: tuple[str, ...]
+    declined: tuple[DeclinedView, ...]
     ranking_summary: str
     # The agent's own codes, unverified. `card.py` has no templates for them.
     reason_codes: tuple[str, ...]

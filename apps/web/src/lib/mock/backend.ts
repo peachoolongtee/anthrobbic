@@ -267,10 +267,10 @@ function build(
   if (noGo) path = "no_go";
   else if (modelOff || timedOut) path = "fallback";
 
-  if (!noGo && modelOff) {
+  if (modelOff) {
     faults.push({
       kind: "model_off",
-      message: "The model is switched off, so the agents did not negotiate. The rule-based fallback chose the plan.",
+      message: "The model is switched off, so the agents did not run.",
     });
   }
   if (timedOut) {

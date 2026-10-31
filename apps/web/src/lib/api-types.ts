@@ -65,6 +65,10 @@ export interface PackageRef {
 export interface TurnResponse {
   domain: Domain;
   acceptable_count: number;
+  /** (addition) Plan names, so what moved between turns can be shown. */
+  accepted?: string[];
+  /** (addition) What it declined, with the general reason it shared. */
+  declined?: { package: string; reason: string }[];
   ranking_summary: string;
   /** The agent's own reason codes. Unverified. */
   reason_codes: string[];
@@ -171,6 +175,11 @@ export interface Card {
 export interface ModelNote {
   domain: Domain;
   text: string;
+  /** (addition) The turn it was written on. */
+  turn?: number;
+  /** (addition) Always true: the rules never read these. */
+  unverified?: boolean;
+  label?: string;
 }
 
 export type FaultKind =

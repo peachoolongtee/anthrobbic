@@ -10,7 +10,7 @@ const COPY = {
     iconTone: "text-destructive",
     title: "No legal recovery plan",
     kind: "No-go: nothing is legal",
-    lead: "Every possible plan breaks at least one rule. This is a real constraint, not a fault. The system is working as designed: it will not offer an unsafe plan.",
+    lead: "Every possible plan breaks at least one rule. This is a real constraint, not a fault. No recovery plan passes the rules checked, so none is offered.",
     next: "Decide with air traffic control, the crew and the ramp. The closest plan below shows what would have to change.",
   },
   SYSTEM_FAULT: {

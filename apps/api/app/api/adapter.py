@@ -17,6 +17,7 @@ from app.api.wire import (
     DealPackage,
     DealView,
     DeclinedReason,
+    DeclinedView,
     Evaluation,
     EvaluationReference,
     ExportedEntry,
@@ -298,6 +299,16 @@ def turn_view(record: TurnRecord) -> Turn:
             TurnResponse(
                 domain=agent.domain,
                 acceptable_count=len(agent.acceptable_package_ids),
+                accepted=tuple(
+                    f"PKG-{package_id[:8]}"
+                    for package_id in agent.acceptable_package_ids
+                ),
+                declined=tuple(
+                    DeclinedView(
+                        package=f"PKG-{d.package_id[:8]}", reason=d.public_reason.value
+                    )
+                    for d in agent.public_reason_classes
+                ),
                 ranking_summary=_ranking_summary(agent.ranking),
                 reason_codes=agent.reason_codes,
                 public_reason_classes=tuple(

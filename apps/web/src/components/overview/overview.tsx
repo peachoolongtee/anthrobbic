@@ -162,7 +162,12 @@ export function Overview() {
     [flights],
   );
 
-  const sorted = flights ? [...flights].sort((a, b) => a.scheduled_arrival.localeCompare(b.scheduled_arrival)) : null;
+  // Flights with saved model answers first, then by scheduled arrival.
+  const sorted = flights
+    ? [...flights].sort(
+        (a, b) => Number(b.has_recording === true) - Number(a.has_recording === true) || a.scheduled_arrival.localeCompare(b.scheduled_arrival),
+      )
+    : null;
   const causeMax = Math.max(...CAUSES.map((c) => stats.causeMinutes[c.key]));
   const destMax = stats.topDestinations[0]?.count ?? 0;
   const routeMax = stats.topRoutes[0]?.count ?? 0;

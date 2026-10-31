@@ -31,7 +31,7 @@ export const CAUSE_LABEL: Record<Cause, string> = {
 };
 
 export const MODE_LABEL: Record<RunMode, { name: string; detail: string }> = {
-  off: { name: "Model off", detail: "Rules only. The agents do not negotiate." },
+  off: { name: "Model off", detail: "The agents do not run." },
   recorded: { name: "Recorded", detail: "Replays saved model answers. Works offline." },
   live: { name: "Live", detail: "Calls the model now." },
 };
@@ -208,6 +208,30 @@ const PUBLIC_REASON_LABEL: Record<string, string> = {
   equipment_mismatch: "Equipment does not fit",
   schedule_limit: "Schedule limit",
 };
+
+/** The agents' own reason codes, in plain words. Unknown codes are shown as received. */
+const AGENT_REASON_LABEL: Record<string, string> = {
+  no_objection: "No objection",
+  low_own_cost: "Low cost for its own side",
+  sequence_pressure: "Pressure on the arrival sequence",
+  weather_note: "A weather note",
+  runway_unsuitable: "The runway does not suit",
+  connection_risk: "Connections at risk",
+  low_fuel_burn: "Burns less fuel",
+  thin_fuel_margin: "Thin fuel margin",
+  crew_fatigue: "Crew fatigue",
+  crew_note: "A crew note",
+  action_unsuitable: "The flight-plan action does not suit",
+  keeps_planned_gate: "Keeps the planned gate",
+  gate_move: "Means a gate move",
+  overtime: "Ground crew overtime",
+  tight_turnaround: "Tight turnaround",
+  ramp_note: "A ramp note",
+};
+
+export function agentReasonLabel(code: string): string {
+  return AGENT_REASON_LABEL[code] ?? code;
+}
 
 export function publicReasonLabel(reason: string): string {
   return PUBLIC_REASON_LABEL[reason] ?? reason;

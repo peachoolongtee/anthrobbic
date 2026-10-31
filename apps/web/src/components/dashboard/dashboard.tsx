@@ -128,7 +128,7 @@ export function Dashboard() {
               runway inset, for framing the route. Hidden on small screens. */}
           <div ref={clearArea} aria-hidden className="pointer-events-none! absolute inset-x-0 top-14 bottom-[19rem] max-lg:hidden" />
           <div className="flex justify-center lg:absolute lg:top-3 lg:left-1/2 lg:-translate-x-1/2">
-            <AgentStrip run={running ? null : run} />
+            <AgentStrip run={running ? null : run} mode={d.mode} />
           </div>
 
           {/* Map or 3D airport */}

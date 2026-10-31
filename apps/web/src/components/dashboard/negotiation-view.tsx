@@ -1,7 +1,7 @@
 import { Ban, ShieldX } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import type { Domain, Run, Turn } from "@/lib/api-types";
-import { DOMAIN_LABEL, DOMAIN_ROLE, FAULT_LABEL, publicReasonLabel } from "@/lib/labels";
+import type { Domain, Run, Turn, TurnResponse } from "@/lib/api-types";
+import { DOMAIN_LABEL, DOMAIN_ROLE, FAULT_LABEL, agentReasonLabel, publicReasonLabel } from "@/lib/labels";
 import { EmptyPanel } from "@/components/dashboard/states";
 import { OutcomeStrip } from "@/components/dashboard/outcome-strip";
 import { RuleList } from "@/components/dashboard/rule-line";
@@ -13,7 +13,21 @@ const TURN_HINT: Record<number, string> = {
   2: "Each agent now sees which plans were removed and a general reason, with no private values.",
 };
 
-function TurnColumns({ turn, run }: { turn: Turn; run: Run }) {
+/** What an agent gave up between turns: plans it had declined and now accepts. */
+function withdrawn(previous: TurnResponse | undefined, now: TurnResponse) {
+  if (!previous || !now.accepted) return [];
+  const accepted = new Set(now.accepted);
+  return (previous.declined ?? []).filter((d) => accepted.has(d.package));
+}
+
+/** The opposite move: plans it accepted before and no longer does. */
+function dropped(previous: TurnResponse | undefined, now: TurnResponse) {
+  if (!previous?.accepted || !now.accepted) return [];
+  const accepted = new Set(now.accepted);
+  return previous.accepted.filter((p) => !accepted.has(p));
+}
+
+function TurnColumns({ turn, run, previous }: { turn: Turn; run: Run; previous?: Turn }) {
   return (
     <section aria-labelledby={`turn-${turn.turn}`} className="space-y-2">
       <div>
@@ -43,11 +57,42 @@ function TurnColumns({ turn, run }: { turn: Turn; run: Run }) {
                       <p className="text-xs font-medium">Its reasons</p>
                       <ul className="list-disc pl-4 text-muted-foreground">
                         {r.reason_codes.map((c, i) => (
-                          <li key={i}>{c}</li>
+                          <li key={i}>{agentReasonLabel(c)}</li>
                         ))}
                       </ul>
                     </div>
                   )}
+                  {withdrawn(previous?.responses.find((x) => x.domain === d), r).length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium">Withdrew its objection to</p>
+                      <ul className="list-disc pl-4 text-muted-foreground">
+                        {withdrawn(previous?.responses.find((x) => x.domain === d), r).map((w) => (
+                          <li key={w.package}>
+                            <span className="font-mono text-xs">{w.package}</span> (was: {publicReasonLabel(w.reason)})
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {dropped(previous?.responses.find((x) => x.domain === d), r).length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium">No longer accepts</p>
+                      <p className="font-mono text-xs break-words text-muted-foreground">
+                        {dropped(previous?.responses.find((x) => x.domain === d), r).join(", ")}
+                      </p>
+                    </div>
+                  )}
+                  {run.model_notes
+                    .filter((n) => n.domain === d && n.turn === turn.turn)
+                    .map((n, i) => (
+                      <div key={i} className="rounded-md border border-dashed border-warning/50 p-2">
+                        <Badge variant="outline" className="border-warning/50 text-warning">
+                          Unverified
+                        </Badge>
+                        <p className="mt-1 text-xs font-medium">The model&rsquo;s own note</p>
+                        <p className="text-muted-foreground">{n.text}</p>
+                      </div>
+                    ))}
                   {r.public_reason_classes.length > 0 && (
                     <div>
                       <p className="text-xs font-medium">Shared with the others</p>
@@ -101,11 +146,11 @@ export function NegotiationView({ run }: { run: Run }) {
       </p>
       <RemovedPlans removed={run.removed_packages} total={run.removed_total} />
       {run.turns.length === 0 ? (
-        <EmptyPanel title="The agents did not negotiate">
+        <EmptyPanel title="The agents did not run.">
           {run.faults.length > 0 ? run.faults[0].message : "No turns were recorded for this run."}
         </EmptyPanel>
       ) : (
-        run.turns.map((t) => <TurnColumns key={t.turn} turn={t} run={run} />)
+        run.turns.map((t, i) => <TurnColumns key={t.turn} turn={t} run={run} previous={run.turns[i - 1]} />)
       )}
     </div>
   );
