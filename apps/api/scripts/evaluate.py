@@ -19,6 +19,16 @@ EXIT_OK = 0
 EXIT_CONTROL_FAILED = 1
 EXIT_REFUSED = 2
 EXIT_INCOMPLETE = 3
+CREDENTIAL_VARIABLES = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
+
+
+def recording_live_client():
+    """The live model, saving every answer so the demo can replay it offline."""
+    import anthropic
+
+    from app.negotiation.recording import RecordingClient
+
+    return RecordingClient(anthropic.Anthropic(), record=True)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -104,7 +114,16 @@ def main(argv: list[str] | None = None) -> int:
         print("--sample must not be negative; seeds and workers must be positive")
         return EXIT_REFUSED
 
+    client = None
+    if args.mode == ev.MODE_LIVE:
+        # A run without a key would use up a frozen run on faults, so refuse first.
+        if not any(os.environ.get(name) for name in CREDENTIAL_VARIABLES):
+            print("REFUSED: no model credential in the environment")
+            return EXIT_REFUSED
+        client = recording_live_client()
+
     request = ev.RunRequest(
+        client=client,
         mode=args.mode,
         sample=args.sample,
         seed=args.seed,

@@ -29,6 +29,7 @@ from app.negotiation.contracts import (
 )
 from app.negotiation.fallback import decide
 from app.negotiation.options import PackageBoundError, enumerate_packages
+from app.negotiation.recording import RecordingClient
 from app.negotiation.rules import check_package
 from app.negotiation.utility import CostWeights, weight_sensitivity
 from tests.negotiation.factories import random_scenario
@@ -1567,6 +1568,7 @@ def test_the_command_refuses_live_without_confirmation_and_prints_the_plan(
 ) -> None:
     fake = FakeProtocol()
     monkeypatch.setattr(ev, "load_backends", lambda: fake_backends(fake))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-value")
     code = evaluate_command.main(
         ["--mode", "live", "--split", "frozen", "--results-dir", str(tmp_path)]
     )
@@ -1583,6 +1585,7 @@ def test_the_command_runs_live_only_with_a_covering_confirmation(
 ) -> None:
     fake = FakeProtocol()
     monkeypatch.setattr(ev, "load_backends", lambda: fake_backends(fake))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-value")
     base = ["--mode", "live", "--split", "tune", "--results-dir", str(tmp_path)]
     base += ["--workers", "1", "--synthetic-seeds", "1", "--generator-rows", "0"]
     code = evaluate_command.main([*base, "--confirm-live-calls", "59"])
@@ -1592,6 +1595,46 @@ def test_the_command_runs_live_only_with_a_covering_confirmation(
     assert code == evaluate_command.EXIT_OK
     assert fake.modes["live"] == 10
     assert "Planned live calls: 60" in capsys.readouterr().out
+
+
+def test_the_command_refuses_a_live_run_with_no_credential(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = FakeProtocol()
+    monkeypatch.setattr(ev, "load_backends", lambda: fake_backends(fake))
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    code = evaluate_command.main(
+        ["--mode", "live", "--split", "tune", "--confirm-live-calls", "60"]
+        + ["--results-dir", str(tmp_path)]
+    )
+    assert code == evaluate_command.EXIT_REFUSED
+    assert not fake.modes["live"]
+    assert not list(tmp_path.iterdir())
+
+
+def test_a_live_run_saves_every_answer_for_replay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = FakeProtocol()
+    monkeypatch.setattr(ev, "load_backends", lambda: fake_backends(fake))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-value")
+    seen: list[ev.RunRequest] = []
+    real_run = ev.run_evaluation
+
+    def spy(request: ev.RunRequest, backends: ev.Backends) -> object:
+        seen.append(request)
+        return real_run(request, backends)
+
+    monkeypatch.setattr(ev, "run_evaluation", spy)
+    code = evaluate_command.main(
+        ["--mode", "live", "--split", "tune", "--confirm-live-calls", "60"]
+        + ["--results-dir", str(tmp_path), "--workers", "1"]
+        + ["--synthetic-seeds", "1", "--generator-rows", "0"]
+    )
+    assert code == evaluate_command.EXIT_OK
+    assert isinstance(seen[0].client, RecordingClient)
+    assert seen[0].client._record is True
 
 
 def test_the_command_prints_the_live_schedule_and_spends_nothing(
