@@ -59,7 +59,7 @@ The new dashboard has two pages: the overview at `/` and the flights page at `/d
 6. Do the wifi-off check (see below), then turn wifi back on or leave it off, as you plan to present.
 7. Click one flight and wait for the map, so the flights page and its map have loaded once. Then return to the overview and stay there.
 
-The web app talks to the API at `http://localhost:8000` unless `NEXT_PUBLIC_API_URL` says otherwise. The web build can also run on invented data with `NEXT_PUBLIC_API_MODE=mock`. The page then shows a "Sample data" tag in the top bar and says run outcomes are invented. Never use mock mode on stage.
+The web app talks to the API at `http://localhost:8000` unless `NEXT_PUBLIC_API_URL` says otherwise. The web build can also run on invented data with `NEXT_PUBLIC_API_MODE=mock`. The page then shows a "Mock sample data" tag in the top bar and says run outcomes are invented. Never use mock mode on stage.
 
 ## Skip the intro
 
