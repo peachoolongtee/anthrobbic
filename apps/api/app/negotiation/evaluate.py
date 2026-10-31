@@ -963,6 +963,8 @@ class InjectedCase:
 
     With `decision_stage`, the package is also the cheapest of all, so disabling
     its rule makes the decision pick it. That proves the rule changes outcomes.
+    `gate_only` marks a rule the enumeration can never offer a breach of, so the
+    gate is the only place it can act, and the decision path has nothing to show.
     """
 
     case_id: str
@@ -970,6 +972,7 @@ class InjectedCase:
     scenario: Scenario
     unsafe: Package
     decision_stage: bool = True
+    gate_only: bool = False
 
 
 def injected_cases() -> tuple[InjectedCase, ...]:
@@ -990,7 +993,34 @@ def injected_cases() -> tuple[InjectedCase, ...]:
             time_min=99,
         ),
     )
+    # Once the slot-window rule exists, a slot before the window breaks it too, so
+    # the fuel rule's negative-delay branch can no longer be isolated.
+    slot_rule = "ATC-SLOT-WINDOW"
+    has_slot_rule = slot_rule in rules_registry.rule_ids()
+    slot_cases = (
+        (
+            InjectedCase(
+                "slot_off_the_grid",
+                slot_rule,
+                control_scenario(),
+                _pkg(time_min=103, action=FlightPlanAction.HOLD),
+                decision_stage=False,
+                gate_only=True,
+            ),
+        )
+        if has_slot_rule
+        else (
+            InjectedCase(
+                "slot_before_earliest",
+                "PLT-FUEL-POLICY",
+                control_scenario(),
+                _pkg(time_min=95),
+                decision_stage=False,
+            ),
+        )
+    )
     return (
+        *slot_cases,
         InjectedCase(
             "wake_spacing_1_min",
             "ATC-WAKE-SEP",
@@ -1066,13 +1096,6 @@ def injected_cases() -> tuple[InjectedCase, ...]:
             decision_stage=False,
         ),
         InjectedCase(
-            "slot_before_earliest",
-            "PLT-FUEL-POLICY",
-            control_scenario(),
-            _pkg(time_min=95),
-            decision_stage=False,
-        ),
-        InjectedCase(
             "direct_cannot_absorb_delay",
             "PLT-FUEL-POLICY",
             control_scenario(),
@@ -1112,6 +1135,7 @@ class CaseResult:
     isolated: bool
     passes_gate_when_disabled: bool
     decision_stage_ran: bool
+    gate_only: bool
     decision_avoids_unsafe_intact: bool
     decision_picks_unsafe_when_disabled: bool
     harm_covers: bool
@@ -1167,6 +1191,7 @@ def run_injected_case(case: InjectedCase) -> CaseResult:
         isolated=intact == {case.rule_id},
         passes_gate_when_disabled=passes,
         decision_stage_ran=case.decision_stage,
+        gate_only=case.gate_only,
         decision_avoids_unsafe_intact=intact_choice != case.unsafe,
         decision_picks_unsafe_when_disabled=mutated_choice == case.unsafe,
         harm_covers=_harm_covers(case),
@@ -1178,11 +1203,12 @@ def run_injected_case(case: InjectedCase) -> CaseResult:
 def rule_control_statuses(
     results: Sequence[CaseResult], rule_ids: Iterable[str]
 ) -> dict[str, ControlStatus]:
-    """A rule is defended only if it has a case that ran the decision path."""
+    """A rule is defended only if a case ran the decision path, or it can only act
+    at the gate and a case proved that."""
     statuses: dict[str, ControlStatus] = {}
     for rule_id in rule_ids:
         mine = [r for r in results if r.rule_id == rule_id]
-        if not mine or not any(r.decision_stage_ran for r in mine):
+        if not mine or not any(r.decision_stage_ran or r.gate_only for r in mine):
             statuses[rule_id] = ControlStatus.NOT_REACHED
         elif all(r.defended for r in mine):
             statuses[rule_id] = ControlStatus.DEFENDED

@@ -30,7 +30,7 @@ from app.negotiation.contracts import (
 from app.negotiation.fallback import decide
 from app.negotiation.options import PackageBoundError, enumerate_packages
 from app.negotiation.rules import check_package
-from app.negotiation.utility import weight_sensitivity
+from app.negotiation.utility import CostWeights, weight_sensitivity
 from tests.negotiation.factories import random_scenario
 
 _COMMAND_PATH = Path(__file__).parents[2] / "scripts" / "evaluate.py"
@@ -345,6 +345,15 @@ def test_a_case_masked_by_a_second_rule_is_a_blind_spot() -> None:
     assert statuses == {"ATC-RWY-CLOSED": ev.ControlStatus.BLIND_SPOT}
 
 
+def test_a_rule_only_the_gate_can_see_is_defended_at_the_gate() -> None:
+    base = next(c for c in ev.injected_cases() if c.rule_id == "GND-GATE-SIZE")
+    gate_only = ev.run_injected_case(
+        replace(base, decision_stage=False, gate_only=True)
+    )
+    statuses = ev.rule_control_statuses([gate_only], ["GND-GATE-SIZE"])
+    assert statuses == {"GND-GATE-SIZE": ev.ControlStatus.DEFENDED}
+
+
 def test_a_case_that_never_ran_the_decision_is_not_reached() -> None:
     base = next(c for c in ev.injected_cases() if c.rule_id == "GND-GATE-SIZE")
     gate_only = ev.run_injected_case(replace(base, decision_stage=False))
@@ -480,7 +489,7 @@ def test_weight_sensitivity_can_fire() -> None:
 
 def test_alternate_weights_scale_each_weight_both_ways() -> None:
     variants = ev.alternate_weights()
-    assert len(variants) == 20
+    assert len(variants) == 4 * len(CostWeights.model_fields)
     assert variants["per_gate_move x10"].per_gate_move == 500
     assert variants["fuel_per_kg /10"].fuel_per_kg == 1  # floored, never zero
 
@@ -1066,7 +1075,7 @@ def test_mode_off_reports_the_plan_measures(tmp_path: Path) -> None:
 
 def test_real_delay_is_context_only_and_split_by_inbound_data(tmp_path: Path) -> None:
     report = ev.run_evaluation(
-        _request(tmp_path, sample=24, synthetic_seeds=1), fake_backends()
+        _request(tmp_path, sample=80, synthetic_seeds=1), fake_backends()
     )
     measures = [m for p in report.panels for m in p.measures]
     context = [m for m in measures if m.name.startswith("Context:")]
