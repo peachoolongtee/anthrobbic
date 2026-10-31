@@ -8,78 +8,86 @@ export interface MockScenario {
   fallbackFault?: boolean;
 }
 
+/**
+ * The demo flights are real rows of data/flight-delays/flights.csv (2015 US
+ * DOT records): airline, flight number, route, scheduled arrival, cause and
+ * arrival delay are copied from the row (real). The next leg is derived from
+ * the same file: the aircraft's next flight that day, with its departure delay.
+ * Rows: DL 986 2015-02-22, AA 90 2015-01-02, AS 687 2015-01-03,
+ * WN 489 2015-01-06, B6 518 2015-01-09, NK 612 2015-01-13.
+ */
 export const MOCK_SCENARIOS: MockScenario[] = [
   {
     summary: {
       scenario_id: "mock-001",
-      flight_id: "DL 2217",
+      flight_id: "DL 986",
       route: "ATL to LGA",
-      scheduled_arrival: "14:35",
+      scheduled_arrival: "09:54",
       cause: "weather",
-      delay_provenance: "synthetic",
-      delay_minutes: 62,
-      next_leg: { flight_id: "DL 2218", route: "LGA to ATL", scheduled_departure: "16:10", delay_minutes: 41, provenance: "synthetic" },
+      delay_provenance: "real",
+      delay_minutes: 26,
+      next_leg: { flight_id: "DL 2077", route: "LGA to MCO", scheduled_departure: "16:30", delay_minutes: 30, provenance: "derived" },
     },
   },
   {
     summary: {
       scenario_id: "mock-002",
-      flight_id: "AA 903",
+      flight_id: "AA 90",
       route: "DFW to ORD",
-      scheduled_arrival: "13:10",
+      scheduled_arrival: "08:05",
       cause: "late_aircraft",
-      delay_provenance: "synthetic",
-      delay_minutes: 38,
-      next_leg: { flight_id: "AA 904", route: "ORD to DFW", scheduled_departure: "14:30", delay_minutes: 21, provenance: "synthetic" },
+      delay_provenance: "real",
+      delay_minutes: 88,
+      next_leg: { flight_id: "AA 1538", route: "ORD to TUS", scheduled_departure: "09:40", delay_minutes: 45, provenance: "derived" },
     },
   },
   {
     summary: {
       scenario_id: "mock-003",
-      flight_id: "UA 512",
+      flight_id: "AS 687",
       route: "DEN to SEA",
-      scheduled_arrival: "17:45",
+      scheduled_arrival: "20:01",
       cause: "weather",
-      delay_provenance: "synthetic",
-      delay_minutes: 47,
-      next_leg: { flight_id: "UA 513", route: "SEA to DEN", scheduled_departure: "19:05", delay_minutes: 30, provenance: "synthetic" },
+      delay_provenance: "real",
+      delay_minutes: 45,
+      next_leg: { flight_id: "AS 534", route: "SEA to ONT", scheduled_departure: "20:55", delay_minutes: 58, provenance: "derived" },
     },
     fallbackFault: true,
   },
   {
     summary: {
       scenario_id: "mock-004",
-      flight_id: "WN 3340",
+      flight_id: "WN 489",
       route: "MDW to BNA",
-      scheduled_arrival: "11:20",
+      scheduled_arrival: "14:50",
       cause: "late_aircraft",
-      delay_provenance: "synthetic",
-      delay_minutes: 26,
-      next_leg: null,
+      delay_provenance: "real",
+      delay_minutes: 32,
+      next_leg: { flight_id: "WN 2300", route: "BNA to MDW", scheduled_departure: "15:20", delay_minutes: 49, provenance: "derived" },
     },
   },
   {
     summary: {
       scenario_id: "mock-005",
-      flight_id: "B6 615",
+      flight_id: "B6 518",
       route: "JFK to BOS",
-      scheduled_arrival: "09:55",
+      scheduled_arrival: "11:33",
       cause: "weather",
-      delay_provenance: "synthetic",
-      delay_minutes: 74,
-      next_leg: { flight_id: "B6 616", route: "BOS to JFK", scheduled_departure: "10:50", delay_minutes: 58, provenance: "synthetic" },
+      delay_provenance: "real",
+      delay_minutes: 62,
+      next_leg: { flight_id: "B6 117", route: "BOS to JFK", scheduled_departure: "12:10", delay_minutes: 57, provenance: "derived" },
     },
   },
   {
     summary: {
       scenario_id: "mock-006",
-      flight_id: "NK 221",
+      flight_id: "NK 612",
       route: "LAS to MSP",
-      scheduled_arrival: "20:15",
+      scheduled_arrival: "05:26",
       cause: "late_aircraft",
-      delay_provenance: "synthetic",
-      delay_minutes: 33,
-      next_leg: { flight_id: "NK 222", route: "MSP to LAS", scheduled_departure: "21:30", delay_minutes: 19, provenance: "synthetic" },
+      delay_provenance: "real",
+      delay_minutes: 83,
+      next_leg: { flight_id: "NK 612", route: "MSP to ORD", scheduled_departure: "06:17", delay_minutes: 78, provenance: "derived" },
     },
     systemFault: true,
   },

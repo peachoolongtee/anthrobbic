@@ -102,12 +102,15 @@ export function useDashboard() {
         .then((data) => {
           setScenarios({ status: "ready", data });
           if (selectedRef.current === null && data.length > 0) {
-            selectedRef.current = data[0].scenario_id;
-            setSelectedId(data[0].scenario_id);
+            // A flight picked on the home page arrives as ?flight=<scenario_id>.
+            const linked = new URLSearchParams(window.location.search).get("flight");
+            const flight = data.find((row) => row.scenario_id === linked) ?? data[0];
+            selectedRef.current = flight.scenario_id;
+            setSelectedId(flight.scenario_id);
             // Open on replay only when this row has saved answers to replay.
-            const first: RunMode = data[0].has_recording === false ? "off" : "recorded";
+            const first: RunMode = flight.has_recording === false ? "off" : "recorded";
             setModeState(first);
-            void startRun(data[0].scenario_id, first, {});
+            void startRun(flight.scenario_id, first, {});
           }
         })
         .catch((err: unknown) => {

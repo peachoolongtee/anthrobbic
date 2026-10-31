@@ -329,7 +329,7 @@ function build(
     const next = sc.summary.next_leg;
     const facts: Fact[] = [
       { key: "arrival", label: "Arrival time", value: clock(arrive), provenance: "derived" },
-      { key: "scheduled", label: "Scheduled arrival", value: sc.summary.scheduled_arrival, provenance: "synthetic" },
+      { key: "scheduled", label: "Scheduled arrival", value: sc.summary.scheduled_arrival, provenance: "real" },
       { key: "runway", label: "Runway", value: rwy, provenance: "synthetic" },
       { key: "gate", label: "Gate", value: gate, provenance: "synthetic" },
       { key: "handling", label: "Delay handling", value: "Hold at a fix", provenance: "derived" },
