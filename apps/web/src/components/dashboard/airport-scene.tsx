@@ -6,14 +6,15 @@ import { Html, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import type { Run, RunOverrides } from "@/lib/api-types";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
+import { landingFact } from "@/components/dashboard/plan-summary";
 
 /*
- * A 3D model of the demo airport: two parallel runways landing westbound
- * (27L, 27R), a taxiway, a terminal with three gates, and the delayed
- * aircraft flying its hold, approach and taxi to the assigned gate. Built
- * from plain shapes in code, so it needs no downloads and works offline.
- * The layout and the parked aircraft are synthetic, like the diagram, and
- * the scene says so. Select a runway or gate to close it.
+ * An illustrative 3D model of the arrival airport: the run's runways and gates,
+ * a taxiway, a terminal, and the delayed aircraft on its way to the assigned
+ * gate. It holds first only when the plan's action is a hold. Built from plain
+ * shapes in code, so it needs no downloads and works offline. The IDs and how
+ * many there are come from the run; positions are evenly spaced slots, and the
+ * scene says so. Select a runway or gate to close it.
  */
 
 const NIGHT = "#0b1222";
@@ -24,14 +25,16 @@ const BEACON = "#f5b544";
 const DANGER = "#ef5a4c";
 const HULL = "#dfe6f2";
 
-const RUNWAY_Z: Record<string, number> = { "27L": -7, "27R": 5 };
 const RUNWAY_HALF = 32;
 const TAXI_Z = 14;
-const GATE_X: Record<string, number> = { B12: -16, B14: -4, C3: 10 };
 const GATE_Z = 21;
 
-const rz = (id: string, i: number) => RUNWAY_Z[id] ?? -7 + i * 12;
-const gx = (id: string, i: number) => GATE_X[id] ?? -16 + i * 13;
+/** Evenly spaced slots between two ends, centred when there is only one. */
+function slot(i: number, count: number, from: number, to: number) {
+  return count <= 1 ? (from + to) / 2 : from + (i * (to - from)) / (count - 1);
+}
+const rz = (i: number, count: number) => slot(i, count, -12, 7);
+const gx = (i: number, count: number) => slot(i, count, -20, 14);
 
 function cursor(on: boolean) {
   document.body.style.cursor = on ? "pointer" : "";
@@ -81,11 +84,14 @@ function Airliner({ accent = HULL, glow = false }: { accent?: string; glow?: boo
 function DelayedFlight({
   runwayZ,
   gateX,
+  holds,
   label,
   moving,
 }: {
   runwayZ: number | null;
   gateX: number | null;
+  /** True only when the plan's action really is a hold. */
+  holds: boolean;
   label: React.ReactNode;
   moving: boolean;
 }) {
@@ -100,11 +106,11 @@ function DelayedFlight({
       new THREE.Vector3(8, 10, -28),
     ];
     if (runwayZ === null || gateX === null) {
-      // No recovery plan: keep holding.
-      return new THREE.CatmullRomCurve3(hold, true, "catmullrom", 0.5);
+      // No recovery plan: no path to fly, so it just waits off the field.
+      return new THREE.CatmullRomCurve3([hold[0], hold[0].clone().setX(hold[0].x + 0.01)], false, "catmullrom", 0.5);
     }
     const pts = [
-      ...hold,
+      ...(holds ? hold : []),
       new THREE.Vector3(38, 9, -20),
       new THREE.Vector3(44, 6, runwayZ - 2),
       new THREE.Vector3(40, 3.5, runwayZ),
@@ -117,7 +123,7 @@ function DelayedFlight({
       new THREE.Vector3(gateX, 0.6, GATE_Z - 3.5),
     ];
     return new THREE.CatmullRomCurve3(pts, false, "catmullrom", 0.3);
-  }, [runwayZ, gateX]);
+  }, [runwayZ, gateX, holds]);
 
   const t = useRef(0);
   const ahead = useMemo(() => new THREE.Vector3(), []);
@@ -241,7 +247,6 @@ function Gate({
   x,
   closed,
   assigned,
-  parked,
   disabled,
   onToggle,
 }: {
@@ -249,7 +254,6 @@ function Gate({
   x: number;
   closed: boolean;
   assigned: boolean;
-  parked: boolean;
   disabled: boolean;
   onToggle: () => void;
 }) {
@@ -287,11 +291,6 @@ function Gate({
         <boxGeometry args={[0.6, 0.6, 2.4]} />
         <meshStandardMaterial color="#3a4660" />
       </mesh>
-      {parked && !closed && (
-        <group position={[0, 0.6, -2]} rotation={[0, Math.PI / 2, 0]} scale={0.8}>
-          <Airliner accent="#7f8ba3" />
-        </group>
-      )}
       <Html position={[0, 0.2, 2.6]} center zIndexRange={[4, 0]}>
         <button
           type="button"
@@ -327,18 +326,19 @@ export function AirportScene({
 }) {
   const moving = !useReducedMotion();
   const closedRunways = overrides.closed_runways ?? [];
-  const closedGates = overrides.closed_gates ?? [];
-  const runways = run?.airport?.runways ?? Object.keys(RUNWAY_Z).map((id) => ({ id, closed: closedRunways.includes(id) }));
-  const gates = run?.airport?.gates ?? Object.keys(GATE_X).map((id) => ({ id, closed: closedGates.includes(id) }));
+  // No invented IDs: with no run yet, no runways or gates are drawn.
+  const runways = run?.airport?.runways ?? [];
+  const gates = run?.airport?.gates ?? [];
   const deal = run?.decision.kind === "DEAL" ? run.decision.package : null;
-  const arrival = run?.card?.action_facts.find((f) => f.key === "arrival")?.value;
+  const arrival = landingFact(run?.card)?.clock;
+  const holds = run?.card?.action_facts.find((f) => f.key === "action")?.value === "hold";
   const runwayIdx = deal ? runways.findIndex((r) => r.id === deal.runway_id) : -1;
   const gateIdx = deal ? gates.findIndex((g) => g.id === deal.gate_id) : -1;
 
   return (
     <div className="relative size-full">
       <Canvas
-        dpr={[1, 1.75]}
+        dpr={[1, 1.5]}
         shadows
         camera={{ position: [6, 70, 112], fov: 34, near: 1, far: 500 }}
         gl={{ antialias: true }}
@@ -363,8 +363,8 @@ export function AirportScene({
           <meshStandardMaterial color="#202b40" />
         </mesh>
         {[-22, 18].map((x) => (
-          <mesh key={x} position={[x, 0.04, (RUNWAY_Z["27L"] + TAXI_Z) / 2]}>
-            <boxGeometry args={[1.6, 0.06, TAXI_Z - RUNWAY_Z["27L"]]} />
+          <mesh key={x} position={[x, 0.04, (rz(0, runways.length) + TAXI_Z) / 2]}>
+            <boxGeometry args={[1.6, 0.06, TAXI_Z - rz(0, runways.length)]} />
             <meshStandardMaterial color="#202b40" />
           </mesh>
         ))}
@@ -379,10 +379,10 @@ export function AirportScene({
           <Runway
             key={r.id}
             id={r.id}
-            z={rz(r.id, i)}
+            z={rz(i, runways.length)}
             closed={r.closed}
             assigned={deal?.runway_id === r.id}
-            disabled={disabled}
+            disabled={disabled || (r.closed && !closedRunways.includes(r.id))}
             onToggle={() => onRunway(r.id)}
           />
         ))}
@@ -390,10 +390,9 @@ export function AirportScene({
           <Gate
             key={g.id}
             id={g.id}
-            x={gx(g.id, i)}
+            x={gx(i, gates.length)}
             closed={g.closed}
             assigned={deal?.gate_id === g.id}
-            parked={deal?.gate_id !== g.id && i % 2 === 1}
             disabled={disabled}
             onToggle={() => onGate(g.id)}
           />
@@ -401,8 +400,9 @@ export function AirportScene({
 
         <DelayedFlight
           key={`${deal?.runway_id}-${deal?.gate_id}`}
-          runwayZ={deal ? rz(deal.runway_id, runwayIdx) : null}
-          gateX={deal ? gx(deal.gate_id, gateIdx) : null}
+          runwayZ={deal ? rz(runwayIdx, runways.length) : null}
+          gateX={deal ? gx(gateIdx, gates.length) : null}
+          holds={holds}
           moving={moving}
           label={
             flightId && (
@@ -414,7 +414,7 @@ export function AirportScene({
                     {deal.runway_id} {arrival ? `at ${arrival}` : ""}, gate {deal.gate_id}
                   </span>
                 ) : (
-                  <span className="text-destructive"> holding, no recovery plan</span>
+                  <span className="text-destructive"> no recovery plan</span>
                 )}
               </div>
             )
@@ -431,7 +431,7 @@ export function AirportScene({
         />
       </Canvas>
       <p className="pointer-events-none absolute right-3 bottom-3 rounded bg-warning-soft px-1.5 py-0.5 text-[11px] font-medium text-warning lg:right-[24.5rem]">
-        Synthetic airport layout. Drag to turn.
+        Illustrative layout, not to scale: only the runway and gate IDs are from this run. Drag to turn.
       </p>
     </div>
   );

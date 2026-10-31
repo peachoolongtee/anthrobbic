@@ -172,6 +172,11 @@ function DecisionOutcome({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** The panel scrolls, so a step that just opened brings itself fully into view. */
+function showWhenOpened(el: HTMLElement | null) {
+  el?.scrollIntoView({ block: "end" });
+}
+
 function SignoffForm({
   run,
   card,
@@ -274,9 +279,9 @@ function SignoffForm({
       </fieldset>
 
       {/* Stays on screen while the rest of the panel scrolls. */}
-      <div className="sticky -bottom-3 space-y-1 bg-card pt-2 pb-3">
+      <div className="sticky -bottom-4 z-10 space-y-1 bg-card pt-2 pb-3">
         {confirmingReject && !decided ? (
-          <div className="space-y-2 rounded-lg border border-destructive/40 bg-destructive-soft p-2">
+          <div ref={showWhenOpened} className="space-y-2 rounded-lg border border-destructive/40 bg-destructive-soft p-2">
             <p className="text-sm font-semibold">Reject this plan? Nothing is issued, and this run cannot then be approved.</p>
             <FreeText id="reject-reason" label="Reason (optional, recorded as unverified)" value={reason} onChange={setReason} disabled={rejecting} />
             <div className="flex gap-2">

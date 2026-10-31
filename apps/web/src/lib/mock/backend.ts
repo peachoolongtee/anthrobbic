@@ -12,6 +12,8 @@ import type {
   Domain,
   Evaluation,
   Fact,
+  Headline,
+  WorkbookLimits,
   Fault,
   FinalDecision,
   LogEntry,
@@ -601,6 +603,46 @@ export const mockBackend = {
       valid: false,
       first_bad_seq: seq,
       reason: `Entry ${seq} was edited. Its hash no longer matches the hash stored in entry ${seq + 1}.`,
+    };
+  },
+
+  async getLimits(): Promise<WorkbookLimits> {
+    await wait(100);
+    return {
+      title: "Where we differ from the challenge workbook (mock: start the API for the checked list)",
+      items: [
+        {
+          id: "mock",
+          limit: "Mock sample data",
+          what_we_do: "The mock has no list of its own.",
+          why: "The real list comes from the API.",
+          checked_against: "mock",
+        },
+      ],
+    };
+  },
+
+  async getHeadline(): Promise<Headline> {
+    await wait(100);
+    const rows = MOCK_EVALUATION.rows.slice(0, 2);
+    return {
+      status: "ok",
+      rules_only: rows.map((r) => ({
+        key: r.metric,
+        label: r.metric,
+        metric: r.metric,
+        state: "measured",
+        value: String(r.value),
+        interval_text: null,
+        n: r.n,
+        evidence_class: r.evidence_class,
+        commit: r.commit,
+        mode: r.mode,
+        seed: typeof r.seed === "number" ? r.seed : null,
+        note: "Mock sample data",
+      })),
+      live: [],
+      other: [],
     };
   },
 

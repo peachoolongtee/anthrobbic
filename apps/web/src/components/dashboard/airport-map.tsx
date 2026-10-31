@@ -4,27 +4,27 @@ import type { KeyboardEvent } from "react";
 import type { Run, RunOverrides } from "@/lib/api-types";
 import { cn } from "@/lib/utils";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
+import { landingFact } from "@/components/dashboard/plan-summary";
 
 /*
  * A schematic of the arrival airport, drawn in an 800 x 520 box and cropped
  * to the runways and gates. It sits as an inset over the flight map. It is a
- * diagram, not a chart: runways 27L and 27R land westbound, so arrivals come
- * in from the right. Only the runway and gate ids come from the API;
- * positions are fixed slots for the demo airport.
+ * diagram, not a chart, and it says so: the runway and gate IDs and how many
+ * there are come from the run, and their positions are only evenly spaced slots.
  */
 
-const RUNWAY_Y: Record<string, number> = { "27L": 170, "27R": 250 };
+const RUNWAY_TOP = 165;
+const RUNWAY_BOTTOM = 280;
 const RUNWAY_X0 = 150;
 const RUNWAY_X1 = 640;
 const TAXI_Y = 320;
-const GATE_X: Record<string, number> = { B12: 270, B14: 390, C3: 530 };
+const GATE_LEFT = 190;
+const GATE_RIGHT = 610;
 const GATE_Y = 372;
 
-function fallbackY(i: number) {
-  return 170 + i * 80;
-}
-function fallbackGateX(i: number) {
-  return 270 + i * 130;
+/** Evenly spaced slots between two ends, centred when there is only one. */
+function slot(i: number, count: number, from: number, to: number) {
+  return count <= 1 ? (from + to) / 2 : from + (i * (to - from)) / (count - 1);
 }
 
 function routePath(runwayY: number, gateX: number) {
@@ -66,22 +66,28 @@ export function AirportMap({
   const moving = !useReducedMotion();
 
   const closedRunways = overrides.closed_runways ?? [];
-  const closedGates = overrides.closed_gates ?? [];
-  const runways = run?.airport?.runways ?? Object.keys(RUNWAY_Y).map((id) => ({ id, closed: closedRunways.includes(id) }));
-  const gates = run?.airport?.gates ?? Object.keys(GATE_X).map((id) => ({ id, closed: closedGates.includes(id) }));
+  // No invented IDs: with no run yet, nothing is drawn.
+  const runways = run?.airport?.runways ?? [];
+  const gates = run?.airport?.gates ?? [];
   const deal = run?.decision.kind === "DEAL" ? run.decision.package : null;
-  const arrival = run?.card?.action_facts.find((f) => f.key === "arrival")?.value;
-  const ry = (id: string, i: number) => RUNWAY_Y[id] ?? fallbackY(i);
-  const gx = (id: string, i: number) => GATE_X[id] ?? fallbackGateX(i);
-  const assignedY = deal ? ry(deal.runway_id, runways.findIndex((r) => r.id === deal.runway_id)) : null;
-  const assignedX = deal ? gx(deal.gate_id, gates.findIndex((g) => g.id === deal.gate_id)) : null;
+  const arrival = landingFact(run?.card)?.clock;
+  const ry = (i: number) => slot(i, runways.length, RUNWAY_TOP, RUNWAY_BOTTOM);
+  const gx = (i: number) => slot(i, gates.length, GATE_LEFT, GATE_RIGHT);
+  const runwayH = runways.length > 3 ? 12 : 18;
+  const gateW = gates.length > 8 ? Math.max(24, (GATE_RIGHT - GATE_LEFT) / (gates.length - 1) - 4) : 44;
+  const assignedY = deal ? ry(runways.findIndex((r) => r.id === deal.runway_id)) : null;
+  const assignedX = deal ? gx(gates.findIndex((g) => g.id === deal.gate_id)) : null;
 
   return (
+    <figure className="m-0 flex size-full flex-col">
+    <figcaption className="px-1 text-[11px] text-muted-foreground">
+      Illustrative diagram, not to scale. Runway and gate IDs are from this run; their positions are not.
+    </figcaption>
     <svg
       viewBox="130 140 610 300"
       role="group"
       aria-label="Arrival airport. Select a runway or gate to close it."
-      className="size-full select-none"
+      className="min-h-0 w-full flex-1 select-none"
     >
       <defs>
         <pattern id="closed-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
@@ -97,10 +103,10 @@ export function AirportMap({
       {/* Taxiway and exit links */}
       <g className="stroke-muted-foreground/25" fill="none" strokeWidth="6" strokeLinecap="round">
         <path d={`M${RUNWAY_X0} ${TAXI_Y} H${RUNWAY_X1}`} />
-        <path d={`M282 ${RUNWAY_Y["27L"]} V${TAXI_Y}`} />
-        <path d={`M470 ${RUNWAY_Y["27L"]} V${TAXI_Y}`} />
+        {runways.length > 0 && <path d={`M282 ${ry(0)} V${TAXI_Y}`} />}
+        {runways.length > 0 && <path d={`M470 ${ry(0)} V${TAXI_Y}`} />}
         {gates.map((g, i) => (
-          <path key={g.id} d={`M${gx(g.id, i)} ${TAXI_Y} V${GATE_Y}`} />
+          <path key={g.id} d={`M${gx(i)} ${TAXI_Y} V${GATE_Y}`} />
         ))}
       </g>
 
@@ -124,27 +130,32 @@ export function AirportMap({
 
       {/* Runways */}
       {runways.map((r, i) => {
-        const y = ry(r.id, i);
+        const y = ry(i);
         const assigned = deal?.runway_id === r.id;
-        const toggle = () => !disabled && onRunway(r.id);
+        // A runway the scenario itself closed cannot be reopened from here.
+        const fixed = r.closed && !closedRunways.includes(r.id);
+        const off = disabled || fixed;
+        const toggle = () => !off && onRunway(r.id);
         return (
           <g
             key={r.id}
             role="button"
-            tabIndex={disabled ? -1 : 0}
+            tabIndex={off ? -1 : 0}
             aria-pressed={r.closed}
-            aria-disabled={disabled}
-            aria-label={`Runway ${r.id}, ${r.closed ? "closed" : "open"}${assigned ? ", assigned" : ""}. ${r.closed ? "Reopen" : "Close"} it.`}
+            aria-disabled={off}
+            aria-label={`Runway ${r.id}, ${r.closed ? "closed" : "open"}${assigned ? ", assigned" : ""}. ${
+              fixed ? "Closed in this scenario." : r.closed ? "Reopen it." : "Close it."
+            }`}
             onClick={toggle}
             onKeyDown={onActivate(toggle)}
-            className={cn("group outline-none", disabled ? "cursor-not-allowed" : "cursor-pointer")}
+            className={cn("group outline-none", off ? "cursor-not-allowed" : "cursor-pointer")}
           >
             <rect x={RUNWAY_X0 - 6} y={y - 18} width={RUNWAY_X1 - RUNWAY_X0 + 12} height={36} fill="transparent" />
             <rect
               x={RUNWAY_X0}
-              y={y - 9}
+              y={y - runwayH / 2}
               width={RUNWAY_X1 - RUNWAY_X0}
-              height={18}
+              height={runwayH}
               rx="3"
               className={cn(
                 "transition-colors",
@@ -186,7 +197,7 @@ export function AirportMap({
 
       {/* Gates */}
       {gates.map((g, i) => {
-        const x = gx(g.id, i);
+        const x = gx(i);
         const assigned = deal?.gate_id === g.id;
         const toggle = () => !disabled && onGate(g.id);
         return (
@@ -202,9 +213,9 @@ export function AirportMap({
             className={cn("group outline-none", disabled ? "cursor-not-allowed" : "cursor-pointer")}
           >
             <rect
-              x={x - 22}
+              x={x - gateW / 2}
               y={GATE_Y - 4}
-              width={44}
+              width={gateW}
               height={28}
               rx="4"
               strokeWidth="1.5"
@@ -233,5 +244,6 @@ export function AirportMap({
       })}
 
     </svg>
+    </figure>
   );
 }

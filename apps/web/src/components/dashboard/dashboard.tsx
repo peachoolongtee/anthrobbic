@@ -63,6 +63,8 @@ export function Dashboard() {
     setTab(null);
     d.select(id);
   };
+  // The result of a control sits above the dock, so the panels clear it.
+  const clearOfOutcome = d.outcome !== null || d.busy !== null;
   const toggleTab = (t: Tab) => setTab((cur) => (cur === t ? null : t));
 
   return (
@@ -163,7 +165,8 @@ export function Dashboard() {
             aria-label="Runways and gates"
             className={cn(
               PANEL,
-              "p-2 lg:absolute lg:right-0 lg:bottom-[7.75rem] lg:w-[21rem]",
+              "p-2 lg:absolute lg:right-0 lg:w-[21rem]",
+              clearOfOutcome ? "lg:bottom-[11.5rem]" : "lg:bottom-[9.5rem]",
               running && "opacity-60",
             )}
           >
@@ -189,7 +192,8 @@ export function Dashboard() {
               aria-label={TABS.find((t) => t.id === tab)?.label}
               className={cn(
                 PANEL,
-                "relative z-10 flex flex-col bg-card/95 animate-in fade-in slide-in-from-bottom-4 duration-200 lg:absolute lg:inset-x-0 lg:top-3 lg:bottom-[7.25rem]",
+                "relative z-10 flex flex-col bg-card/95 animate-in fade-in slide-in-from-bottom-4 duration-200 lg:absolute lg:inset-x-0 lg:top-3",
+                clearOfOutcome ? "lg:bottom-[11.5rem]" : "lg:bottom-[9.5rem]",
               )}
             >
               <div className="flex items-center justify-between border-b border-border px-4 py-2">

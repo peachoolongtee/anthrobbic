@@ -49,7 +49,13 @@ export function PlanSummary({
   const Icon = CAUSE_ICON[flight.cause];
   const card = run?.card ?? null;
   const arrival = landingFact(card);
-  const facts = card?.action_facts.filter((f) => !IN_HEADER.has(f.key)) ?? [];
+  // The landing time is in the header, so the summary's slot needs only its runway.
+  const facts =
+    card?.action_facts
+      .filter((f) => !IN_HEADER.has(f.key))
+      .map((f) =>
+        f.key === "slot" && run?.decision.kind === "DEAL" ? { ...f, label: "Runway", value: run.decision.package.runway_id } : f,
+      ) ?? [];
   const deal = run?.decision.kind === "DEAL" ? run.decision : null;
 
   return (
@@ -112,7 +118,7 @@ export function PlanSummary({
         <dl className="grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-border bg-border">
           {facts.map((f) => (
             <div key={f.key} className="bg-card px-2.5 py-2">
-              <dt className="truncate text-xs text-muted-foreground">{f.label}</dt>
+              <dt className="text-xs text-muted-foreground">{f.label}</dt>
               <dd className="mt-0.5 flex items-start gap-1 font-display text-base leading-tight font-semibold">
                 <span className="min-w-0">{f.value}</span>
                 <ProvenanceMark provenance={f.provenance} className="shrink-0" />
@@ -120,6 +126,10 @@ export function PlanSummary({
             </div>
           ))}
         </dl>
+      )}
+
+      {facts.length > 0 && (
+        <p className="text-[11px] text-muted-foreground">R real, D derived from the file, S synthetic.</p>
       )}
 
       {run && (

@@ -3,6 +3,8 @@ import type {
   Cause,
   DecisionResult,
   Evaluation,
+  Headline,
+  WorkbookLimits,
   Run,
   RunLog,
   RunMode,
@@ -111,6 +113,16 @@ export const api = {
   verifyLog(runId: string, body: { tamper?: boolean } = {}): Promise<VerifyResult> {
     if (IS_MOCK) return mockBackend.verifyLog(runId, body);
     return post<VerifyResult>(`/runs/${encodeURIComponent(runId)}/log/verify`, body);
+  },
+
+  getLimits(): Promise<WorkbookLimits> {
+    if (IS_MOCK) return mockBackend.getLimits();
+    return http<WorkbookLimits>("/evaluation/limits");
+  },
+
+  getHeadline(): Promise<Headline> {
+    if (IS_MOCK) return mockBackend.getHeadline();
+    return http<Headline>("/evaluation/headline");
   },
 
   getEvaluation(): Promise<Evaluation> {

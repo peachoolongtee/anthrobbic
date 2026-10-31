@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import type { Domain, Run, Turn } from "@/lib/api-types";
 import { DOMAIN_LABEL, DOMAIN_ROLE, FAULT_LABEL, publicReasonLabel } from "@/lib/labels";
 import { EmptyPanel } from "@/components/dashboard/states";
+import { OutcomeStrip } from "@/components/dashboard/outcome-strip";
 import { RuleList } from "@/components/dashboard/rule-line";
 
 const DOMAINS: Domain[] = ["atc", "pilot", "ground"];
@@ -80,6 +81,7 @@ function TurnColumns({ turn, run }: { turn: Turn; run: Run }) {
 export function NegotiationView({ run }: { run: Run }) {
   return (
     <div className="space-y-5">
+      <OutcomeStrip run={run} />
       <p className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/40 bg-warning-soft px-2.5 py-1.5 text-sm">
         <Badge variant="outline" className="border-warning/50 bg-background text-warning">
           Unverified

@@ -97,12 +97,12 @@ export function LogView({
           {log.head ?? logHead}
         </p>
       </div>
-      <Table>
+      <Table className="table-fixed">
         <TableHeader>
           <TableRow>
             <TableHead className="w-12">No.</TableHead>
             <TableHead>What happened</TableHead>
-            <TableHead className="hidden sm:table-cell">Hash</TableHead>
+            <TableHead className="hidden w-24 sm:table-cell">Hash</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -111,13 +111,15 @@ export function LogView({
             return (
               <TableRow key={e.seq} className={cn(bad && "bg-destructive-soft")}>
                 <TableCell>{e.seq}</TableCell>
-                <TableCell className="whitespace-normal">
+                <TableCell className="whitespace-normal [overflow-wrap:anywhere]">
                   <span className="text-xs text-muted-foreground">{logKindLabel(e.kind)}</span>
                   <br />
                   {e.summary}
                   {bad && <strong className="ml-2 text-destructive">First bad entry</strong>}
                 </TableCell>
-                <TableCell className="hidden font-mono text-xs sm:table-cell">{e.hash}</TableCell>
+                <TableCell title={e.hash} className="hidden truncate font-mono text-xs sm:table-cell">
+                  {e.hash}
+                </TableCell>
               </TableRow>
             );
           })}

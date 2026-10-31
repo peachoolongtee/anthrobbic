@@ -348,6 +348,35 @@ export interface Evaluation {
   failures?: string[];
 }
 
+/** Where we depart from the challenge workbook. Words only, no figures from a run. */
+export interface WorkbookLimits {
+  title: string;
+  items: { id: string; limit: string; what_we_do: string; why: string; checked_against: string }[];
+}
+
+export interface HeadlineItem {
+  key: string;
+  label: string;
+  metric: string;
+  state: "measured" | "not_reached" | "failed" | "absent";
+  /** The results file's own display text. Null only when absent. */
+  value: string | null;
+  interval_text: string | null;
+  n: number | null;
+  evidence_class: string | null;
+  commit: string | null;
+  mode: string | null;
+  seed: number | null;
+  note: string;
+}
+
+export interface Headline {
+  status: "ok" | "not_yet_run" | "unreadable";
+  rules_only: HeadlineItem[];
+  live: HeadlineItem[];
+  other: HeadlineItem[];
+}
+
 export interface StateChange {
   closed_runways?: string[];
   closed_gates?: string[];
