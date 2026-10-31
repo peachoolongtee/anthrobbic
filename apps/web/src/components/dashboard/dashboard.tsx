@@ -99,7 +99,7 @@ export function Dashboard() {
             <TabsContent value="plan" className={refused ? "pt-2 opacity-50" : "pt-2"}>
               <RunGate d={d} running={running} run={run} empty="Pick a delayed flight">
                 {run && run.decision.kind === "DEAL" && run.card && (
-                  <PlanCard card={run.card} deal={run.decision} modelNotes={run.model_notes} />
+                  <PlanCard run={run} card={run.card} deal={run.decision} modelNotes={run.model_notes} />
                 )}
                 {run && run.decision.kind === "NO_DEAL" && <NoDealView decision={run.decision} />}
               </RunGate>
@@ -131,7 +131,15 @@ export function Dashboard() {
         </main>
 
         <aside className="border-t p-3 lg:overflow-y-auto lg:border-t-0 lg:border-l">
-          <SignoffPanel run={running ? null : run} signoff={d.signoff} onApprove={d.approve} onNewPlan={d.rerun} />
+          <SignoffPanel
+            run={running ? null : run}
+            signoff={d.signoff}
+            decision={d.decision}
+            onApprove={d.approve}
+            onReject={d.reject}
+            onTakeOver={d.takeOver}
+            onNewPlan={d.rerun}
+          />
         </aside>
       </div>
 

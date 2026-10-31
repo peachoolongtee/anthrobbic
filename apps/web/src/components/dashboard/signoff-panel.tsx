@@ -1,26 +1,34 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CircleCheck, CircleX, Hash, Info, TriangleAlert } from "lucide-react";
+import { CircleCheck, CircleX, Hash } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import type { Card as PlanCardData, PackageTerm, Run } from "@/lib/api-types";
-import type { SignoffState } from "@/hooks/use-dashboard";
+import type { DecisionState, SignoffState } from "@/hooks/use-dashboard";
 import { DECIDED_BY } from "@/hooks/use-dashboard";
 import { TERM_LABEL, changedFieldLabel, isApproved, signoffStatusLabel } from "@/lib/labels";
+import { FallbackNotice } from "@/components/dashboard/fallback-notice";
 import { ProvenanceBadge } from "@/components/dashboard/provenance-badge";
 import { RuleList } from "@/components/dashboard/rule-line";
 
 export function SignoffPanel({
   run,
   signoff,
+  decision,
   onApprove,
+  onReject,
+  onTakeOver,
   onNewPlan,
 }: {
   run: Run | null;
   signoff: SignoffState;
+  decision: DecisionState;
   onApprove: (decisions: boolean, requests: boolean) => void;
+  onReject: (reason: string) => void;
+  onTakeOver: (note: string) => void;
   onNewPlan: () => void;
 }) {
   return (
@@ -32,16 +40,135 @@ export function SignoffPanel({
         {run === null ? (
           <p className="text-sm text-muted-foreground">Pick a flight to see its recovery plan.</p>
         ) : run.decision.kind === "NO_DEAL" || !run.card ? (
-          <p className="text-sm">
-            <strong>Nothing to approve.</strong> No recovery plan passed the rules, so there is nothing to sign.
-            The case is yours to handle.
-          </p>
+          <div className="space-y-3">
+            <p className="text-sm">
+              <strong>Nothing to approve.</strong> No recovery plan passed the rules, so there is nothing to sign.
+              The case is yours to handle.
+            </p>
+            <FallbackNotice run={run} onlyFaults />
+            <TakeOverForm key={run.run_id} decision={decision} onTakeOver={onTakeOver} />
+          </div>
         ) : (
           // Keyed so the choices reset whenever a new plan is made.
-          <SignoffForm key={run.run_id} run={run} card={run.card} signoff={signoff} onApprove={onApprove} onNewPlan={onNewPlan} />
+          <SignoffForm
+            key={run.run_id}
+            run={run}
+            card={run.card}
+            signoff={signoff}
+            decision={decision}
+            onApprove={onApprove}
+            onReject={onReject}
+            onNewPlan={onNewPlan}
+          />
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/** Logged, no approval and no request. The note is stored as unverified. */
+function TakeOverForm({
+  decision,
+  onTakeOver,
+}: {
+  decision: DecisionState;
+  onTakeOver: (note: string) => void;
+}) {
+  const [note, setNote] = useState("");
+  if (decision.status === "done") {
+    return (
+      <DecisionOutcome>
+        <p className="font-semibold">
+          {decision.result.status === "TAKEN_OVER"
+            ? "Logged: this case is with the duty manager. Nothing was approved or requested."
+            : signoffStatusLabel(decision.result.status).title}
+        </p>
+        <LogHead head={decision.result.log_head} />
+      </DecisionOutcome>
+    );
+  }
+  const loading = decision.status === "loading";
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onTakeOver(note);
+      }}
+    >
+      {decision.status === "error" && <DecisionError message={decision.message} />}
+      <FreeText id="take-over-note" label="Note (optional, recorded as unverified)" value={note} onChange={setNote} disabled={loading} />
+      <Button type="submit" variant="secondary" disabled={loading} className="w-full">
+        {loading ? "Logging..." : "I've taken this case"}
+      </Button>
+    </form>
+  );
+}
+
+function FreeText({
+  id,
+  label,
+  value,
+  onChange,
+  disabled,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="space-y-1">
+      <label htmlFor={id} className="text-xs text-muted-foreground">
+        {label}
+      </label>
+      <Input
+        id={id}
+        value={value}
+        maxLength={2000}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        // Enter must never approve or reject by accident.
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.preventDefault();
+        }}
+      />
+    </div>
+  );
+}
+
+function LogHead({ head }: { head: string }) {
+  return (
+    <p className="flex items-start gap-1 font-mono text-xs break-all">
+      <Hash aria-hidden className="mt-0.5 size-3 shrink-0" />
+      Log head {head}
+    </p>
+  );
+}
+
+function DecisionError({ message }: { message: string }) {
+  const ref = useFocusOnShow<HTMLParagraphElement>();
+  return (
+    <p ref={ref} tabIndex={-1} role="alert" className="rounded-lg border border-destructive/40 bg-destructive-soft p-2 text-sm outline-none">
+      <strong>That was not recorded.</strong> {message} Nothing was issued.
+    </p>
+  );
+}
+
+/** The panel scrolls, so an outcome must bring itself into view when it appears. */
+function useFocusOnShow<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  useEffect(() => ref.current?.focus(), []);
+  return ref;
+}
+
+function DecisionOutcome({ children }: { children: React.ReactNode }) {
+  const ref = useFocusOnShow<HTMLDivElement>();
+  return (
+    <div ref={ref} tabIndex={-1} role="status" className="space-y-2 rounded-lg border bg-muted/50 p-3 text-sm outline-none">
+      {children}
+    </div>
   );
 }
 
@@ -49,25 +176,32 @@ function SignoffForm({
   run,
   card,
   signoff,
+  decision,
   onApprove,
+  onReject,
   onNewPlan,
 }: {
   run: Run;
   card: PlanCardData;
   signoff: SignoffState;
+  decision: DecisionState;
   onApprove: (decisions: boolean, requests: boolean) => void;
+  onReject: (reason: string) => void;
   onNewPlan: () => void;
 }) {
   // Nothing is ticked for you. Approving is a deliberate act.
   const [decide, setDecide] = useState(false);
   const [request, setRequest] = useState(false);
-  const locked = signoff.status === "loading" || (signoff.status === "done" && isApproved(signoff.result.status));
+  const [reason, setReason] = useState("");
+  const decided = decision.status === "done";
+  const rejecting = decision.status === "loading";
+  const locked =
+    signoff.status === "loading" || (signoff.status === "done" && isApproved(signoff.result.status)) || decided || rejecting;
   const none = !decide && !request;
   const approved = signoff.status === "done" && isApproved(signoff.result.status);
   // After any refusal the plan on screen is out of date until a new one is made.
   const stale = signoff.status === "done" && !approved;
   const loading = signoff.status === "loading";
-  const modelOff = run.fallback_trigger === "llm_off" || run.faults.some((f) => f.kind === "model_off");
 
   return (
     <form
@@ -78,6 +212,21 @@ function SignoffForm({
       }}
     >
       <SignoffResultView signoff={signoff} onNewPlan={onNewPlan} />
+      {decision.status === "error" && <DecisionError message={decision.message} />}
+      {decision.status === "done" && (
+        <DecisionOutcome>
+          <p className="font-semibold">
+            {decision.result.status === "REJECTED"
+              ? "Plan rejected. Nothing was issued."
+              : signoffStatusLabel(decision.result.status).title}
+          </p>
+          <LogHead head={decision.result.log_head} />
+          <Button type="button" variant="outline" size="sm" onClick={onNewPlan}>
+            Make a new recovery plan
+          </Button>
+        </DecisionOutcome>
+      )}
+      <FallbackNotice run={run} />
 
       <fieldset className="space-y-1.5" disabled={locked}>
         <legend className="text-sm font-semibold">You decide</legend>
@@ -120,24 +269,19 @@ function SignoffForm({
         </div>
       </fieldset>
 
-      {run.path === "fallback" && (
-        <p className="flex items-start gap-1.5 rounded-lg border bg-muted/50 px-2 py-1.5 text-sm">
-          {modelOff ? (
-            <Info aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          ) : (
-            <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
-          )}
-          <span>
-            Chosen by the rule-based fallback. {modelOff ? "The model is off, so the agents did not run." : "The agents did not agree."}
-          </span>
-        </p>
-      )}
+      <FreeText id="reject-reason" label="Reason for rejecting (optional, recorded as unverified)" value={reason} onChange={setReason} disabled={locked} />
+
       {/* Stays on screen while the rest of the panel scrolls. */}
-      <div className="sticky bottom-0 space-y-1 bg-card py-2">
-        <Button type="submit" disabled={none || stale || loading || approved} className="w-full">
-          {loading ? "Checking the rules again..." : approved ? "Approved" : "Approve"}
-        </Button>
-        {!approved && (
+      <div className="sticky -bottom-3 space-y-1 bg-card pt-2 pb-3">
+        <div className="flex gap-2">
+          <Button type="submit" disabled={none || stale || loading || approved || decided || rejecting} className="flex-1">
+            {loading ? "Checking the rules again..." : approved ? "Approved" : "Approve"}
+          </Button>
+          <Button type="button" variant="secondary" disabled={loading || approved || decided || rejecting} onClick={() => onReject(reason)}>
+            {rejecting ? "Logging..." : "Reject plan"}
+          </Button>
+        </div>
+        {!approved && !decided && (
           <p className="text-xs text-muted-foreground">
             {stale
               ? "This plan is out of date. Make a new recovery plan to approve again."
@@ -176,10 +320,7 @@ function SignoffResultView({ signoff, onNewPlan }: { signoff: SignoffState; onNe
           </p>
           <TermList title="Airline decisions approved" items={signoff.result.airline_decisions} />
           <TermList title="Requests issued" items={signoff.result.requests} />
-          <p className="flex items-start gap-1 font-mono text-xs break-all">
-            <Hash aria-hidden className="mt-0.5 size-3 shrink-0" />
-            Log head {signoff.result.log_head}
-          </p>
+          <LogHead head={signoff.result.log_head} />
         </div>
       )}
       {signoff.status === "done" && !isApproved(signoff.result.status) && <Refusal result={signoff.result} onNewPlan={onNewPlan} />}

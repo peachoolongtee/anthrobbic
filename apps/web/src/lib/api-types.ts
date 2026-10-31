@@ -248,7 +248,18 @@ export type SignoffStatus =
   | "REFUSED_PACKAGE_CHANGED"
   | "REFUSED_CARD_CHANGED"
   | "REFUSED_RULES_FAILED"
-  | "REFUSED_ALREADY_USED";
+  | "REFUSED_ALREADY_USED"
+  | "REFUSED_ALREADY_DECIDED";
+
+/** A run has one final decision. A refused attempt does not set it. */
+export type FinalDecision = "APPROVED" | "REJECTED" | "TAKEN_OVER";
+
+/** Reject and take-over answer with this. Neither issues anything. */
+export interface DecisionResult {
+  status: "REJECTED" | "TAKEN_OVER" | "REFUSED_ALREADY_DECIDED";
+  final_decision: FinalDecision;
+  log_head: string;
+}
 
 /** A term of the plan as sign-off returns it, e.g. {name: "gate_id", value: "gate B12"}. */
 export interface PackageTerm {
@@ -259,6 +270,8 @@ export interface PackageTerm {
 /** Mirrors SignOffOutcome. A changed field may be "unattributed". */
 export interface SignoffResult {
   status: SignoffStatus;
+  /** (addition) Present on REFUSED_ALREADY_DECIDED: what already stands. */
+  final_decision?: FinalDecision | null;
   package_name?: string;
   violations: RuleResult[];
   changed_fields: string[];

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, describeError, isUnreachable } from "@/lib/api";
 import type {
   Cause,
+  DecisionResult,
   Run,
   RunMode,
   RunOverrides,
@@ -29,6 +30,13 @@ export type SignoffState =
   | { status: "error"; message: string }
   | { status: "done"; result: SignoffResult };
 
+/** Reject or take-over, which issue nothing and need no ticked boxes. */
+export type DecisionState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "done"; result: DecisionResult };
+
 export type BreakKind = "runway" | "gate" | "unsafe" | "stale" | "tamper";
 
 export interface BreakOutcome {
@@ -49,6 +57,7 @@ export function useDashboard() {
   const [overrides, setOverrides] = useState<RunOverrides>({});
   const [runState, setRunState] = useState<RunState>({ status: "idle" });
   const [signoff, setSignoff] = useState<SignoffState>({ status: "idle" });
+  const [decision, setDecision] = useState<DecisionState>({ status: "idle" });
   const [outcome, setOutcome] = useState<BreakOutcome | null>(null);
   const [tamper, setTamper] = useState<VerifyResult | null>(null);
   const [busy, setBusy] = useState<BreakKind | null>(null);
@@ -60,6 +69,7 @@ export function useDashboard() {
       const seq = ++runSeq.current;
       setRunState({ status: "loading" });
       setSignoff({ status: "idle" });
+      setDecision({ status: "idle" });
       setTamper(null);
       try {
         const run = await api.createRun({ scenario_id: scenarioId, mode: runMode, overrides: ov });
@@ -303,6 +313,42 @@ export function useDashboard() {
     [runState],
   );
 
+  const reject = useCallback(
+    async (reason: string) => {
+      if (runState.status !== "ready") return;
+      setDecision({ status: "loading" });
+      try {
+        const text = reason.trim();
+        const result = await api.reject(runState.run.run_id, {
+          decided_by: DECIDED_BY,
+          ...(text ? { reason: text } : {}),
+        });
+        setDecision({ status: "done", result });
+      } catch (err) {
+        setDecision({ status: "error", message: describeError(err) });
+      }
+    },
+    [runState],
+  );
+
+  const takeOver = useCallback(
+    async (note: string) => {
+      if (runState.status !== "ready") return;
+      setDecision({ status: "loading" });
+      try {
+        const text = note.trim();
+        const result = await api.takeOver(runState.run.run_id, {
+          decided_by: DECIDED_BY,
+          ...(text ? { note: text } : {}),
+        });
+        setDecision({ status: "done", result });
+      } catch (err) {
+        setDecision({ status: "error", message: describeError(err) });
+      }
+    },
+    [runState],
+  );
+
   const resetSignoff = useCallback(() => setSignoff({ status: "idle" }), []);
 
   return {
@@ -322,6 +368,9 @@ export function useDashboard() {
     reset,
     signoff,
     approve,
+    decision,
+    reject,
+    takeOver,
     resetSignoff,
     outcome,
     busy,

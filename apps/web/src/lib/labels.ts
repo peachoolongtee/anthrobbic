@@ -121,7 +121,24 @@ export const SIGNOFF_STATUS: Record<SignoffStatus, { title: string; detail: stri
     title: "Refused: this approval was already used",
     detail: "Each approval can be used once. Make a new recovery plan to approve again.",
   },
+  REFUSED_ALREADY_DECIDED: {
+    title: "Refused: this run was already decided",
+    detail: "A run has one final decision, and this one is recorded. Make a new recovery plan to decide again.",
+  },
 };
+
+/** Log entry kinds with a plain name. Others are shown as logged. */
+const LOG_KIND_LABEL: Record<string, string> = {
+  plan_rejected: "Plan rejected by the duty manager",
+  case_taken_over: "Case taken over by the duty manager",
+  decision_refused: "Decision refused: this run was already decided",
+  signoff: "Sign-off",
+  state_change: "Airport state changed",
+};
+
+export function logKindLabel(kind: string): string {
+  return LOG_KIND_LABEL[kind] ?? kind;
+}
 
 export function signoffStatusLabel(status: string): { title: string; detail: string } {
   return (

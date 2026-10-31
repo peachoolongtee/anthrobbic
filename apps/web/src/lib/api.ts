@@ -1,6 +1,7 @@
 import { API_URL } from "@/lib/env";
 import type {
   Cause,
+  DecisionResult,
   Evaluation,
   Run,
   RunLog,
@@ -88,6 +89,18 @@ export const api = {
   signoff(runId: string, body: SignoffRequest): Promise<SignoffResult> {
     if (IS_MOCK) return mockBackend.signoff(runId, body);
     return post<SignoffResult>(`/runs/${encodeURIComponent(runId)}/signoff`, body);
+  },
+
+  /** Records a rejection. Issues nothing. The reason is stored as unverified. */
+  reject(runId: string, body: { decided_by: string; reason?: string }): Promise<DecisionResult> {
+    if (IS_MOCK) return mockBackend.reject(runId, body);
+    return post<DecisionResult>(`/runs/${encodeURIComponent(runId)}/reject`, body);
+  },
+
+  /** Records that the duty manager has a no-deal case. The note is stored as unverified. */
+  takeOver(runId: string, body: { decided_by: string; note?: string }): Promise<DecisionResult> {
+    if (IS_MOCK) return mockBackend.takeOver(runId, body);
+    return post<DecisionResult>(`/runs/${encodeURIComponent(runId)}/take-over`, body);
   },
 
   getLog(runId: string): Promise<RunLog> {

@@ -1,16 +1,19 @@
 import { Bot, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import type { Card as PlanCardData, Deal, ModelNote } from "@/lib/api-types";
+import type { Card as PlanCardData, Deal, ModelNote, Run } from "@/lib/api-types";
 import { DOMAIN_LABEL } from "@/lib/labels";
+import { FallbackNotice } from "@/components/dashboard/fallback-notice";
 import { ProvenanceBadge } from "@/components/dashboard/provenance-badge";
 import { RuleList } from "@/components/dashboard/rule-line";
 
 export function PlanCard({
+  run,
   card,
   deal,
   modelNotes,
 }: {
+  run: Run;
   card: PlanCardData;
   deal: Deal;
   modelNotes: ModelNote[];
@@ -25,6 +28,7 @@ export function PlanCard({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
+          <FallbackNotice run={run} onlyFaults />
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3">
             {card.action_facts.map((f) => (
               <div key={f.key} className="text-sm">

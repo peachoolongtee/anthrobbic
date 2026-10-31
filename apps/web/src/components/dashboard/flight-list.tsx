@@ -123,7 +123,7 @@ export function FlightList({
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-semibold">{s.flight_id}</span>
-                      <span className="flex items-center gap-1">
+                      <span className="flex flex-wrap justify-end gap-1">
                         {s.has_recording && <Badge variant="secondary">Recorded</Badge>}
                         <Badge variant="outline">{CAUSE_LABEL[s.cause]}</Badge>
                       </span>
